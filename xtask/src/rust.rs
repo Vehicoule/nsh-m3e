@@ -6,7 +6,7 @@ use std::fmt::Write as _;
 
 use std::collections::BTreeSet;
 
-use crate::kotlin::{FontFamily, Kind, Reference, Shape, TokenObject, Value};
+use crate::kotlin::{FontFamily, Kind, Reference, Shape, TextStyle, TokenObject, Value};
 
 /// `rustfmt`'s default `max_width`.
 const MAX_WIDTH: usize = 100;
@@ -46,6 +46,17 @@ pub(crate) fn module(object: &TokenObject, file: &str, doc: &[&str]) -> String {
         }
     }
     for token in &object.tokens {
+        let head = format!("pub const {}:", screaming_snake(&token.name));
+        if let Value::TextStyle(style) = &token.value {
+            let _ = writeln!(out, "\n/// androidx: `{}.{}`.", object.name, token.name);
+            push_call(
+                &mut out,
+                &format!("{head} TypeStyle ="),
+                "TypeStyle::new",
+                &text_style_arguments(style, &object.name),
+            );
+            continue;
+        }
         let (ty, expression, alias) = match &token.value {
             Value::Number(number) => ("f32", literal(*number), String::new()),
             Value::CubicBezier([x1, y1, x2, y2]) => (
@@ -86,13 +97,15 @@ pub(crate) fn module(object: &TokenObject, file: &str, doc: &[&str]) -> String {
             // `gen_tokens` makes no module of a file of keys; a key is written as its class's name, which says what
             // it is should that ever change.
             Value::Key(class) => ("&str", format!("{class:?}"), String::new()),
+            // Written above, with its arguments one per line when they do not fit.
+            Value::TextStyle(_) => continue,
         };
         let _ = writeln!(
             out,
             "\n/// androidx: `{}.{}`{alias}.",
             object.name, token.name
         );
-        let head = format!("pub const {}: {ty} =", screaming_snake(&token.name));
+        let head = format!("{head} {ty} =");
         let one_line_width = head.len() + " ".len() + expression.len() + ";".len();
         if one_line_width <= MAX_WIDTH {
             let _ = writeln!(out, "{head} {expression};");
@@ -101,6 +114,32 @@ pub(crate) fn module(object: &TokenObject, file: &str, doc: &[&str]) -> String {
         }
     }
     out
+}
+
+/// The arguments of `TypeStyle::new` for a text style of the object named `object`, in the order it takes them.
+fn text_style_arguments(style: &TextStyle, object: &str) -> Vec<String> {
+    style
+        .properties()
+        .iter()
+        .map(|(kind, reference)| reference_expression(*kind, reference, object))
+        .collect()
+}
+
+/// `head`, then the call of `function` with `arguments`, laid out as `rustfmt` lays it out: on one line when it
+/// fits, else on the next line when that fits, else one argument per line.
+fn push_call(out: &mut String, head: &str, function: &str, arguments: &[String]) {
+    let call = format!("{function}({})", arguments.join(", "));
+    if head.len() + " ".len() + call.len() + ";".len() <= MAX_WIDTH {
+        let _ = writeln!(out, "{head} {call};");
+    } else if "    ".len() + call.len() + ";".len() <= MAX_WIDTH {
+        let _ = writeln!(out, "{head}\n    {call};");
+    } else {
+        let _ = writeln!(out, "{head} {function}(");
+        for argument in arguments {
+            let _ = writeln!(out, "    {argument},");
+        }
+        out.push_str(");\n");
+    }
 }
 
 /// The library's `Shape` for an androidx shape: one call, so `rustfmt` lays it out as it does `CubicBezier::new`.
@@ -132,7 +171,7 @@ fn kind_type(kind: Kind) -> &'static str {
         Kind::Color => "Srgb",
         Kind::FontFamily => "GenericFontFamily",
         Kind::FontWeight => "FontWeight",
-        Kind::Length => "Points",
+        Kind::Length | Kind::TextUnit => "Points",
         Kind::ColorRole => "ColorRole",
         Kind::ShapeKey => "Shape",
     }
@@ -197,6 +236,15 @@ fn imports(object: &TokenObject) -> Vec<String> {
             Value::FontWeight(_) => {
                 external.insert(FONT_WEIGHT);
             }
+            Value::TextStyle(style) => {
+                types.insert("TypeStyle");
+                for (_, reference) in style.properties() {
+                    if let Some(module) = reference_module(Kind::TextUnit, reference, &object.name)
+                    {
+                        modules.insert(module);
+                    }
+                }
+            }
             Value::Reference(kind, reference) => {
                 match kind {
                     Kind::Color | Kind::FontFamily | Kind::ShapeKey => {
@@ -205,7 +253,7 @@ fn imports(object: &TokenObject) -> Vec<String> {
                     Kind::FontWeight => {
                         external.insert(FONT_WEIGHT);
                     }
-                    Kind::Length => {
+                    Kind::Length | Kind::TextUnit => {
                         external.insert(POINTS);
                     }
                     Kind::ColorRole => color_role = true,
@@ -818,6 +866,87 @@ pub const CONTAINER_COLOR: ColorRole = ColorRole::Primary;",
                 "crate::tokens::Shape",
                 "nsh_core::geometry::Points",
             ]
+        );
+    }
+
+    fn text_style(object: &str, style: &str) -> TextStyle {
+        let property = |suffix: &str| named(object, &format!("{style}{suffix}"));
+        TextStyle {
+            font: property("Font"),
+            weight: property("Weight"),
+            size: property("Size"),
+            line_height: property("LineHeight"),
+            tracking: property("Tracking"),
+        }
+    }
+
+    #[test]
+    fn writes_a_text_style_as_one_call_with_its_properties_in_order() {
+        let object = sample(vec![Token {
+            name: "BodyLarge".into(),
+            value: Value::TextStyle(Box::new(text_style("TypeScaleTokens", "BodyLarge"))),
+        }]);
+        let out = module(&object, "SampleTokens.kt", &[]);
+        assert!(
+            out.contains(
+                "\n/// androidx: `SampleTokens.BodyLarge`.
+pub const BODY_LARGE: TypeStyle = TypeStyle::new(
+    type_scale_tokens::BODY_LARGE_FONT,
+    type_scale_tokens::BODY_LARGE_WEIGHT,
+    type_scale_tokens::BODY_LARGE_SIZE,
+    type_scale_tokens::BODY_LARGE_LINE_HEIGHT,
+    type_scale_tokens::BODY_LARGE_TRACKING,
+);\n"
+            ),
+            "{out}"
+        );
+        // The style's own type and the module of its tokens, and nothing for the types of the tokens themselves.
+        assert_eq!(
+            imports(&object),
+            ["super::type_scale_tokens", "crate::tokens::TypeStyle"]
+        );
+        // Tokens of the style's own object are named without a module.
+        assert_eq!(
+            text_style_arguments(&text_style("SampleTokens", "Label"), "SampleTokens"),
+            [
+                "LABEL_FONT",
+                "LABEL_WEIGHT",
+                "LABEL_SIZE",
+                "LABEL_LINE_HEIGHT",
+                "LABEL_TRACKING"
+            ]
+        );
+    }
+
+    #[test]
+    fn lays_out_a_call_as_rustfmt_does_at_each_width() {
+        let call = |head: &str, arguments: &[&str]| {
+            let arguments: Vec<String> = arguments.iter().map(|&a| a.to_owned()).collect();
+            let mut out = String::new();
+            push_call(&mut out, head, "f", &arguments);
+            out
+        };
+        // `head f(a, b);` is exactly the width: one line.
+        let head = "h".repeat(MAX_WIDTH - " f(a, b);".len());
+        assert_eq!(call(&head, &["a", "b"]), format!("{head} f(a, b);\n"));
+        // One more and the call goes to the next line, where it fits.
+        let head = "h".repeat(MAX_WIDTH - " f(a, b);".len() + 1);
+        assert_eq!(call(&head, &["a", "b"]), format!("{head}\n    f(a, b);\n"));
+        // `    f(x);` exactly the width on the next line still fits there.
+        let wide = "x".repeat(MAX_WIDTH - "    f();".len());
+        assert_eq!(
+            call(&head, &[wide.as_str()]),
+            format!("{head}\n    f({wide});\n")
+        );
+        // One character more and each argument gets its own line.
+        let wider = format!("{wide}x");
+        assert_eq!(
+            call(&head, &[wider.as_str()]),
+            format!("{head} f(\n    {wider},\n);\n")
+        );
+        assert_eq!(
+            call(&head, &[wider.as_str(), "b"]),
+            format!("{head} f(\n    {wider},\n    b,\n);\n")
         );
     }
 
