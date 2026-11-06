@@ -29,13 +29,27 @@ pub(crate) struct Token {
 }
 
 /// The token values this reader understands.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Value {
     /// `const val X = 0.8f` (a Kotlin `Float`) or `const val X = 700.0` (a Kotlin `Double` that `f32` holds
     /// exactly; NSH takes `f32`).
     Number(f32),
     /// `inline val X: CubicBezierEasing` / `get() = CubicBezierEasing(x1, y1, x2, y2)`.
     CubicBezier([f32; 4]),
+    /// `inline val X: Color` / `get() = Color(red = 0, green = 0, blue = 0)`: an opaque 8-bit sRGB color.
+    Srgb([u8; 3]),
+    /// `inline val X: androidx.compose.ui.graphics.Color` / `get() = PaletteTokens.Neutral98`: the color of
+    /// another token, of another object or, written `get() = Primary`, of the same one.
+    Color(Reference),
+}
+
+/// A token of another object, such as `PaletteTokens.Neutral98`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Reference {
+    /// The object, such as `PaletteTokens`.
+    pub(crate) object: String,
+    /// The token, such as `Neutral98`.
+    pub(crate) token: String,
 }
 
 /// Why a file was rejected, and on which line (1-based).
@@ -53,6 +67,8 @@ pub(crate) enum ParseErrorKind {
     BadName(String),
     /// A number that is not a plain decimal literal, or an integer.
     BadNumber(String),
+    /// A color channel that is not a plain integer from 0 to 255.
+    BadChannel(String),
     /// A `Double` that `f32` cannot hold exactly.
     Inexact(String),
     /// An `inline val` not followed by its `get() = ...` line.
@@ -72,6 +88,9 @@ impl fmt::Display for ParseError {
             ParseErrorKind::Unsupported(text) => write!(f, "unsupported form `{text}`"),
             ParseErrorKind::BadName(name) => write!(f, "`{name}` is not a PascalCase token name"),
             ParseErrorKind::BadNumber(text) => write!(f, "`{text}` is not a supported number"),
+            ParseErrorKind::BadChannel(text) => {
+                write!(f, "`{text}` is not a color channel from 0 to 255")
+            }
             ParseErrorKind::Inexact(text) => write!(f, "`{text}` cannot be held exactly by an f32"),
             ParseErrorKind::MissingGetter(name) => write!(f, "`{name}` has no `get() = ...` line"),
             ParseErrorKind::Duplicate(name) => write!(f, "`{name}` is defined twice"),
@@ -115,7 +134,7 @@ pub(crate) fn parse(source: &str) -> Result<TokenObject, ParseError> {
                 BodyLine::Getter { name, ty } => State::Getter { name, ty },
             },
             State::Getter { name, ty } => {
-                let token = getter_line(text, name, &ty).map_err(error)?;
+                let token = getter_line(text, name, &ty, &object.name).map_err(error)?;
                 push(&mut object, &mut seen, token).map_err(error)?;
                 State::Body
             }
@@ -189,27 +208,73 @@ fn body_line(text: &str) -> Result<BodyLine, ParseErrorKind> {
     Err(ParseErrorKind::Unsupported(text.to_owned()))
 }
 
-fn getter_line(text: &str, name: String, ty: &str) -> Result<Token, ParseErrorKind> {
+/// The value of `inline val <name>: <ty>`, from its `get() = ...` line, in the object named `object`.
+fn getter_line(text: &str, name: String, ty: &str, object: &str) -> Result<Token, ParseErrorKind> {
     let Some(expression) = text.strip_prefix("get() = ") else {
         return Err(ParseErrorKind::MissingGetter(name));
     };
     let unsupported = || ParseErrorKind::Unsupported(text.to_owned());
-    if ty != "CubicBezierEasing" {
-        return Err(unsupported());
-    }
+    let value = match ty {
+        "CubicBezierEasing" => curve(expression).ok_or_else(unsupported)??,
+        "Color" | "androidx.compose.ui.graphics.Color" => match srgb(expression) {
+            Some(channels) => Value::Srgb(channels?),
+            None => Value::Color(reference(expression, object).ok_or_else(unsupported)??),
+        },
+        _ => return Err(unsupported()),
+    };
+    Ok(Token { name, value })
+}
+
+/// `CubicBezierEasing(x1, y1, x2, y2)`; `None` when the expression has another shape.
+fn curve(expression: &str) -> Option<Result<Value, ParseErrorKind>> {
     let arguments = expression
-        .strip_prefix("CubicBezierEasing(")
-        .and_then(|rest| rest.strip_suffix(')'))
-        .ok_or_else(unsupported)?;
-    let numbers = arguments
+        .strip_prefix("CubicBezierEasing(")?
+        .strip_suffix(')')?;
+    let numbers = match arguments
         .split(", ")
         .map(number)
-        .collect::<Result<Vec<_>, _>>()?;
-    let points: [f32; 4] = numbers.try_into().map_err(|_| unsupported())?;
-    Ok(Token {
-        name,
-        value: Value::CubicBezier(points),
-    })
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(numbers) => numbers,
+        Err(error) => return Some(Err(error)),
+    };
+    let points: [f32; 4] = numbers.try_into().ok()?;
+    Some(Ok(Value::CubicBezier(points)))
+}
+
+/// `Color(red = 0, green = 0, blue = 0)`; `None` when the expression is not a `Color(...)` call of exactly these
+/// three named channels, in this order.
+fn srgb(expression: &str) -> Option<Result<[u8; 3], ParseErrorKind>> {
+    let arguments = expression.strip_prefix("Color(")?.strip_suffix(')')?;
+    let mut channels = [0_u8; 3];
+    let mut parts = arguments.split(", ");
+    for (channel, label) in channels.iter_mut().zip(["red = ", "green = ", "blue = "]) {
+        let literal = parts.next()?.strip_prefix(label)?;
+        match self::channel(literal) {
+            Ok(value) => *channel = value,
+            Err(error) => return Some(Err(error)),
+        }
+    }
+    if parts.next().is_some() {
+        return None;
+    }
+    Some(Ok(channels))
+}
+
+/// `PaletteTokens.Neutral98`, a token of another object, or `Primary`, a token of `object` itself; `None` when the
+/// expression is neither.
+fn reference(expression: &str, object: &str) -> Option<Result<Reference, ParseErrorKind>> {
+    let (owner, token) = expression.split_once('.').unwrap_or((object, expression));
+    // A second dot (`a.b.C`) or a call (`X.copy(...)`) is another form, not a bad name.
+    if token.is_empty() || !token.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return None;
+    }
+    Some(checked_name(owner).and_then(|object| {
+        Ok(Reference {
+            object,
+            token: checked_name(token)?,
+        })
+    }))
 }
 
 fn push(
@@ -259,6 +324,16 @@ fn number(literal: &str) -> Result<f32, ParseErrorKind> {
     Ok(narrow)
 }
 
+/// An 8-bit color channel: a plain integer from 0 to 255.
+fn channel(literal: &str) -> Result<u8, ParseErrorKind> {
+    let bad = || ParseErrorKind::BadChannel(literal.to_owned());
+    // `u8::from_str` would also take a leading `+`.
+    if !literal.chars().all(|c| c.is_ascii_digit()) {
+        return Err(bad());
+    }
+    literal.parse().map_err(|_| bad())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -297,6 +372,148 @@ mod tests {
                     value: Value::CubicBezier([0.2, 0.0, 0.0, 1.0])
                 },
             ]
+        );
+    }
+
+    fn color(object: &str, token: &str) -> Value {
+        Value::Color(Reference {
+            object: object.into(),
+            token: token.into(),
+        })
+    }
+
+    fn only_value(body: &str) -> Value {
+        let mut tokens = parse(&file(body)).unwrap().tokens;
+        assert_eq!(tokens.len(), 1);
+        tokens.remove(0).value
+    }
+
+    #[test]
+    fn reads_colors_and_color_references() {
+        let source = file(
+            "    inline val Neutral98: Color\n        get() = Color(red = 254, green = 247, blue = 0)\n\n    inline val Background: androidx.compose.ui.graphics.Color\n        get() = PaletteTokens.Neutral98\n\n    inline val Error: Color\n        get() = PaletteTokens.Error40\n",
+        );
+        let tokens = parse(&source).unwrap().tokens;
+        assert_eq!(
+            tokens,
+            vec![
+                Token {
+                    name: "Neutral98".into(),
+                    value: Value::Srgb([254, 247, 0]),
+                },
+                Token {
+                    name: "Background".into(),
+                    value: color("PaletteTokens", "Neutral98"),
+                },
+                Token {
+                    name: "Error".into(),
+                    value: color("PaletteTokens", "Error40"),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn keeps_each_channel_in_its_place() {
+        assert_eq!(
+            only_value(
+                "    inline val C: Color\n        get() = Color(red = 1, green = 2, blue = 255)\n"
+            ),
+            Value::Srgb([1, 2, 255])
+        );
+    }
+
+    #[test]
+    fn rejects_a_channel_out_of_range_or_not_a_plain_integer() {
+        for literal in ["256", "-1", "+1", "1.0", "0x10", "", "1f"] {
+            assert_eq!(
+                error_kind(&format!(
+                    "    inline val C: Color\n        get() = Color(red = 0, green = {literal}, blue = 0)\n"
+                )),
+                ParseErrorKind::BadChannel(literal.into()),
+                "{literal}"
+            );
+        }
+        assert_eq!(channel("0"), Ok(0));
+        assert_eq!(channel("255"), Ok(255));
+    }
+
+    #[test]
+    fn rejects_a_color_call_of_another_shape() {
+        for expression in [
+            "Color(red = 0, green = 0)",
+            "Color(red = 0, green = 0, blue = 0, alpha = 0)",
+            "Color(green = 0, red = 0, blue = 0)",
+            "Color(0, 0, 0)",
+            "Color(0xFF000000)",
+            "Color(red = 0, green = 0, blue = 0",
+            "Primary()",
+            "PaletteTokens.Neutral98.copy(alpha = 0.5f)",
+            "PaletteTokens.",
+            "a.b.C",
+        ] {
+            assert_eq!(
+                error_kind(&format!(
+                    "    inline val C: Color\n        get() = {expression}\n"
+                )),
+                ParseErrorKind::Unsupported(format!("get() = {expression}")),
+                "{expression}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_bare_name_is_a_token_of_the_same_object() {
+        assert_eq!(
+            only_value("    inline val SurfaceTint: Color\n        get() = Primary\n"),
+            color("SampleTokens", "Primary")
+        );
+        assert_eq!(
+            error_kind("    inline val C: Color\n        get() = primary\n"),
+            ParseErrorKind::BadName("primary".into())
+        );
+    }
+
+    #[test]
+    fn a_reference_names_two_pascal_case_identifiers() {
+        assert_eq!(
+            error_kind("    inline val C: Color\n        get() = paletteTokens.Neutral98\n"),
+            ParseErrorKind::BadName("paletteTokens".into())
+        );
+        assert_eq!(
+            error_kind("    inline val C: Color\n        get() = PaletteTokens.neutral98\n"),
+            ParseErrorKind::BadName("neutral98".into())
+        );
+    }
+
+    #[test]
+    fn a_color_needs_a_color_type_and_a_reference_needs_a_color() {
+        // The type decides the form: a color call or a reference under another type is not guessed.
+        assert_eq!(
+            error_kind("    inline val C: Dp\n        get() = PaletteTokens.Neutral98\n"),
+            ParseErrorKind::Unsupported("get() = PaletteTokens.Neutral98".into())
+        );
+        assert_eq!(
+            error_kind(
+                "    inline val C: CubicBezierEasing\n        get() = Color(red = 0, green = 0, blue = 0)\n"
+            ),
+            ParseErrorKind::Unsupported("get() = Color(red = 0, green = 0, blue = 0)".into())
+        );
+        assert_eq!(
+            error_kind(
+                "    inline val C: ColorToken\n        get() = ColorSchemeKeyTokens.Primary\n"
+            ),
+            ParseErrorKind::Unsupported("get() = ColorSchemeKeyTokens.Primary".into())
+        );
+    }
+
+    #[test]
+    fn a_curve_with_a_bad_number_reports_the_number() {
+        assert_eq!(
+            error_kind(
+                "    inline val E: CubicBezierEasing\n        get() = CubicBezierEasing(0.2f, 0.0f, x, 1.0f)\n"
+            ),
+            ParseErrorKind::BadNumber("x".into())
         );
     }
 
@@ -385,6 +602,10 @@ mod tests {
             (
                 ParseErrorKind::BadNumber("x".into()),
                 "line 3: `x` is not a supported number",
+            ),
+            (
+                ParseErrorKind::BadChannel("x".into()),
+                "line 3: `x` is not a color channel from 0 to 255",
             ),
             (
                 ParseErrorKind::Inexact("x".into()),
