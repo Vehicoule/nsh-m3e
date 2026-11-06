@@ -1,6 +1,6 @@
 # 0005. Show correctness with types, property tests and mutation testing, not formal proofs
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-06
 - Deciders: the user
 
@@ -10,7 +10,7 @@ The first app had green static goldens that hid a hard-coded shadow, and tests t
 Formal tools exist for Rust: Kani (bounded model checking), Verus, Aeneas (Rust to Lean 4). They cost a lot of effort
 per property and suit small, critical algorithms more than UI components.
 
-## Decision (recommended)
+## Decision
 
 For this library:
 

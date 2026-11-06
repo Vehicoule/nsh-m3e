@@ -1,6 +1,6 @@
 # 0003. Take M3 values from the androidx tokens and generate the Rust tokens from them
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-06
 - Deciders: the user
 
@@ -19,7 +19,7 @@ Expressive ones (`ExpressiveMotionTokens`, `ButtonXLargeTokens`, `LoadingIndicat
    check in CI that the generated code matches.
 3. Write the Rust constants by hand: fastest to start, and exactly how wrong values creep in.
 
-## Decision (recommended)
+## Decision
 
 Option 2. The vendored files in `reference/androidx-material3-tokens/` are the single source; a generator turns them
 into Rust; CI regenerates and fails on any difference. Each Rust constant keeps the androidx token name in its doc

@@ -65,6 +65,7 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked
 cargo deny check
+scripts/sync-nsh.sh check
 ```
 
 The toolchain is pinned in [`rust-toolchain.toml`](rust-toolchain.toml). Run the full list before opening a pull
@@ -78,7 +79,8 @@ request, and report what you ran.
 | `docs/adr/` | Decisions, numbered, one per file ([template](docs/adr/0000-template.md)) |
 | `docs/` | Requirements and references |
 | `reference/` | Vendored sources of truth, pinned, never edited by hand |
-| `.claude/skills/` | Vendored skills for coding agents, pinned |
+| `.claude/skills/` | Vendored skills for coding agents, pinned (the NSH ones are synced by `scripts/sync-nsh.sh`) |
+| `scripts/` | Repository tooling (`sync-nsh.sh`: keep the NSH skills on the pinned NSH commit) |
 
 ## Conventions
 

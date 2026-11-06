@@ -1,0 +1,66 @@
+name: NSH bump
+
+# Moves the NSH pin to the newest commit of NSH's main and opens (or updates) one pull request (ADR 0006).
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: nsh-bump
+  cancel-in-progress: false
+
+env:
+  BRANCH: nsh-bump
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+      - name: Install the pinned toolchain
+        run: rustup toolchain install
+      - name: Pin the newest NSH commit and sync its skills
+        id: sync
+        run: |
+          old="$(sed -n 's/^nsh-core = { git = "https:\/\/github\.com\/longbridge\/nsh", rev = "\([0-9a-f]\{40\}\)" }$/\1/p' Cargo.toml)"
+          scripts/sync-nsh.sh update
+          new="$(sed -n 's/^nsh-core = { git = "https:\/\/github\.com\/longbridge\/nsh", rev = "\([0-9a-f]\{40\}\)" }$/\1/p' Cargo.toml)"
+          echo "old=$old" >> "$GITHUB_OUTPUT"
+          echo "new=$new" >> "$GITHUB_OUTPUT"
+          if git diff --quiet && [ -z "$(git status --porcelain)" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Open or update the pull request
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OLD: ${{ steps.sync.outputs.old }}
+          NEW: ${{ steps.sync.outputs.new }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -C "$BRANCH"
+          git add -A
+          git commit -q -m "deps: Update NSH to ${NEW:0:12}" -m "NSH changes: https://github.com/longbridge/nsh/compare/${OLD}...${NEW}"
+          git push --force origin "$BRANCH"
+          body="$(printf '%s\n\n%s\n\n%s\n' \
+            "Moves the NSH pin from \`${OLD:0:12}\` to \`${NEW:0:12}\` (newest commit of NSH's \`main\`) and syncs the NSH skills from it (ADR 0006)." \
+            "NSH changes: https://github.com/longbridge/nsh/compare/${OLD}...${NEW}" \
+            "Opened by \`.github/workflows/nsh-bump.yml\`. Merge when CI is green; if it is red, the fix goes in this pull request.")"
+          if [ -n "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')" ]; then
+            gh pr edit "$BRANCH" --title "deps: Update NSH to ${NEW:0:12}" --body "$body"
+          else
+            gh pr create --base main --head "$BRANCH" --title "deps: Update NSH to ${NEW:0:12}" --body "$body"
+          fi
+          # Pushes made with GITHUB_TOKEN start no workflow, so CI is started explicitly on the bump commit.
+          gh workflow run ci.yml --ref "$BRANCH"

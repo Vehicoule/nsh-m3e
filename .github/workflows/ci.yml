@@ -4,6 +4,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  # The NSH bump workflow starts CI this way: pushes made with GITHUB_TOKEN start no workflow.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -36,6 +38,8 @@ jobs:
         run: cargo doc --workspace --no-deps --locked
         env:
           RUSTDOCFLAGS: -D warnings
+      - name: NSH skills match the pinned NSH commit
+        run: scripts/sync-nsh.sh check
 
   deny:
     name: deny

@@ -1,6 +1,6 @@
 # 0004. Convert M3's spring damping ratio to NSH's damping coefficient
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-06
 - Deciders: the user
 
@@ -12,7 +12,7 @@ M3 defines springs by stiffness and damping **ratio** (ζ): `ExpressiveMotionTok
 undamped spring that oscillates for seconds. The first app also used the standard M3 springs (700 / 0.9) instead of
 the Expressive ones; that was the main cause of "not the real animations".
 
-## Decision (recommended)
+## Decision
 
 One function converts: `c = ζ · 2 · √(k · m)`, with `m = 1`. Components never build an NSH `Spring` from raw numbers;
 they take a motion token (default, fast or slow; spatial or effects) and the conversion builds it.

@@ -1,6 +1,8 @@
 # Vendored skills
 
-Never edited by hand: update by copying a newer revision in a pull request of its own.
+Never edited by hand. The NSH skills are copied by `scripts/sync-nsh.sh` from the NSH commit pinned in the root
+`Cargo.toml`, and CI checks that they match it; the others are updated by copying a newer revision in a pull request of
+their own.
 
 | Skill | Source | Revision | License |
 |---|---|---|---|
