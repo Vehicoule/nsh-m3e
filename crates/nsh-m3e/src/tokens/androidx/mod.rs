@@ -7,5 +7,8 @@
 //! Each constant names its androidx token in its documentation. Numbers are `f32`, the type NSH
 //! takes; the generator refuses a value that `f32` cannot hold exactly.
 
+pub mod color_dark_tokens;
+pub mod color_light_tokens;
 pub mod expressive_motion_tokens;
 pub mod motion_tokens;
+pub mod palette_tokens;

@@ -4,6 +4,8 @@
 
 use std::fmt::Write as _;
 
+use std::collections::BTreeSet;
+
 use crate::kotlin::{TokenObject, Value};
 
 /// `rustfmt`'s default `max_width`.
@@ -36,28 +38,51 @@ pub(crate) fn module(object: &TokenObject, file: &str, doc: &[&str]) -> String {
         out.push_str("//!\n");
         push_doc(&mut out, paragraph);
     }
-    let uses_curves = object
-        .tokens
-        .iter()
-        .any(|token| matches!(token.value, Value::CubicBezier(_)));
-    if uses_curves {
-        out.push_str("\nuse crate::tokens::CubicBezier;\n");
+    let imports = imports(object);
+    if !imports.is_empty() {
+        out.push('\n');
+        for import in imports {
+            let _ = writeln!(out, "use {import};");
+        }
     }
     for token in &object.tokens {
-        let (ty, expression) = match token.value {
-            Value::Number(number) => ("f32", literal(number)),
+        let (ty, expression, alias) = match &token.value {
+            Value::Number(number) => ("f32", literal(*number), String::new()),
             Value::CubicBezier([x1, y1, x2, y2]) => (
                 "CubicBezier",
                 format!(
                     "CubicBezier::new({}, {}, {}, {})",
-                    literal(x1),
-                    literal(y1),
-                    literal(x2),
-                    literal(y2)
+                    literal(*x1),
+                    literal(*y1),
+                    literal(*x2),
+                    literal(*y2)
                 ),
+                String::new(),
+            ),
+            Value::Srgb([red, green, blue]) => (
+                "Srgb",
+                format!("Srgb::new({red}, {green}, {blue})"),
+                String::new(),
+            ),
+            Value::Color(reference) => (
+                "Srgb",
+                if reference.object == object.name {
+                    screaming_snake(&reference.token)
+                } else {
+                    format!(
+                        "{}::{}",
+                        snake(&reference.object),
+                        screaming_snake(&reference.token)
+                    )
+                },
+                format!(" = `{}.{}`", reference.object, reference.token),
             ),
         };
-        let _ = writeln!(out, "\n/// androidx: `{}.{}`.", object.name, token.name);
+        let _ = writeln!(
+            out,
+            "\n/// androidx: `{}.{}`{alias}.",
+            object.name, token.name
+        );
         let head = format!("pub const {}: {ty} =", screaming_snake(&token.name));
         let one_line_width = head.len() + " ".len() + expression.len() + ";".len();
         if one_line_width <= MAX_WIDTH {
@@ -67,6 +92,40 @@ pub(crate) fn module(object: &TokenObject, file: &str, doc: &[&str]) -> String {
         }
     }
     out
+}
+
+/// The `use` paths a module needs, in the order `rustfmt` sorts them: `super::` before `crate::`.
+fn imports(object: &TokenObject) -> Vec<String> {
+    let mut types = BTreeSet::new();
+    let mut modules = BTreeSet::new();
+    for token in &object.tokens {
+        match &token.value {
+            Value::Number(_) => {}
+            Value::CubicBezier(_) => {
+                types.insert("CubicBezier");
+            }
+            Value::Srgb(_) => {
+                types.insert("Srgb");
+            }
+            Value::Color(reference) => {
+                types.insert("Srgb");
+                if reference.object != object.name {
+                    modules.insert(snake(&reference.object));
+                }
+            }
+        }
+    }
+    let mut imports: Vec<String> = modules
+        .into_iter()
+        .map(|module| format!("super::{module}"))
+        .collect();
+    let types: Vec<&str> = types.into_iter().collect();
+    match types.as_slice() {
+        [] => {}
+        [one] => imports.push(format!("crate::tokens::{one}")),
+        many => imports.push(format!("crate::tokens::{{{}}}", many.join(", "))),
+    }
+    imports
 }
 
 /// The `mod.rs` that declares the generated modules, sorted as `rustfmt` sorts them.
@@ -143,7 +202,17 @@ fn convert(name: &str, upper: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::kotlin::Token;
+    use crate::kotlin::{Reference, Token};
+
+    fn color(name: &str, object: &str, token: &str) -> Token {
+        Token {
+            name: name.into(),
+            value: Value::Color(Reference {
+                object: object.into(),
+                token: token.into(),
+            }),
+        }
+    }
 
     #[test]
     fn converts_names_at_word_boundaries_only() {
@@ -297,5 +366,68 @@ mod tests {
             .flat_map(|line| line.split_whitespace().skip(1))
             .collect();
         assert_eq!(rejoined.join(" "), words);
+    }
+
+    #[test]
+    fn writes_colors_and_references_with_their_imports() {
+        let object = sample(vec![
+            Token {
+                name: "Neutral98".into(),
+                value: Value::Srgb([254, 247, 0]),
+            },
+            color("Background", "PaletteTokens", "Neutral98"),
+            color("SurfaceTint", "SampleTokens", "Neutral98"),
+            color("Error", "OtherPaletteTokens", "Error40"),
+        ]);
+        let out = module(&object, "SampleTokens.kt", &[]);
+        assert!(
+            out.contains(
+                "\nuse super::other_palette_tokens;\nuse super::palette_tokens;\nuse crate::tokens::Srgb;\n\n"
+            ),
+            "{out}"
+        );
+        assert!(out.contains(
+            "\n/// androidx: `SampleTokens.Neutral98`.\npub const NEUTRAL98: Srgb = Srgb::new(254, 247, 0);\n"
+        ));
+        assert!(out.contains(
+            "\n/// androidx: `SampleTokens.Background` = `PaletteTokens.Neutral98`.\npub const BACKGROUND: Srgb = palette_tokens::NEUTRAL98;\n"
+        ));
+        // A token of the same object is named directly, and its module is not imported into itself.
+        assert!(out.contains(
+            "\n/// androidx: `SampleTokens.SurfaceTint` = `SampleTokens.Neutral98`.\npub const SURFACE_TINT: Srgb = NEUTRAL98;\n"
+        ));
+        assert!(!out.contains("use super::sample_tokens;"));
+        assert!(out.contains("pub const ERROR: Srgb = other_palette_tokens::ERROR40;\n"));
+    }
+
+    #[test]
+    fn imports_nothing_for_numbers_and_only_what_is_used() {
+        let numbers = sample(vec![Token {
+            name: "A".into(),
+            value: Value::Number(1.0),
+        }]);
+        assert_eq!(imports(&numbers), Vec::<String>::new());
+        assert!(!module(&numbers, "SampleTokens.kt", &[]).contains("\nuse "));
+
+        let srgb = sample(vec![Token {
+            name: "A".into(),
+            value: Value::Srgb([0, 0, 0]),
+        }]);
+        assert_eq!(imports(&srgb), ["crate::tokens::Srgb"]);
+
+        let own = sample(vec![color("A", "SampleTokens", "B")]);
+        assert_eq!(imports(&own), ["crate::tokens::Srgb"]);
+
+        let both = sample(vec![
+            Token {
+                name: "A".into(),
+                value: Value::Srgb([0, 0, 0]),
+            },
+            Token {
+                name: "B".into(),
+                value: Value::CubicBezier([0.0, 0.0, 1.0, 1.0]),
+            },
+        ]);
+        assert_eq!(imports(&both), ["crate::tokens::{CubicBezier, Srgb}"]);
     }
 }
