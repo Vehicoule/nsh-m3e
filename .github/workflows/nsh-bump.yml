@@ -24,12 +24,12 @@ jobs:
       - name: Get a token for the repository's bot app
         # A pull request opened with GITHUB_TOKEN has its CI held until a maintainer approves it, and GitHub has no
         # setting to change that. One opened with the app's token runs CI like any other. The app is installed on this
-        # repository with Contents and Pull requests read and write; its id and key are the BOT_APP_ID and
-        # BOT_PRIVATE_KEY repository secrets.
+        # repository with Contents and Pull requests read and write. Its client id is public; its private key is the
+        # BOT_PRIVATE_KEY repository secret.
         id: app
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ secrets.BOT_APP_ID }}
+          client-id: Iv23lil1docsGag39k8I
           private-key: ${{ secrets.BOT_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: write
