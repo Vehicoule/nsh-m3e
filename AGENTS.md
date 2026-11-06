@@ -80,8 +80,16 @@ The visual checks ([ADR 0013](docs/adr/0013-visual-checks-on-nsh-hosts.md)) run 
 host's system libraries:
 
 ```sh
-nsh test examples/catalog --target linux   # under xvfb-run with a screen wider than 2608 points; or --target web
+# under xvfb-run with a screen wider than 2608 points; or --target web
+nsh test examples/catalog/button.test.tsx --target linux
 cargo run -p visual-checks --locked -- target/visual
+```
+
+On phones, [`.github/workflows/visual-phone.yml`](.github/workflows/visual-phone.yml) takes the catalog's screenshots
+in the iOS simulator and the Android emulator, with the CLI built from an NSH checkout at the pinned revision:
+
+```sh
+nsh test examples/catalog/phone.test.tsx --target ios   # or --target android, with an emulator running
 ```
 
 The toolchain is pinned in [`rust-toolchain.toml`](rust-toolchain.toml). Run the full list before opening a pull

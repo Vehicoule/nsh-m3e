@@ -78,9 +78,9 @@ jobs:
           if [ "${{ matrix.host }}" = linux ]; then
             # The screen holds the catalog's window (2608 x 928 points, `catalog::grid::viewport`); xvfb-run's
             # default screen is narrower, and a window wider than its screen shows only part of the catalog.
-            dbus-run-session -- xvfb-run -a -s "-screen 0 2800x1200x24" nsh test examples/catalog --target linux
+            dbus-run-session -- xvfb-run -a -s "-screen 0 2800x1200x24" nsh test examples/catalog/button.test.tsx --target linux
           else
-            nsh test examples/catalog --target web
+            nsh test examples/catalog/button.test.tsx --target web
           fi
         env:
           RUSTFLAGS: ""
