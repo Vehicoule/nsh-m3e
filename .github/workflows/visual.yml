@@ -1,0 +1,95 @@
+name: Visual checks
+
+# ADR 0013: the catalog's screenshots on NSH's real hosts, and the checks of their known pixels. `nsh test` opens
+# `examples/catalog` on a host and saves its screenshots (`examples/catalog/button.test.tsx`); `visual-checks`
+# reads the pixels the tokens give (`tests/visual`). The screenshots are kept as artifacts, for review.
+#
+# Linux (GTK under Xvfb) and the web (headless Chrome), as NSH's own CI runs them on the same runners
+# (`.github/workflows/linux.yml` and `rust-app.yml` in NSH at the pinned revision).
+
+on:
+  pull_request:
+    paths:
+      - "crates/**"
+      - "examples/**"
+      - "tests/visual/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/visual.yml"
+  push:
+    branches: [main]
+  # To run the checks by hand on any branch from the Actions tab.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: visual-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  # The hosts are large: without debug information they build faster and fit the runner's disk. It changes no
+  # code that runs.
+  CARGO_PROFILE_DEV_DEBUG: 0
+
+jobs:
+  visual:
+    name: visual (${{ matrix.host }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        host: [linux, web]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # As NSH's CI installs them: clang for QuickJS in the `nsh` CLI, GTK 4, WebKitGTK and GStreamer for the Linux
+      # host (the web runtime's build links the app's Linux entry too), LLVM for the web runtime's C code, Xvfb for
+      # a display.
+      - name: Install clang, LLVM, GTK 4, WebKitGTK, GStreamer and Xvfb
+        run: >
+          sudo apt-get update && sudo apt-get install -y clang llvm libclang-dev libgtk-4-dev libwebkitgtk-6.0-dev
+          libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev xvfb
+      - name: Install the pinned toolchain
+        run: rustup toolchain install
+      - name: Add the web target
+        if: matrix.host == 'web'
+        run: rustup target add wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: visual-${{ matrix.host }}
+      # The CLI at the NSH revision the library is pinned to (root `Cargo.toml`), so the hosts are built from the
+      # same NSH as the library. `cargo install` rebuilds it when the revision changes.
+      - name: Install the nsh CLI at the pinned NSH revision
+        run: |
+          rev=$(grep -m1 -o 'rev = "[0-9a-f]*"' Cargo.toml | cut -d'"' -f2)
+          test -n "$rev"
+          cargo install --git https://github.com/longbridge/nsh --rev "$rev" --locked --debug nsh-cli
+        env:
+          # NSH's own code is built here, not linted: its warnings are not this repository's. The `check` job of
+          # `ci.yml` lints this repository's code with `-D warnings`.
+          RUSTFLAGS: ""
+      - name: Take the screenshots
+        run: |
+          mkdir -p target/visual
+          if [ "${{ matrix.host }}" = linux ]; then
+            # The screen holds the catalog's window (2608 x 928 points, `catalog::grid::viewport`); xvfb-run's
+            # default screen is narrower, and a window wider than its screen shows only part of the catalog.
+            dbus-run-session -- xvfb-run -a -s "-screen 0 2800x1200x24" nsh test examples/catalog --target linux
+          else
+            nsh test examples/catalog --target web
+          fi
+        env:
+          RUSTFLAGS: ""
+      - name: Check the screenshots' known pixels
+        run: cargo run -p visual-checks --locked -- target/visual
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: screenshots-${{ matrix.host }}
+          path: target/visual/
+          if-no-files-found: error

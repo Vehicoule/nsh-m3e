@@ -1,0 +1,6 @@
+{
+  "name": "nsh-m3e catalog",
+  "id": "dev.vehicoule.nshm3e.catalog",
+  "rust": ".",
+  "root": "Catalog"
+}
