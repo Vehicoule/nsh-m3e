@@ -38,6 +38,9 @@ pub(crate) enum Value {
     CubicBezier([f32; 4]),
     /// `inline val X: Color` / `get() = Color(red = 0, green = 0, blue = 0)`: an opaque 8-bit sRGB color.
     Srgb([u8; 3]),
+    /// `inline val X: androidx.compose.ui.unit.Dp` / `get() = 6.0.dp`: a length in density-independent pixels,
+    /// which is NSH's point.
+    Dp(f32),
     /// `inline val X: androidx.compose.ui.graphics.Color` / `get() = PaletteTokens.Neutral98`: the color of
     /// another token, of another object or, written `get() = Primary`, of the same one.
     Color(Reference),
@@ -220,6 +223,10 @@ fn getter_line(text: &str, name: String, ty: &str, object: &str) -> Result<Token
             Some(channels) => Value::Srgb(channels?),
             None => Value::Color(reference(expression, object).ok_or_else(unsupported)??),
         },
+        "androidx.compose.ui.unit.Dp" => {
+            let literal = expression.strip_suffix(".dp").ok_or_else(unsupported)?;
+            Value::Dp(number(literal)?)
+        }
         _ => return Err(unsupported()),
     };
     Ok(Token { name, value })
@@ -504,6 +511,44 @@ mod tests {
                 "    inline val C: ColorToken\n        get() = ColorSchemeKeyTokens.Primary\n"
             ),
             ParseErrorKind::Unsupported("get() = ColorSchemeKeyTokens.Primary".into())
+        );
+    }
+
+    #[test]
+    fn reads_lengths_in_dp() {
+        assert_eq!(
+            only_value(
+                "    inline val Level2: androidx.compose.ui.unit.Dp\n        get() = 3.0.dp\n"
+            ),
+            Value::Dp(3.0)
+        );
+    }
+
+    #[test]
+    fn rejects_a_length_of_another_shape() {
+        let error = |expression: &str| {
+            error_kind(&format!(
+                "    inline val L: androidx.compose.ui.unit.Dp\n        get() = {expression}\n"
+            ))
+        };
+        assert_eq!(
+            error("3.0"),
+            ParseErrorKind::Unsupported("get() = 3.0".into())
+        );
+        assert_eq!(
+            error("3.0.sp"),
+            ParseErrorKind::Unsupported("get() = 3.0.sp".into())
+        );
+        assert_eq!(
+            error("ElevationTokens.Level0"),
+            ParseErrorKind::Unsupported("get() = ElevationTokens.Level0".into())
+        );
+        assert_eq!(error("3.dp"), ParseErrorKind::BadNumber("3".into()));
+        assert_eq!(error("0.1.dp"), ParseErrorKind::Inexact("0.1".into()));
+        // A `Dp` named by its short type is not a form these files use.
+        assert_eq!(
+            error_kind("    inline val L: Dp\n        get() = 3.0.dp\n"),
+            ParseErrorKind::Unsupported("get() = 3.0.dp".into())
         );
     }
 
