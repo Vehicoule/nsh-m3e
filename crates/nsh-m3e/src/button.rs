@@ -240,6 +240,19 @@ fn style_spec(style: ButtonStyle) -> StyleSpec {
 /// whatever the height (ADR 0012).
 const OUTLINE_WIDTH: Points = button_small_tokens::OUTLINED_OUTLINE_WIDTH;
 
+/// The smallest touch target, 48 points on each side: `docs/app-requirements.md` (Accessibility), from Material 3's
+/// touch target guidance. No androidx token holds it.
+const MIN_TOUCH_TARGET: Points = Points(48.0);
+
+/// How far presses also count around a container of `height`, so that a button shorter than [`MIN_TOUCH_TARGET`]
+/// still has a 48-point target, without changing its M3 size or the layout (NSH's accessibility guide: extend the touch
+/// area with the hit slop, not the size). The same on every side: a label wider than 8 points makes the extra small and
+/// small buttons 48 points wide too, their side spaces being 12 and 16.
+fn touch_slop(height: Points) -> EdgeInsets {
+    // Half of the missing height above, half below.
+    EdgeInsets::all(px(((MIN_TOUCH_TARGET.0 - height.0) / 2.0).max(0.0)))
+}
+
 /// The color of `role` in the app's NSH design tokens (ADR 0008), or else in the baseline schemes, so that a button
 /// shows Material's colors before the app sets its own.
 fn role_color(role: ColorRole) -> AdaptiveColor {
@@ -336,6 +349,7 @@ pub fn Button(props: ButtonProps, cx: Scope<ButtonEvent>) -> impl IntoElement {
     nsh_base::button()
         .disabled(move || props.disabled.get())
         .on_press(move || cx.emit(ButtonEvent::Press))
+        .hit_slop(move || touch_slop(size().height))
         .group()
         .flex_row()
         .items_center()
@@ -486,6 +500,7 @@ mod tests {
         frames: HashMap<NodeId, Bounds<Points>>,
         text: Option<nsh_core::ResolvedTextStyle>,
         disabled: Option<bool>,
+        hit_slop: Option<EdgeInsets>,
     }
 
     impl Mounted {
@@ -494,6 +509,7 @@ mod tests {
             let mut parents = Vec::new();
             let mut container = None;
             let mut disabled = None;
+            let mut hit_slop = None;
             let mut styles = HashMap::new();
             let mut frames = HashMap::new();
             let mut text = None;
@@ -509,6 +525,7 @@ mod tests {
                     {
                         container = Some(*id);
                         disabled = Some(props.accessibility.state.disabled);
+                        hit_slop = Some(props.hit_slop);
                     }
                     MountItem::ViewStyle { id, style } => {
                         styles.insert(*id, (**style).clone());
@@ -541,6 +558,7 @@ mod tests {
                 frames,
                 text,
                 disabled,
+                hit_slop,
             }
         }
 
@@ -802,6 +820,33 @@ mod tests {
                 mounted.frames[&mounted.layer].size, container.size,
                 "{size:?}"
             );
+        }
+    }
+
+    #[test]
+    fn every_size_has_a_48_point_touch_target_without_growing() {
+        // `docs/app-requirements.md`: 48 points at least. The extra small and small buttons reach it with the hit
+        // slop, the taller ones need none; the frame keeps the size's height, so the layout does not change.
+        for (size, height, slop) in [
+            (ButtonSize::ExtraSmall, 32.0, 8.0),
+            (ButtonSize::Small, 40.0, 4.0),
+            (ButtonSize::Medium, 56.0, 0.0),
+            (ButtonSize::Large, 96.0, 0.0),
+            (ButtonSize::ExtraLarge, 136.0, 0.0),
+        ] {
+            let mounted = mount(Config {
+                size,
+                ..Config::default()
+            });
+            assert_eq!(
+                mounted.hit_slop,
+                Some(EdgeInsets::all(px(slop))),
+                "{size:?}"
+            );
+            let frame = mounted.frames[&mounted.container].size;
+            assert_eq!(frame.height.0, height, "{size:?}");
+            assert!(frame.height.0 + 2.0 * slop >= 48.0, "{size:?}");
+            assert!(frame.width.0 + 2.0 * slop >= 48.0, "{size:?}");
         }
     }
 
