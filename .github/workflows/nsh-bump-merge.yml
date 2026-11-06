@@ -1,0 +1,73 @@
+name: NSH bump merge
+
+# Merges the NSH bump pull request (opened by `nsh-bump.yml` on the `nsh-bump` branch) once every check on its head
+# commit is green, as the user decided (ADR 0014). It merges no other pull request.
+#
+# It runs when a workflow that checks pull requests completes (`Visual checks` comes with ADR 0013's screenshots).
+# A check still running means another of those workflows has yet to complete, and this runs again then; a red check
+# leaves the pull request open for its fix.
+on:
+  workflow_run:
+    workflows: [CI, Visual checks]
+    types: [completed]
+
+permissions:
+  contents: read
+  checks: read
+  pull-requests: read
+
+concurrency:
+  group: nsh-bump-merge
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    # The bump's own branch in this repository, never a fork's branch of the same name.
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'nsh-bump' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get a token for the repository's bot app
+        # The bot app opened the pull request; it merges it too (Contents and Pull requests read and write, see
+        # `nsh-bump.yml`). A merge made with GITHUB_TOKEN would not run the workflows of the push to `main`.
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: Iv23lil1docsGag39k8I
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Merge the bump if every check on its head is green
+        env:
+          READ_TOKEN: ${{ github.token }}
+          MERGE_TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          pr="$(GH_TOKEN="$READ_TOKEN" gh pr list -R "$REPO" --head nsh-bump --state open \
+            --json number,headRefOid,author \
+            --jq ".[] | select(.headRefOid == \"$HEAD_SHA\" and .author.is_bot) | .number")"
+          if [ -z "$pr" ]; then
+            echo "No open bump pull request at $HEAD_SHA: nothing to merge."
+            exit 0
+          fi
+          # Every check run on the head commit, from every workflow: none still running, and none other than
+          # success, skipped or neutral.
+          runs="$(GH_TOKEN="$READ_TOKEN" gh api --paginate "repos/$REPO/commits/$HEAD_SHA/check-runs" \
+            --jq '.check_runs[] | "\(.status) \(.conclusion) \(.name)"')"
+          echo "$runs"
+          if [ -z "$runs" ]; then
+            echo "No check ran on $HEAD_SHA: not merging."
+            exit 0
+          fi
+          if echo "$runs" | grep -v '^completed ' > /dev/null; then
+            echo "A check is still running: the workflow that runs it merges the bump when it completes."
+            exit 0
+          fi
+          if echo "$runs" | grep -v -E '^completed (success|skipped|neutral) ' > /dev/null; then
+            echo "A check failed: the bump stays open for its fix."
+            exit 0
+          fi
+          GH_TOKEN="$MERGE_TOKEN" gh pr merge "$pr" -R "$REPO" --squash --match-head-commit "$HEAD_SHA"

@@ -1,6 +1,6 @@
 # 0006. Pin every version and keep dependencies few
 
-- Status: Accepted
+- Status: Accepted; the bump's merge amended by [0014](0014-merge-nsh-bumps-on-green.md)
 - Date: 2026-11-06
 - Deciders: the user
 
