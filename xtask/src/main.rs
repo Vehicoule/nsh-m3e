@@ -167,6 +167,16 @@ const SOURCES: &[Source] = &[
             "The typefaces of the type scale (brand and plain) and its three weights (regular, medium and bold).",
         ],
     },
+    Source {
+        file: "TypographyTokens.kt",
+        doc: &[
+            "The type styles: each style of the type scale as one value, with its font, weight, size, line height and \
+             tracking from [`super::type_scale_tokens`].",
+            "androidx's styles also center each line's text in its line height and trim nothing \
+             (`DefaultLineHeightStyle`), and let an app give `Typography` a font family of its own; the library \
+             keeps the token's family.",
+        ],
+    },
 ];
 
 /// Vendored files of keys (`val Primary = ColorToken(25)`) that component tokens name, read to check those names
@@ -374,20 +384,38 @@ fn gen_tokens(root: &Path, mode: Mode) -> Result<(), Error> {
 /// Fails unless every reference names a token of its own kind (a color for a color) in a generated object, so a
 /// reference is never emitted to a constant that does not exist or has another type.
 fn check_references(objects: &[(PathBuf, kotlin::TokenObject)]) -> Result<(), Error> {
+    let find = |reference: &kotlin::Reference| {
+        objects
+            .iter()
+            .find(|(_, other)| other.name == reference.object)
+            .and_then(|(_, other)| {
+                other
+                    .tokens
+                    .iter()
+                    .find(|candidate| candidate.name == reference.token)
+            })
+    };
     for (path, object) in objects {
         for token in &object.tokens {
+            let bad = |kind: kotlin::Kind, reference: &kotlin::Reference| Error::BadReference {
+                path: path.clone(),
+                token: token.name.clone(),
+                kind,
+                reference: reference.clone(),
+            };
+            // Each property of a text style names a token of its own kind.
+            if let kotlin::Value::TextStyle(style) = &token.value {
+                for (kind, reference) in style.properties() {
+                    if !find(reference).is_some_and(|target| kind.holds(&target.value)) {
+                        return Err(bad(kind, reference));
+                    }
+                }
+                continue;
+            }
             let kotlin::Value::Reference(kind, reference) = &token.value else {
                 continue;
             };
-            let target = objects
-                .iter()
-                .find(|(_, other)| other.name == reference.object)
-                .and_then(|(_, other)| {
-                    other
-                        .tokens
-                        .iter()
-                        .find(|candidate| candidate.name == reference.token)
-                });
+            let target = find(reference);
             // A shape key names the shape of the same name in `ShapeTokens`, which must exist too.
             let shape = (*kind == kotlin::Kind::ShapeKey).then(|| {
                 objects
@@ -404,12 +432,7 @@ fn check_references(objects: &[(PathBuf, kotlin::TokenObject)]) -> Result<(), Er
                 shape.is_some_and(|shape| matches!(shape.value, kotlin::Value::Shape(_)))
             });
             if !shape_found || !target.is_some_and(|target| kind.holds(&target.value)) {
-                return Err(Error::BadReference {
-                    path: path.clone(),
-                    token: token.name.clone(),
-                    kind: *kind,
-                    reference: reference.clone(),
-                });
+                return Err(bad(*kind, reference));
             }
         }
     }
@@ -818,6 +841,126 @@ mod tests {
         assert_eq!(
             bad_kind(&[elevation(), length("ElevationTokens.Opacity")]),
             kotlin::Kind::Length
+        );
+    }
+
+    /// `TypeScaleTokens` with the five tokens of `BodyLarge`, the size given as `size`.
+    fn type_scale(size: kotlin::Value) -> (PathBuf, kotlin::TokenObject) {
+        let token = |name: &str, value| kotlin::Token {
+            name: format!("BodyLarge{name}"),
+            value,
+        };
+        let object = kotlin::TokenObject {
+            name: "TypeScaleTokens".into(),
+            version: None,
+            tokens: vec![
+                token(
+                    "Font",
+                    kotlin::Value::FontFamily(kotlin::FontFamily::SansSerif),
+                ),
+                token("Weight", kotlin::Value::FontWeight(400)),
+                token("Size", size),
+                token("LineHeight", kotlin::Value::Sp(24.0)),
+                token("Tracking", kotlin::Value::Sp(0.5)),
+            ],
+        };
+        (PathBuf::from("TypeScaleTokens.kt"), object)
+    }
+
+    /// `TypographyTokens` with one style, `X`, whose properties name `BodyLarge` + `suffixes` in `TypeScaleTokens`.
+    fn typography(suffixes: [&str; 5]) -> (PathBuf, kotlin::TokenObject) {
+        let [font, weight, size, line_height, tracking] =
+            suffixes.map(|suffix| kotlin::Reference {
+                object: "TypeScaleTokens".into(),
+                token: format!("BodyLarge{suffix}"),
+            });
+        let style = kotlin::TextStyle {
+            font,
+            weight,
+            size,
+            line_height,
+            tracking,
+        };
+        let object = kotlin::TokenObject {
+            name: "TypographyTokens".into(),
+            version: None,
+            tokens: vec![kotlin::Token {
+                name: "X".into(),
+                value: kotlin::Value::TextStyle(Box::new(style)),
+            }],
+        };
+        (PathBuf::from("TypographyTokens.kt"), object)
+    }
+
+    const STYLE: [&str; 5] = ["Font", "Weight", "Size", "LineHeight", "Tracking"];
+
+    #[test]
+    fn each_property_of_a_text_style_must_name_a_token_of_its_kind() {
+        let scale = || type_scale(kotlin::Value::Sp(16.0));
+        check_references(&[scale(), typography(STYLE)]).unwrap();
+        // A token that does not exist, or no type scale at all, is refused for the property that names it.
+        assert_eq!(
+            bad_kind(&[
+                scale(),
+                typography(["Font", "Weight", "Size", "Leading", "Tracking"])
+            ]),
+            kotlin::Kind::TextUnit
+        );
+        assert_eq!(bad_kind(&[typography(STYLE)]), kotlin::Kind::FontFamily);
+        // A family that names a weight, a weight that names a size, a size that names a family.
+        assert_eq!(
+            bad_kind(&[
+                scale(),
+                typography(["Weight", "Weight", "Size", "LineHeight", "Tracking"])
+            ]),
+            kotlin::Kind::FontFamily
+        );
+        assert_eq!(
+            bad_kind(&[
+                scale(),
+                typography(["Font", "Size", "Size", "LineHeight", "Tracking"])
+            ]),
+            kotlin::Kind::FontWeight
+        );
+        assert_eq!(
+            bad_kind(&[
+                scale(),
+                typography(["Font", "Weight", "Font", "LineHeight", "Tracking"])
+            ]),
+            kotlin::Kind::TextUnit
+        );
+        // A size in `dp` is a length, not a text unit.
+        assert_eq!(
+            bad_kind(&[type_scale(kotlin::Value::Dp(16.0)), typography(STYLE)]),
+            kotlin::Kind::TextUnit
+        );
+    }
+
+    #[test]
+    fn the_vendored_typography_gives_every_style_of_the_type_scale() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let text = read(&root.join(REFERENCE_DIR).join("TypographyTokens.kt")).unwrap();
+        let object = kotlin::parse(&text).unwrap();
+        let names: Vec<&str> = object
+            .tokens
+            .iter()
+            .map(|token| token.name.as_str())
+            .collect();
+        // Display, headline, title, body and label, each large, medium and small, and each emphasized.
+        assert_eq!(names.len(), 30, "{names:?}");
+        for role in ["Display", "Headline", "Title", "Body", "Label"] {
+            for size in ["Large", "Medium", "Small"] {
+                for emphasis in ["", "Emphasized"] {
+                    let name = format!("{role}{size}{emphasis}");
+                    assert!(names.contains(&name.as_str()), "{name} missing: {names:?}");
+                }
+            }
+        }
+        assert!(
+            object
+                .tokens
+                .iter()
+                .all(|token| matches!(token.value, kotlin::Value::TextStyle(_)))
         );
     }
 

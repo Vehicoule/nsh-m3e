@@ -8,6 +8,8 @@ pub mod androidx;
 use androidx::motion_tokens::EASING_LINEAR_CUBIC_BEZIER;
 use androidx::palette_tokens::BLACK;
 use androidx::shape_tokens::CORNER_VALUE_NONE;
+use androidx::typography_tokens::BODY_LARGE;
+use nsh_core::element::FontWeight;
 use nsh_core::geometry::Points;
 
 /// A cubic Bézier easing curve from `(0, 0)` to `(1, 1)` through the control points `(x1, y1)` and `(x2, y2)`, as in
@@ -105,6 +107,60 @@ pub enum GenericFontFamily {
     /// The platform's sans-serif typeface: androidx `FontFamily.SansSerif` (CSS `sans-serif`). NSH draws text that
     /// sets no font family in the app's default font, its `font-sans` token, or else the system font.
     SansSerif,
+}
+
+/// A type style of the Material 3 type scale: the font, weight, size, line height and tracking a text is drawn with,
+/// as androidx's `TextStyle` holds them.
+///
+/// Only tokens build one, so every type style in this crate is Material 3's:
+///
+/// ```
+/// use nsh_m3e::tokens::GenericFontFamily;
+/// use nsh_m3e::tokens::androidx::typography_tokens::LABEL_LARGE;
+///
+/// assert_eq!(LABEL_LARGE.font, GenericFontFamily::SansSerif);
+/// assert_eq!(LABEL_LARGE.weight.0, 500);
+/// assert_eq!((LABEL_LARGE.size.0, LABEL_LARGE.line_height.0, LABEL_LARGE.tracking.0), (14.0, 20.0, 0.1));
+/// ```
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TypeStyle {
+    /// The font family.
+    pub font: GenericFontFamily,
+    /// The weight, from 100 to 900.
+    pub weight: FontWeight,
+    /// The text's size: androidx gives it in sp, which NSH points are, scaled by the user's text size.
+    pub size: Points,
+    /// The height of each line, in the same unit as the size. androidx centers a line's text in it.
+    pub line_height: Points,
+    /// The extra space between letters (CSS `letter-spacing`). NSH does not scale it by the user's text size.
+    pub tracking: Points,
+}
+
+impl TypeStyle {
+    pub(crate) const fn new(
+        font: GenericFontFamily,
+        weight: FontWeight,
+        size: Points,
+        line_height: Points,
+        tracking: Points,
+    ) -> Self {
+        Self {
+            font,
+            weight,
+            size,
+            line_height,
+            tracking,
+        }
+    }
+}
+
+impl Default for TypeStyle {
+    /// The style of text that sets none: androidx `MaterialTheme` provides `typography.bodyLarge`
+    /// (`MaterialTheme.kt`), which is `TypographyTokens.BodyLarge`.
+    fn default() -> Self {
+        BODY_LARGE
+    }
 }
 
 /// The shape of a component's container, as androidx builds it.
@@ -207,7 +263,7 @@ mod tests {
         button_large_tokens, button_medium_tokens, button_small_tokens, button_xlarge_tokens,
         button_xsmall_tokens, color_dark_tokens, color_light_tokens, elevated_button_tokens,
         elevation_tokens, filled_button_tokens, palette_tokens, shape_tokens, type_scale_tokens,
-        typeface_tokens,
+        typeface_tokens, typography_tokens,
     };
     use nsh_core::element::FontWeight;
 
@@ -465,5 +521,68 @@ mod tests {
             elevated_button_tokens::HOVERED_CONTAINER_ELEVATION,
             elevation_tokens::LEVEL2
         );
+    }
+
+    /// The font, weight, size, line height and tracking of `style`, as numbers.
+    fn values(style: TypeStyle) -> (GenericFontFamily, u16, [u32; 3]) {
+        (
+            style.font,
+            style.weight.0,
+            [style.size.0, style.line_height.0, style.tracking.0].map(f32::to_bits),
+        )
+    }
+
+    fn expected(
+        weight: u16,
+        size: f32,
+        line_height: f32,
+        tracking: f32,
+    ) -> (GenericFontFamily, u16, [u32; 3]) {
+        (
+            GenericFontFamily::SansSerif,
+            weight,
+            [size, line_height, tracking].map(f32::to_bits),
+        )
+    }
+
+    #[test]
+    fn each_type_style_of_a_button_label_holds_its_own_tokens_in_place() {
+        // androidx `TypeScaleTokens` (31.0.11), the styles `Button.kt`'s `textStyleFor` gives each size. Size, line
+        // height and tracking all differ in each, so a swapped argument shows.
+        assert_eq!(
+            values(typography_tokens::LABEL_LARGE),
+            expected(500, 14.0, 20.0, 0.1)
+        );
+        assert_eq!(
+            values(typography_tokens::TITLE_MEDIUM),
+            expected(500, 16.0, 24.0, 0.2)
+        );
+        assert_eq!(
+            values(typography_tokens::HEADLINE_SMALL),
+            expected(400, 24.0, 32.0, 0.0)
+        );
+        assert_eq!(
+            values(typography_tokens::HEADLINE_LARGE),
+            expected(400, 32.0, 40.0, 0.0)
+        );
+        // And each names the tokens of its own name.
+        let label = typography_tokens::LABEL_LARGE;
+        assert_eq!(label.weight, type_scale_tokens::LABEL_LARGE_WEIGHT);
+        assert_eq!(label.size, type_scale_tokens::LABEL_LARGE_SIZE);
+        assert_eq!(
+            label.line_height,
+            type_scale_tokens::LABEL_LARGE_LINE_HEIGHT
+        );
+        assert_eq!(label.tracking, type_scale_tokens::LABEL_LARGE_TRACKING);
+    }
+
+    #[test]
+    fn the_default_type_style_is_body_large_and_not_another_style() {
+        let default = TypeStyle::default();
+        assert_eq!(default, BODY_LARGE);
+        // androidx `TypeScaleTokens.BodyLarge*`: regular, 16 on 24, tracking 0.5.
+        assert_eq!(values(default), expected(400, 16.0, 24.0, 0.5));
+        assert_ne!(default, typography_tokens::LABEL_LARGE);
+        assert_ne!(default, typography_tokens::BODY_LARGE_EMPHASIZED);
     }
 }

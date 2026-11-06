@@ -28,3 +28,4 @@ pub mod text_button_tokens;
 pub mod tonal_button_tokens;
 pub mod type_scale_tokens;
 pub mod typeface_tokens;
+pub mod typography_tokens;
