@@ -36,7 +36,10 @@ conflicts with what the user says in the task, the user wins and the rule gets a
    found, write "not found" and stop. Do not write it by analogy with Compose, Flutter, React or another framework.
 4. **No hard-coded design values in components.** Colors, sizes, radii, durations, springs and type styles come from
    the token modules. A literal number in a component needs a comment saying why it is not a token.
-5. **Rust only.** No TSX, no QuickJS, no JavaScript ([ADR 0001](docs/adr/0001-rust-only.md)).
+5. **Rust only.** No TSX, no QuickJS, no JavaScript ([ADR 0001](docs/adr/0001-rust-only.md)). One exception: the
+   `.test.tsx` files that `nsh test` runs for the visual checks
+   ([ADR 0013](docs/adr/0013-visual-checks-on-nsh-hosts.md)). No TypeScript in `crates/`, and nothing the library or
+   the app ships runs JavaScript.
 6. **Springs use M3E's values, converted.** M3 gives a damping *ratio*; NSH's `Spring` takes a damping *coefficient*.
    Always convert with the tested helper ([ADR 0004](docs/adr/0004-spring-damping-conversion.md)). Passing a ratio
    as a coefficient is the bug that made the first app's animations look wrong.
