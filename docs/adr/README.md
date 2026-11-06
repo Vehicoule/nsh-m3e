@@ -22,4 +22,4 @@ Only the user moves an ADR from Proposed to Accepted.
 | [0012](0012-follow-androidx-components-where-tokens-are-wrong.md) | Where androidx's component and its token files disagree, follow the component | Accepted |
 | [0013](0013-visual-checks-on-nsh-hosts.md) | Visual checks on NSH's real hosts, with test scripts in TypeScript | Accepted |
 | [0014](0014-merge-nsh-bumps-on-green.md) | The NSH bump pull request merges itself when every check is green | Accepted |
-| [0015](0015-declare-every-file-license-with-reuse.md) | Every file's license declared with REUSE, checked in CI | Proposed |
+| [0015](0015-declare-every-file-license-with-reuse.md) | Every file's license declared with REUSE, checked in CI | Accepted |

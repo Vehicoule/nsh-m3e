@@ -1,6 +1,6 @@
 # 0015. Declare every file's license with REUSE, checked in CI
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-06
 - Deciders: the user
 
@@ -30,8 +30,9 @@ for Google's style guide. Today nothing checks that a new file, vendored or not,
 
 ## Decision
 
-Recommended: option 2. The copyright text of our own files is "The nsh-m3e contributors", whose authors are recorded
-by Git; the user confirms this wording, and the declaration of the generated tokens as carrying both licenses.
+Option 2, `REUSE.toml` alone. The user agreed to the check on 2026-11-06 and chose the copyright text of our own
+files the same day: "The nsh-m3e contributors", whose authors are recorded by Git. The generated tokens are declared
+under both licenses, the conservative reading of values derived from Apache-2.0 files.
 
 ## Consequences
 
