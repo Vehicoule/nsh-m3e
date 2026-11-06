@@ -44,17 +44,18 @@ jobs:
           READ_TOKEN: ${{ github.token }}
           MERGE_TOKEN: ${{ steps.app.outputs.token }}
           REPO: ${{ github.repository }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          pr="$(GH_TOKEN="$READ_TOKEN" gh pr list -R "$REPO" --head nsh-bump --state open \
+          # The open bump pull request from the bot, and its head commit as the pull request gives it (not the
+          # completed run's commit: an older run may complete after a newer push, and checks are read on the head).
+          read -r pr HEAD_SHA <<< "$(GH_TOKEN="$READ_TOKEN" gh pr list -R "$REPO" --head nsh-bump --state open \
             --json number,headRefOid,author \
-            --jq ".[] | select(.headRefOid == \"$HEAD_SHA\" and .author.is_bot) | .number")"
-          if [ -z "$pr" ]; then
-            echo "No open bump pull request at $HEAD_SHA: nothing to merge."
+            --jq '.[] | select(.author.is_bot) | "\(.number) \(.headRefOid)"')"
+          if [ -z "$pr" ] || [ -z "$HEAD_SHA" ]; then
+            echo "No open bump pull request from the bot: nothing to merge."
             exit 0
           fi
-          # Every check run on the head commit, from every workflow: none still running, and none other than
-          # success, skipped or neutral.
+          # Every check run on the pull request's head commit, from every workflow: none still running, and none
+          # other than success, skipped or neutral.
           runs="$(GH_TOKEN="$READ_TOKEN" gh api --paginate "repos/$REPO/commits/$HEAD_SHA/check-runs" \
             --jq '.check_runs[] | "\(.status) \(.conclusion) \(.name)"')"
           echo "$runs"
