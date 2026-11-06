@@ -1,7 +1,7 @@
 name: androidx bump
 
-# When the M3 token files on androidx-main have changed, copies them, regenerates the Rust tokens and opens (or
-# updates) one pull request (ADR 0003). androidx-main moves many times a day and the tokens rarely, so the pin only
+# When the M3 token files on androidx-main, or the components followed where they override a token (ADR 0012), have
+# changed, copies them, regenerates the Rust tokens and opens (or updates) one pull request (ADR 0003). androidx-main moves many times a day and the tokens rarely, so the pin only
 # moves when the files do.
 on:
   schedule:
@@ -92,7 +92,7 @@ jobs:
             generator="**\`cargo xtask gen-tokens\` rejected the new files**, so CI is red: $(sed 's/^xtask: //' "$RUNNER_TEMP/gen-tokens.log" | head -c 1500). Teach \`xtask/\` the new form (with a test) in this pull request; never edit the vendored files."
           fi
           body="$(printf '%s\n\n%s\n\n%s\n\n%s\n\n%s\n' \
-            "Copies the M3 token files from androidx \`${NEW:0:12}\` (newest \`androidx-main\`; was \`${OLD:0:12}\`), because they changed (ADR 0003)." \
+            "Copies the M3 token files, and the components followed where they override a token (ADR 0012), from androidx \`${NEW:0:12}\` (newest \`androidx-main\`; was \`${OLD:0:12}\`), because they changed (ADR 0003)." \
             "Changed files:
           ${files}" \
             "$generator" \

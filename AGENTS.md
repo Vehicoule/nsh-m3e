@@ -31,8 +31,9 @@ conflicts with what the user says in the task, the user wins and the rule gets a
    test, no raised performance ceiling, no shortened animation, no reduced scope. If a check is wrong, say so and stop:
    changing a check is the user's decision.
 3. **Never invent an API or a value.** Look an NSH name up in its source at the pinned revision before using it. Take
-   every M3 value from the vendored tokens and cite the token it comes from. If something cannot be found, write
-   "not found" and stop. Do not write it by analogy with Compose, Flutter, React or another framework.
+   every M3 value from the vendored tokens, or from the vendored androidx component where it overrides a token, and
+   cite it ([ADR 0012](docs/adr/0012-follow-androidx-components-where-tokens-are-wrong.md)). If something cannot be
+   found, write "not found" and stop. Do not write it by analogy with Compose, Flutter, React or another framework.
 4. **No hard-coded design values in components.** Colors, sizes, radii, durations, springs and type styles come from
    the token modules. A literal number in a component needs a comment saying why it is not a token.
 5. **Rust only.** No TSX, no QuickJS, no JavaScript ([ADR 0001](docs/adr/0001-rust-only.md)).
@@ -85,7 +86,7 @@ request, and report what you ran.
 | `docs/` | Requirements and references |
 | `reference/` | Vendored sources of truth, pinned, never edited by hand |
 | `.claude/skills/` | Vendored skills for coding agents, pinned (the NSH ones are synced by `scripts/sync-nsh.sh`) |
-| `scripts/` | Repository tooling (`sync-nsh.sh`: keep the NSH skills on the pinned NSH commit; `sync-androidx.sh`: keep `reference/androidx-material3-tokens/` on the pinned androidx commit) |
+| `scripts/` | Repository tooling (`sync-nsh.sh`: keep the NSH skills on the pinned NSH commit; `sync-androidx.sh`: keep `reference/androidx-material3-tokens/` and `reference/androidx-material3-components/` on the pinned androidx commit) |
 
 A token module that a component needs and that does not exist yet is added by listing its androidx file in
 `SOURCES` (`xtask/src/main.rs`) and running `cargo xtask gen-tokens`, never by typing the values. The generator
