@@ -22,7 +22,9 @@ the standard or decision it comes from, so a test can cite it.
 ## Motion
 
 - Every motion uses M3E springs from the tokens ([ADR 0004](adr/0004-spring-damping-conversion.md)), through transform
-  and opacity, with no layout per frame.
+  and opacity, with no layout per frame. The one exception is a shape that changes, such as a button pressed: a drawn
+  container may move a drawing argument (its corner radius) with the spring, measured as
+  [ADR 0010](adr/0010-measure-animations-in-ci.md) says ([ADR 0011](adr/0011-morph-shapes-with-a-drawn-container.md)).
 - No dropped frame at the display's refresh rate (120 Hz on the reference devices); never a fixed 60 Hz
   (`decisions/perf.md`).
 - Nothing animates without a visible consumer; nothing is drawn when nothing changes or the window is hidden.
