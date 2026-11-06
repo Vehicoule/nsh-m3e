@@ -8,14 +8,16 @@
 //! The baseline schemes come from androidx `ColorLightTokens` and `ColorDarkTokens` (ADR 0003). Schemes made from a
 //! seed color (dynamic color) are an algorithm, not tokens, and come with their own ADR.
 
+use nsh_core::element::{AdaptiveColor, Tokens};
+
 use crate::tokens::Srgb;
 use crate::tokens::androidx::{color_dark_tokens, color_light_tokens};
 
 /// Defines [`ColorRole`] and [`ColorScheme`] from one list, so a role, its field and its tokens cannot drift apart:
-/// each line is the androidx name, the field and the generated constant, and a test checks that the three spell the
-/// same name and that the list is androidx `ColorSchemeKeyTokens`, in its order.
+/// each line is the androidx name, the field, the generated constant and the M3 name, and a test checks that the four
+/// spell the same name and that the list is androidx `ColorSchemeKeyTokens`, in its order.
 macro_rules! roles {
-    ($( $role:ident, $field:ident, $token:ident; )*) => {
+    ($( $role:ident, $field:ident, $token:ident, $name:literal; )*) => {
         /// A color role of the Material 3 scheme: androidx `ColorSchemeKeyTokens`.
         ///
         /// ```
@@ -36,6 +38,21 @@ macro_rules! roles {
         impl ColorRole {
             /// Every role, in androidx `ColorSchemeKeyTokens` order.
             pub const ALL: &[ColorRole] = &[$(ColorRole::$role,)*];
+
+            /// The name of the role's NSH design token: M3's own system token name, `md-sys-color-` and the role
+            /// (ADR 0008).
+            ///
+            /// ```
+            /// use nsh_m3e::color::ColorRole;
+            ///
+            /// assert_eq!(ColorRole::OnPrimaryContainer.token_name(), "md-sys-color-on-primary-container");
+            /// ```
+            #[must_use]
+            pub const fn token_name(self) -> &'static str {
+                match self {
+                    $(ColorRole::$role => concat!("md-sys-color-", $name),)*
+                }
+            }
         }
 
         /// A color for each [`ColorRole`], for one appearance (light or dark).
@@ -72,69 +89,96 @@ macro_rules! roles {
             }
         }
 
-        /// Each role with the names of its field and of its generated constant, as written in the list.
+        /// Each role with the names of its field, of its generated constant and its M3 name, as written in the list.
         #[cfg(test)]
-        const NAMES: &[(ColorRole, &str, &str)] = &[
-            $((ColorRole::$role, stringify!($field), stringify!($token)),)*
+        const NAMES: &[(ColorRole, &str, &str, &str)] = &[
+            $((ColorRole::$role, stringify!($field), stringify!($token), $name),)*
         ];
     };
 }
 
 roles! {
-    Background, background, BACKGROUND;
-    Error, error, ERROR;
-    ErrorContainer, error_container, ERROR_CONTAINER;
-    InverseOnSurface, inverse_on_surface, INVERSE_ON_SURFACE;
-    InversePrimary, inverse_primary, INVERSE_PRIMARY;
-    InverseSurface, inverse_surface, INVERSE_SURFACE;
-    OnBackground, on_background, ON_BACKGROUND;
-    OnError, on_error, ON_ERROR;
-    OnErrorContainer, on_error_container, ON_ERROR_CONTAINER;
-    OnPrimary, on_primary, ON_PRIMARY;
-    OnPrimaryContainer, on_primary_container, ON_PRIMARY_CONTAINER;
-    OnPrimaryFixed, on_primary_fixed, ON_PRIMARY_FIXED;
-    OnPrimaryFixedVariant, on_primary_fixed_variant, ON_PRIMARY_FIXED_VARIANT;
-    OnSecondary, on_secondary, ON_SECONDARY;
-    OnSecondaryContainer, on_secondary_container, ON_SECONDARY_CONTAINER;
-    OnSecondaryFixed, on_secondary_fixed, ON_SECONDARY_FIXED;
-    OnSecondaryFixedVariant, on_secondary_fixed_variant, ON_SECONDARY_FIXED_VARIANT;
-    OnSurface, on_surface, ON_SURFACE;
-    OnSurfaceVariant, on_surface_variant, ON_SURFACE_VARIANT;
-    OnTertiary, on_tertiary, ON_TERTIARY;
-    OnTertiaryContainer, on_tertiary_container, ON_TERTIARY_CONTAINER;
-    OnTertiaryFixed, on_tertiary_fixed, ON_TERTIARY_FIXED;
-    OnTertiaryFixedVariant, on_tertiary_fixed_variant, ON_TERTIARY_FIXED_VARIANT;
-    Outline, outline, OUTLINE;
-    OutlineVariant, outline_variant, OUTLINE_VARIANT;
-    Primary, primary, PRIMARY;
-    PrimaryContainer, primary_container, PRIMARY_CONTAINER;
-    PrimaryFixed, primary_fixed, PRIMARY_FIXED;
-    PrimaryFixedDim, primary_fixed_dim, PRIMARY_FIXED_DIM;
-    Scrim, scrim, SCRIM;
-    Secondary, secondary, SECONDARY;
-    SecondaryContainer, secondary_container, SECONDARY_CONTAINER;
-    SecondaryFixed, secondary_fixed, SECONDARY_FIXED;
-    SecondaryFixedDim, secondary_fixed_dim, SECONDARY_FIXED_DIM;
-    Surface, surface, SURFACE;
-    SurfaceBright, surface_bright, SURFACE_BRIGHT;
-    SurfaceContainer, surface_container, SURFACE_CONTAINER;
-    SurfaceContainerHigh, surface_container_high, SURFACE_CONTAINER_HIGH;
-    SurfaceContainerHighest, surface_container_highest, SURFACE_CONTAINER_HIGHEST;
-    SurfaceContainerLow, surface_container_low, SURFACE_CONTAINER_LOW;
-    SurfaceContainerLowest, surface_container_lowest, SURFACE_CONTAINER_LOWEST;
-    SurfaceDim, surface_dim, SURFACE_DIM;
-    SurfaceTint, surface_tint, SURFACE_TINT;
-    SurfaceVariant, surface_variant, SURFACE_VARIANT;
-    Tertiary, tertiary, TERTIARY;
-    TertiaryContainer, tertiary_container, TERTIARY_CONTAINER;
-    TertiaryFixed, tertiary_fixed, TERTIARY_FIXED;
-    TertiaryFixedDim, tertiary_fixed_dim, TERTIARY_FIXED_DIM;
+    Background, background, BACKGROUND, "background";
+    Error, error, ERROR, "error";
+    ErrorContainer, error_container, ERROR_CONTAINER, "error-container";
+    InverseOnSurface, inverse_on_surface, INVERSE_ON_SURFACE, "inverse-on-surface";
+    InversePrimary, inverse_primary, INVERSE_PRIMARY, "inverse-primary";
+    InverseSurface, inverse_surface, INVERSE_SURFACE, "inverse-surface";
+    OnBackground, on_background, ON_BACKGROUND, "on-background";
+    OnError, on_error, ON_ERROR, "on-error";
+    OnErrorContainer, on_error_container, ON_ERROR_CONTAINER, "on-error-container";
+    OnPrimary, on_primary, ON_PRIMARY, "on-primary";
+    OnPrimaryContainer, on_primary_container, ON_PRIMARY_CONTAINER, "on-primary-container";
+    OnPrimaryFixed, on_primary_fixed, ON_PRIMARY_FIXED, "on-primary-fixed";
+    OnPrimaryFixedVariant, on_primary_fixed_variant, ON_PRIMARY_FIXED_VARIANT, "on-primary-fixed-variant";
+    OnSecondary, on_secondary, ON_SECONDARY, "on-secondary";
+    OnSecondaryContainer, on_secondary_container, ON_SECONDARY_CONTAINER, "on-secondary-container";
+    OnSecondaryFixed, on_secondary_fixed, ON_SECONDARY_FIXED, "on-secondary-fixed";
+    OnSecondaryFixedVariant, on_secondary_fixed_variant, ON_SECONDARY_FIXED_VARIANT, "on-secondary-fixed-variant";
+    OnSurface, on_surface, ON_SURFACE, "on-surface";
+    OnSurfaceVariant, on_surface_variant, ON_SURFACE_VARIANT, "on-surface-variant";
+    OnTertiary, on_tertiary, ON_TERTIARY, "on-tertiary";
+    OnTertiaryContainer, on_tertiary_container, ON_TERTIARY_CONTAINER, "on-tertiary-container";
+    OnTertiaryFixed, on_tertiary_fixed, ON_TERTIARY_FIXED, "on-tertiary-fixed";
+    OnTertiaryFixedVariant, on_tertiary_fixed_variant, ON_TERTIARY_FIXED_VARIANT, "on-tertiary-fixed-variant";
+    Outline, outline, OUTLINE, "outline";
+    OutlineVariant, outline_variant, OUTLINE_VARIANT, "outline-variant";
+    Primary, primary, PRIMARY, "primary";
+    PrimaryContainer, primary_container, PRIMARY_CONTAINER, "primary-container";
+    PrimaryFixed, primary_fixed, PRIMARY_FIXED, "primary-fixed";
+    PrimaryFixedDim, primary_fixed_dim, PRIMARY_FIXED_DIM, "primary-fixed-dim";
+    Scrim, scrim, SCRIM, "scrim";
+    Secondary, secondary, SECONDARY, "secondary";
+    SecondaryContainer, secondary_container, SECONDARY_CONTAINER, "secondary-container";
+    SecondaryFixed, secondary_fixed, SECONDARY_FIXED, "secondary-fixed";
+    SecondaryFixedDim, secondary_fixed_dim, SECONDARY_FIXED_DIM, "secondary-fixed-dim";
+    Surface, surface, SURFACE, "surface";
+    SurfaceBright, surface_bright, SURFACE_BRIGHT, "surface-bright";
+    SurfaceContainer, surface_container, SURFACE_CONTAINER, "surface-container";
+    SurfaceContainerHigh, surface_container_high, SURFACE_CONTAINER_HIGH, "surface-container-high";
+    SurfaceContainerHighest, surface_container_highest, SURFACE_CONTAINER_HIGHEST, "surface-container-highest";
+    SurfaceContainerLow, surface_container_low, SURFACE_CONTAINER_LOW, "surface-container-low";
+    SurfaceContainerLowest, surface_container_lowest, SURFACE_CONTAINER_LOWEST, "surface-container-lowest";
+    SurfaceDim, surface_dim, SURFACE_DIM, "surface-dim";
+    SurfaceTint, surface_tint, SURFACE_TINT, "surface-tint";
+    SurfaceVariant, surface_variant, SURFACE_VARIANT, "surface-variant";
+    Tertiary, tertiary, TERTIARY, "tertiary";
+    TertiaryContainer, tertiary_container, TERTIARY_CONTAINER, "tertiary-container";
+    TertiaryFixed, tertiary_fixed, TERTIARY_FIXED, "tertiary-fixed";
+    TertiaryFixedDim, tertiary_fixed_dim, TERTIARY_FIXED_DIM, "tertiary-fixed-dim";
 }
 
 impl Default for ColorScheme {
     /// The baseline light scheme, [`ColorScheme::BASELINE_LIGHT`].
     fn default() -> Self {
         Self::BASELINE_LIGHT
+    }
+}
+
+/// Sets the color of every role in NSH design tokens `tokens`, with `light`'s color in light appearance and `dark`'s
+/// in dark, under the role's [`ColorRole::token_name`] (ADR 0008). Other tokens are left as they are, so NSH's own
+/// (`primary`, `background`, ...) keep their meaning for `nsh-base` and the platform's controls.
+///
+/// The app hands the result to NSH's `set_tokens`; the platform then switches appearance with nothing running, and
+/// Tailwind classes name the roles (`bg-md-sys-color-primary`).
+///
+/// ```
+/// use nsh_core::element::{AdaptiveColor, Tokens};
+/// use nsh_m3e::color::{ColorScheme, set_color_tokens};
+///
+/// let mut tokens = Tokens::default();
+/// set_color_tokens(&mut tokens, &ColorScheme::BASELINE_LIGHT, &ColorScheme::BASELINE_DARK);
+/// assert_eq!(
+///     tokens.color("md-sys-color-primary"),
+///     Some(AdaptiveColor::rgb(0x6750a4, 0xd0bcff)),
+/// );
+/// ```
+pub fn set_color_tokens(tokens: &mut Tokens, light: &ColorScheme, dark: &ColorScheme) {
+    for role in ColorRole::ALL {
+        tokens.set_color(
+            role.token_name(),
+            AdaptiveColor::rgb(light.get(*role).to_hex(), dark.get(*role).to_hex()),
+        );
     }
 }
 
@@ -273,12 +317,54 @@ mod tests {
     }
 
     #[test]
-    fn each_role_reads_its_own_field_and_token() {
-        for (role, field, token) in NAMES {
+    fn each_role_reads_its_own_field_token_and_name() {
+        for (role, field, token, kebab) in NAMES {
             let name = format!("{role:?}");
             assert_eq!(*field, convert(&name, false), "{name}");
             assert_eq!(*token, convert(&name, true), "{name}");
+            assert_eq!(*kebab, field.replace('_', "-"), "{name}");
+            assert_eq!(role.token_name(), format!("md-sys-color-{kebab}"), "{name}");
         }
+    }
+
+    #[test]
+    fn every_role_gets_its_light_and_dark_color_under_its_own_name() {
+        let (light, dark) = (ColorScheme::BASELINE_LIGHT, ColorScheme::BASELINE_DARK);
+        let mut tokens = Tokens::default();
+        set_color_tokens(&mut tokens, &light, &dark);
+        for role in ColorRole::ALL {
+            let expected = AdaptiveColor::rgb(light.get(*role).to_hex(), dark.get(*role).to_hex());
+            assert_eq!(tokens.color(role.token_name()), Some(expected), "{role:?}");
+        }
+        assert_eq!(tokens.colors().count(), ColorRole::ALL.len());
+        // androidx: light primary is `Primary40` (103, 80, 164), dark is `Primary80` (208, 188, 255): not swapped.
+        assert_eq!(
+            tokens.color("md-sys-color-primary"),
+            Some(AdaptiveColor::rgb(0x0067_50a4, 0x00d0_bcff))
+        );
+    }
+
+    #[test]
+    fn setting_the_roles_leaves_nsh_s_own_tokens_alone() {
+        // NSH's shadcn tokens share names with M3 roles (`primary`, `secondary`, `background`) but not their meaning:
+        // they must keep their value, and no unprefixed role name may appear (ADR 0008).
+        let shadcn = AdaptiveColor::rgb(0x0012_3456, 0x0065_4321);
+        let mut tokens = Tokens::default();
+        for name in ["primary", "secondary", "background"] {
+            tokens.set_color(name, shadcn);
+        }
+        tokens.set_number("radius", 10.0);
+        set_color_tokens(
+            &mut tokens,
+            &ColorScheme::BASELINE_LIGHT,
+            &ColorScheme::BASELINE_DARK,
+        );
+        for name in ["primary", "secondary", "background"] {
+            assert_eq!(tokens.color(name), Some(shadcn), "{name}");
+        }
+        assert_eq!(tokens.number("radius"), Some(10.0));
+        assert_eq!(tokens.colors().count(), 3 + ColorRole::ALL.len());
+        assert!(tokens.color("on-primary").is_none());
     }
 
     #[test]
