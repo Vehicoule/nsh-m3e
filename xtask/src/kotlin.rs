@@ -113,6 +113,9 @@ pub(crate) enum Kind {
     ColorRole,
     /// `ShapeToken`: a key of `ShapeKeyTokens`, which names the shape of the same name in `ShapeTokens`.
     ShapeKey,
+    /// `TypographyToken`: a key of `TypographyKeyTokens`, which names the text style of the same name in
+    /// `TypographyTokens`.
+    TypographyKey,
 }
 
 impl Kind {
@@ -126,6 +129,7 @@ impl Kind {
             | (Self::TextUnit, Value::Sp(_)) => true,
             (Self::ColorRole, Value::Key(class)) => class == "ColorToken",
             (Self::ShapeKey, Value::Key(class)) => class == "ShapeToken",
+            (Self::TypographyKey, Value::Key(class)) => class == "TypographyToken",
             (kind, Value::Reference(other, _)) => kind == *other,
             _ => false,
         }
@@ -142,6 +146,7 @@ impl fmt::Display for Kind {
             Self::TextUnit => "text unit",
             Self::ColorRole => "color role",
             Self::ShapeKey => "shape key",
+            Self::TypographyKey => "typography key",
         })
     }
 }
@@ -659,6 +664,10 @@ fn getter_line(text: &str, name: String, ty: &str, object: &str) -> Result<Token
             Kind::ShapeKey,
             reference(expression, object).ok_or_else(unsupported)??,
         ),
+        "TypographyToken" if expression.starts_with("TypographyKeyTokens.") => Value::Reference(
+            Kind::TypographyKey,
+            reference(expression, object).ok_or_else(unsupported)??,
+        ),
         "androidx.compose.ui.unit.TextUnit" => {
             let literal = expression.strip_suffix(".sp").ok_or_else(unsupported)?;
             Value::Sp(sp(literal)?)
@@ -996,9 +1005,9 @@ mod tests {
         );
         assert_eq!(
             error_kind(
-                "    inline val C: TypographyToken\n        get() = TypographyKeyTokens.LabelLarge\n"
+                "    inline val C: TextStyle\n        get() = TypographyTokens.LabelLarge\n"
             ),
-            ParseErrorKind::Unsupported("get() = TypographyKeyTokens.LabelLarge".into())
+            ParseErrorKind::Unsupported("get() = TypographyTokens.LabelLarge".into())
         );
     }
 
@@ -1400,7 +1409,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_a_color_role_or_a_shape_key_named_by_its_key_object() {
+    fn reads_a_color_role_a_shape_key_or_a_typography_key_named_by_its_key_object() {
         let reference = |kind, object: &str, token: &str| {
             Value::Reference(
                 kind,
@@ -1418,12 +1427,19 @@ mod tests {
             only_value(&getter("ShapeToken", "ShapeKeyTokens.CornerFull")),
             reference(Kind::ShapeKey, "ShapeKeyTokens", "CornerFull")
         );
-        // A key of the other key object, or a bare name, is not a form these files use.
+        assert_eq!(
+            only_value(&getter("TypographyToken", "TypographyKeyTokens.LabelLarge")),
+            reference(Kind::TypographyKey, "TypographyKeyTokens", "LabelLarge")
+        );
+        // A key of another key object, or a bare name, is not a form these files use.
         for (ty, expression) in [
             ("ColorToken", "ShapeKeyTokens.CornerFull"),
             ("ShapeToken", "ColorSchemeKeyTokens.Primary"),
             ("ColorToken", "Primary"),
             ("ShapeToken", "CornerFull"),
+            ("TypographyToken", "ColorSchemeKeyTokens.Primary"),
+            ("ColorToken", "TypographyKeyTokens.LabelLarge"),
+            ("TypographyToken", "LabelLarge"),
         ] {
             assert_eq!(
                 error_kind(&getter(ty, expression)),
@@ -1457,6 +1473,7 @@ mod tests {
             Value::Key("ColorToken".into()),
             Value::Key("ShapeToken".into()),
             Value::Sp(1.0),
+            Value::Key("TypographyToken".into()),
         ];
         let kinds = [
             Kind::Color,
@@ -1466,6 +1483,7 @@ mod tests {
             Kind::ColorRole,
             Kind::ShapeKey,
             Kind::TextUnit,
+            Kind::TypographyKey,
         ];
         for (index, kind) in kinds.into_iter().enumerate() {
             for (other, value) in values.iter().enumerate() {
@@ -1479,7 +1497,7 @@ mod tests {
                 );
             }
             assert!(!kind.holds(&Value::Number(1.0)));
-            assert!(!kind.holds(&Value::Key("TypographyToken".into())));
+            assert!(!kind.holds(&Value::Key("OtherToken".into())));
             assert!(!kind.holds(&Value::TextStyle(Box::new(style("A", "B")))));
         }
         assert_eq!(
@@ -1491,7 +1509,8 @@ mod tests {
                 "length",
                 "color role",
                 "shape key",
-                "text unit"
+                "text unit",
+                "typography key"
             ]
         );
     }

@@ -19,6 +19,7 @@ pub mod elevated_button_tokens;
 pub mod elevation_tokens;
 pub mod expressive_motion_tokens;
 pub mod filled_button_tokens;
+pub mod filled_tonal_button_tokens;
 pub mod motion_tokens;
 pub mod outlined_button_tokens;
 pub mod palette_tokens;

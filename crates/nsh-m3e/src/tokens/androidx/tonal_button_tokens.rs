@@ -4,8 +4,11 @@
 
 //! androidx `TonalButtonTokens`.
 //!
-//! The tonal button's colors and elevation in each state. Colors are roles of the scheme
-//! ([`crate::color::ColorRole`]), resolved against the light or dark [`crate::color::ColorScheme`].
+//! The tonal toggle button's colors and elevation in each state: androidx reads this file only in
+//! `ToggleButton.kt`. The tonal button reads [`super::filled_tonal_button_tokens`] (ADR 0012).
+//!
+//! Colors are roles of the scheme ([`crate::color::ColorRole`]), resolved against the light or dark
+//! [`crate::color::ColorScheme`].
 
 use super::elevation_tokens;
 use crate::color::ColorRole;

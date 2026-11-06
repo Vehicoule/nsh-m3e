@@ -262,8 +262,8 @@ mod tests {
     use androidx::{
         button_large_tokens, button_medium_tokens, button_small_tokens, button_xlarge_tokens,
         button_xsmall_tokens, color_dark_tokens, color_light_tokens, elevated_button_tokens,
-        elevation_tokens, filled_button_tokens, palette_tokens, shape_tokens, type_scale_tokens,
-        typeface_tokens, typography_tokens,
+        elevation_tokens, filled_button_tokens, filled_tonal_button_tokens, palette_tokens,
+        shape_tokens, tonal_button_tokens, type_scale_tokens, typeface_tokens, typography_tokens,
     };
     use nsh_core::element::FontWeight;
 
@@ -584,5 +584,34 @@ mod tests {
         assert_eq!(values(default), expected(400, 16.0, 24.0, 0.5));
         assert_ne!(default, typography_tokens::LABEL_LARGE);
         assert_ne!(default, typography_tokens::BODY_LARGE_EMPHASIZED);
+    }
+
+    #[test]
+    fn the_tonal_button_has_the_values_androidx_button_reads_not_the_toggle_buttons() {
+        // androidx `FilledTonalButtonTokens` (v0_103), which `Button.kt` reads for the tonal button (ADR 0012).
+        use filled_tonal_button_tokens as tonal;
+        assert_eq!(tonal::CONTAINER_COLOR, ColorRole::SecondaryContainer);
+        assert_eq!(tonal::LABEL_TEXT_COLOR, ColorRole::OnSecondaryContainer);
+        assert_eq!(tonal::LABEL_TEXT_FONT, typography_tokens::LABEL_LARGE);
+        assert_eq!(tonal::CONTAINER_SHAPE, shape_tokens::CORNER_FULL);
+        assert_eq!(tonal::DISABLED_CONTAINER_COLOR, ColorRole::OnSurface);
+        assert_eq!(
+            tonal::DISABLED_CONTAINER_OPACITY.to_bits(),
+            0.12_f32.to_bits()
+        );
+        assert_eq!(tonal::DISABLED_LABEL_TEXT_COLOR, ColorRole::OnSurface);
+        assert_eq!(
+            tonal::DISABLED_LABEL_TEXT_OPACITY.to_bits(),
+            0.38_f32.to_bits()
+        );
+        // The toggle button's file differs in both, which is why the button does not read it.
+        assert_ne!(
+            tonal::DISABLED_CONTAINER_OPACITY.to_bits(),
+            tonal_button_tokens::DISABLED_CONTAINER_OPACITY.to_bits()
+        );
+        assert_ne!(
+            tonal::DISABLED_LABEL_TEXT_COLOR,
+            tonal_button_tokens::DISABLED_LABEL_TEXT_COLOR
+        );
     }
 }

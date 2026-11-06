@@ -101,6 +101,15 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
+        file: "FilledTonalButtonTokens.kt",
+        doc: &[
+            "The tonal button's colors, elevation and label style in each state. androidx's `Button.kt` reads this \
+             file for the tonal button, not [`super::tonal_button_tokens`] (ADR 0012).",
+            "Colors are roles of the scheme ([`crate::color::ColorRole`]), resolved against the light or dark \
+             [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
         file: "MotionTokens.kt",
         doc: &[
             "Durations, in milliseconds (the unit of NSH's `Timing::duration_ms`), and easing curves.",
@@ -148,8 +157,10 @@ const SOURCES: &[Source] = &[
     Source {
         file: "TonalButtonTokens.kt",
         doc: &[
-            "The tonal button's colors and elevation in each state. Colors are roles of the scheme \
-             ([`crate::color::ColorRole`]), resolved against the light or dark [`crate::color::ColorScheme`].",
+            "The tonal toggle button's colors and elevation in each state: androidx reads this file only in \
+             `ToggleButton.kt`. The tonal button reads [`super::filled_tonal_button_tokens`] (ADR 0012).",
+            "Colors are roles of the scheme ([`crate::color::ColorRole`]), resolved against the light or dark \
+             [`crate::color::ColorScheme`].",
         ],
     },
     Source {
@@ -181,7 +192,11 @@ const SOURCES: &[Source] = &[
 
 /// Vendored files of keys (`val Primary = ColorToken(25)`) that component tokens name, read to check those names
 /// but not turned into modules: the library has its own type for each kind of key.
-const KEY_SOURCES: &[&str] = &["ColorSchemeKeyTokens.kt", "ShapeKeyTokens.kt"];
+const KEY_SOURCES: &[&str] = &[
+    "ColorSchemeKeyTokens.kt",
+    "ShapeKeyTokens.kt",
+    "TypographyKeyTokens.kt",
+];
 
 const INDEX_DOC: &[&str] = &[
     "The Material 3 tokens, generated from the androidx Kotlin files vendored in \
@@ -416,22 +431,23 @@ fn check_references(objects: &[(PathBuf, kotlin::TokenObject)]) -> Result<(), Er
                 continue;
             };
             let target = find(reference);
-            // A shape key names the shape of the same name in `ShapeTokens`, which must exist too.
-            let shape = (*kind == kotlin::Kind::ShapeKey).then(|| {
-                objects
-                    .iter()
-                    .find(|(_, other)| other.name == "ShapeTokens")
-                    .and_then(|(_, other)| {
-                        other
-                            .tokens
-                            .iter()
-                            .find(|candidate| candidate.name == reference.token)
-                    })
-            });
-            let shape_found = shape.is_none_or(|shape| {
-                shape.is_some_and(|shape| matches!(shape.value, kotlin::Value::Shape(_)))
-            });
-            if !shape_found || !target.is_some_and(|target| kind.holds(&target.value)) {
+            // A shape key names the shape of the same name in `ShapeTokens`, and a typography key the text style of
+            // the same name in `TypographyTokens`, which must exist too (androidx `Shapes.fromToken`,
+            // `Typography.fromToken`).
+            let namesake_found = match kind {
+                kotlin::Kind::ShapeKey => find(&kotlin::Reference {
+                    object: "ShapeTokens".into(),
+                    token: reference.token.clone(),
+                })
+                .is_some_and(|shape| matches!(shape.value, kotlin::Value::Shape(_))),
+                kotlin::Kind::TypographyKey => find(&kotlin::Reference {
+                    object: "TypographyTokens".into(),
+                    token: reference.token.clone(),
+                })
+                .is_some_and(|style| matches!(style.value, kotlin::Value::TextStyle(_))),
+                _ => true,
+            };
+            if !namesake_found || !target.is_some_and(|target| kind.holds(&target.value)) {
                 return Err(bad(*kind, reference));
             }
         }
@@ -961,6 +977,66 @@ mod tests {
                 .tokens
                 .iter()
                 .all(|token| matches!(token.value, kotlin::Value::TextStyle(_)))
+        );
+    }
+
+    #[test]
+    fn a_typography_key_must_name_a_key_and_a_text_style_of_the_same_name() {
+        // Keys `X`, which `typography` holds a style of, and `Y`, which it does not.
+        const KEYS: &str = "@JvmInline internal value class TypographyToken(val id: Int)\ninternal object TypographyKeyTokens {\n    val X = TypographyToken(9)\n    val Y = TypographyToken(11)\n}\n";
+        let key = |target| button("TypographyToken", target);
+        let tokens = |keys: &str, target| {
+            vec![
+                type_scale(kotlin::Value::Sp(16.0)),
+                typography(STYLE),
+                object(keys),
+                key(target),
+            ]
+        };
+        check_references(&tokens(KEYS, "TypographyKeyTokens.X")).unwrap();
+        // A key the file does not have, and a key with no style.
+        assert_eq!(
+            bad_kind(&tokens(KEYS, "TypographyKeyTokens.Z")),
+            kotlin::Kind::TypographyKey
+        );
+        assert_eq!(
+            bad_kind(&tokens(KEYS, "TypographyKeyTokens.Y")),
+            kotlin::Kind::TypographyKey
+        );
+        // Keys of another class under the same object name are not typography keys.
+        let shape_keys = KEYS.replace("TypographyToken", "ShapeToken");
+        assert_eq!(
+            bad_kind(&tokens(&shape_keys, "TypographyKeyTokens.X")),
+            kotlin::Kind::TypographyKey
+        );
+        // No file of keys, no `TypographyTokens`, and a namesake that is not a text style.
+        assert_eq!(
+            bad_kind(&[
+                type_scale(kotlin::Value::Sp(16.0)),
+                typography(STYLE),
+                key("TypographyKeyTokens.X")
+            ]),
+            kotlin::Kind::TypographyKey
+        );
+        assert_eq!(
+            bad_kind(&[object(KEYS), key("TypographyKeyTokens.X")]),
+            kotlin::Kind::TypographyKey
+        );
+        let not_a_style = kotlin::TokenObject {
+            name: "TypographyTokens".into(),
+            version: None,
+            tokens: vec![kotlin::Token {
+                name: "X".into(),
+                value: kotlin::Value::Number(1.0),
+            }],
+        };
+        assert_eq!(
+            bad_kind(&[
+                (PathBuf::from("TypographyTokens.kt"), not_a_style),
+                object(KEYS),
+                key("TypographyKeyTokens.X")
+            ]),
+            kotlin::Kind::TypographyKey
         );
     }
 

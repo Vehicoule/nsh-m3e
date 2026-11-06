@@ -174,15 +174,18 @@ fn kind_type(kind: Kind) -> &'static str {
         Kind::Length | Kind::TextUnit => "Points",
         Kind::ColorRole => "ColorRole",
         Kind::ShapeKey => "Shape",
+        Kind::TypographyKey => "TypeStyle",
     }
 }
 
 /// The module a reference's constant is in, when it is another module: a color role is a variant of
-/// `ColorRole`, and a shape key names its shape in `shape_tokens`.
+/// `ColorRole`, a shape key names its shape in `shape_tokens`, and a typography key its style in
+/// `typography_tokens`.
 fn reference_module(kind: Kind, reference: &Reference, object: &str) -> Option<String> {
     match kind {
         Kind::ColorRole => None,
         Kind::ShapeKey => Some("shape_tokens".to_owned()),
+        Kind::TypographyKey => Some("typography_tokens".to_owned()),
         _ if reference.object == object => None,
         _ => Some(snake(&reference.object)),
     }
@@ -247,7 +250,7 @@ fn imports(object: &TokenObject) -> Vec<String> {
             }
             Value::Reference(kind, reference) => {
                 match kind {
-                    Kind::Color | Kind::FontFamily | Kind::ShapeKey => {
+                    Kind::Color | Kind::FontFamily | Kind::ShapeKey | Kind::TypographyKey => {
                         types.insert(kind_type(*kind));
                     }
                     Kind::FontWeight => {
@@ -770,6 +773,11 @@ mod tests {
         assert_eq!(kind_type(Kind::Length), "Points");
         assert_eq!(kind_type(Kind::ColorRole), "ColorRole");
         assert_eq!(kind_type(Kind::ShapeKey), "Shape");
+        assert_eq!(
+            only(reference(Kind::TypographyKey)),
+            ["super::typography_tokens", "crate::tokens::TypeStyle"]
+        );
+        assert_eq!(kind_type(Kind::TypographyKey), "TypeStyle");
         // A key is never generated, and needs no import.
         assert_eq!(only(Value::Key("ColorToken".into())), Vec::<String>::new());
     }
@@ -795,6 +803,11 @@ mod tests {
             expression(Kind::ShapeKey, "ShapeKeyTokens", "CornerFull"),
             "shape_tokens::CORNER_FULL"
         );
+        // A typography key names the style of the same name in `typography_tokens`.
+        assert_eq!(
+            expression(Kind::TypographyKey, "TypographyKeyTokens", "LabelLarge"),
+            "typography_tokens::LABEL_LARGE"
+        );
         // A length in another module, and in this one.
         assert_eq!(
             expression(Kind::Length, "ElevationTokens", "Level1"),
@@ -809,6 +822,10 @@ mod tests {
         assert_eq!(
             module(Kind::ShapeKey, "ShapeKeyTokens").as_deref(),
             Some("shape_tokens")
+        );
+        assert_eq!(
+            module(Kind::TypographyKey, "TypographyKeyTokens").as_deref(),
+            Some("typography_tokens")
         );
         assert_eq!(
             module(Kind::Color, "PaletteTokens").as_deref(),
