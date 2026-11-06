@@ -130,6 +130,32 @@ jobs:
       - name: Build the nsh CLI at the pinned NSH revision
         working-directory: .nsh-src
         run: cargo build -p nsh-cli --locked
+      # NSH's build of its Android runtime gives bindgen the NDK's C headers with `-isystem` when the NDK has no
+      # libclang (`ndk_cargo` in `crates/xtask/src/android.rs`), as the image's NDKs do: bindgen then runs on the
+      # machine's libclang, whose own clang headers are another build's, and QuickJS's bindings fail
+      # (`unknown type name 'uint32_t'` in the NDK's `pthread_types.h`). The same arguments with the NDK's headers as
+      # libclang's resource directory build. bindgen reads `BINDGEN_EXTRA_CLANG_ARGS_<target>` with the target's
+      # dashes before the underscored name NSH sets, so this takes their place; the shell cannot name such a variable,
+      # hence `env`.
+      - name: Give bindgen the NDK's clang headers as its resource directory
+        run: |
+          toolchain="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
+          resource=$(ls -d "$toolchain"/lib/clang/* | head -1)
+          test -d "$resource/include"
+          wrapper="$RUNNER_TEMP/with-ndk-bindgen"
+          {
+            echo '#!/bin/sh'
+            echo 'exec env \'
+            for pair in aarch64-linux-android:aarch64-linux-android armv7-linux-androideabi:armv7a-linux-androideabi \
+                x86_64-linux-android:x86_64-linux-android; do
+              # 28: NSH's minimum Android SDK (`MIN_SDK` in `crates/xtask/src/android.rs`).
+              echo "  'BINDGEN_EXTRA_CLANG_ARGS_${pair%%:*}=--target=${pair##*:}28 --sysroot=$toolchain/sysroot -resource-dir $resource' \\"
+            done
+            echo '  "$@"'
+          } > "$wrapper"
+          chmod +x "$wrapper"
+          cat "$wrapper"
+          echo "WITH_NDK_BINDGEN=$wrapper" >> "$GITHUB_ENV"
       - name: Take the screenshots
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
@@ -137,7 +163,7 @@ jobs:
           arch: x86_64
           target: google_apis
           disable-animations: true
-          script: mkdir -p target/visual && .nsh-src/target/debug/nsh test examples/catalog/phone.test.tsx --target android
+          script: mkdir -p target/visual && "$WITH_NDK_BINDGEN" .nsh-src/target/debug/nsh test examples/catalog/phone.test.tsx --target android
       - name: Keep the screenshots
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
