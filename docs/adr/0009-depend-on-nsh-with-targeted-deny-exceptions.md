@@ -1,6 +1,6 @@
 # 0009. Depend on NSH, with targeted `cargo deny` exceptions for NSH's own dependencies
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-06
 - Deciders: the user
 
@@ -34,8 +34,8 @@ The Vehicoule app, in its own repository, will meet the same failures as soon as
 
 ## Decision
 
-Option 1, chosen by the user on 2026-11-06. Waiting for the user's explicit agreement on `ring` and the network
-crates (ADR 0006) before this ADR is accepted.
+Option 1, chosen by the user on 2026-11-06. The user also gave the explicit agreement ADR 0006 asks for, on the same
+day, for `ring` and the network crates (`rustls`, `tokio-tungstenite`) that NSH brings.
 
 ## Consequences
 

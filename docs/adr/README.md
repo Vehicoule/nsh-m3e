@@ -15,4 +15,4 @@ Only the user moves an ADR from Proposed to Accepted.
 | [0005](0005-verification.md) | How correctness is shown: property tests, mutation testing, no Lean | Accepted |
 | [0006](0006-pinned-versions-and-dependencies.md) | Pinned versions and the dependency policy | Accepted |
 | [0007](0007-license.md) | The library is licensed under MPL-2.0 | Accepted |
-| [0009](0009-depend-on-nsh-with-targeted-deny-exceptions.md) | Depend on NSH, with targeted `cargo deny` exceptions | Proposed |
+| [0009](0009-depend-on-nsh-with-targeted-deny-exceptions.md) | Depend on NSH, with targeted `cargo deny` exceptions | Accepted |
