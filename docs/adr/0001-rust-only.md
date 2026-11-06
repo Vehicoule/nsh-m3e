@@ -1,6 +1,6 @@
 # 0001. Write the components and the app in Rust, with no TSX
 
-- Status: Accepted
+- Status: Accepted; test scripts for the visual checks excepted by [0013](0013-visual-checks-on-nsh-hosts.md)
 - Date: 2026-11-06
 - Deciders: the user
 
