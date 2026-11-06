@@ -3,12 +3,12 @@ name: NSH bump merge
 # Merges the NSH bump pull request (opened by `nsh-bump.yml` on the `nsh-bump` branch) once every check on its head
 # commit is green, as the user decided (ADR 0014). It merges no other pull request.
 #
-# It runs when a workflow that checks pull requests completes (`Visual checks` comes with ADR 0013's screenshots).
+# It runs when a workflow that checks pull requests completes.
 # A check still running means another of those workflows has yet to complete, and this runs again then; a red check
 # leaves the pull request open for its fix.
 on:
   workflow_run:
-    workflows: [CI, Visual checks]
+    workflows: [CI, Visual checks, Visual checks on phones]
     types: [completed]
 
 permissions:

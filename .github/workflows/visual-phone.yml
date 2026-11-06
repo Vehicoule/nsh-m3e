@@ -1,0 +1,147 @@
+name: Visual checks on phones
+
+# ADR 0013: the catalog on NSH's phone hosts, the iOS simulator and the Android emulator, which NSH's own CI does not
+# run. `nsh test` opens `examples/catalog` on the device and saves a screenshot of each appearance
+# (`examples/catalog/phone.test.tsx`); they are kept as artifacts, for review.
+#
+# The CLI is built from an NSH checkout at the pinned revision, not installed: on a phone, a Rust app's host is
+# built with NSH's prebuilt runtime (the iOS host's frameworks, Android's Java runtime), which the CLI builds from
+# the checkout it runs from (`crates/nsh-cli/src/runtime.rs` in NSH).
+
+on:
+  pull_request:
+    paths:
+      - "crates/**"
+      - "examples/**"
+      - "tests/visual/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/visual-phone.yml"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: visual-phone-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  # As in `visual.yml`: the hosts build faster and fit the runner's disk without debug information.
+  CARGO_PROFILE_DEV_DEBUG: 0
+  # NSH's own code is built here, not linted (as in `visual.yml`).
+  RUSTFLAGS: ""
+
+jobs:
+  ios:
+    name: visual (ios)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Read the pinned NSH revision
+        id: nsh
+        run: |
+          rev=$(grep -m1 -o 'rev = "[0-9a-f]*"' Cargo.toml | cut -d'"' -f2)
+          test -n "$rev"
+          echo "rev=$rev" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: longbridge/nsh
+          ref: ${{ steps.nsh.outputs.rev }}
+          path: .nsh-src
+      - name: Install the pinned toolchain and the simulator's target
+        run: |
+          rustup toolchain install
+          rustup target add aarch64-apple-ios-sim
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: visual-ios
+          workspaces: |
+            . -> target
+            .nsh-src -> target
+      - name: Build the nsh CLI at the pinned NSH revision
+        working-directory: .nsh-src
+        run: cargo build -p nsh-cli --locked
+      - name: Take the screenshots
+        run: |
+          mkdir -p target/visual
+          .nsh-src/target/debug/nsh test examples/catalog/phone.test.tsx --target ios
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: screenshots-ios
+          path: target/visual/
+          if-no-files-found: error
+
+  android:
+    name: visual (android)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Read the pinned NSH revision
+        id: nsh
+        run: |
+          rev=$(grep -m1 -o 'rev = "[0-9a-f]*"' Cargo.toml | cut -d'"' -f2)
+          test -n "$rev"
+          echo "rev=$rev" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: longbridge/nsh
+          ref: ${{ steps.nsh.outputs.rev }}
+          path: .nsh-src
+      # As NSH's release workflow builds the Android runtime: clang for QuickJS, Java 17 (`javac`, `d8`), the SDK's
+      # `platforms;android-35` and the image's NDK.
+      - name: Install clang
+        run: sudo apt-get update && sudo apt-get install -y clang llvm libclang-dev
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install the Android platform
+        run: |
+          if [[ ! -f "$ANDROID_HOME/platforms/android-35/android.jar" ]]; then
+            sdkmanager=$(ls "$ANDROID_HOME"/cmdline-tools/latest/bin/sdkmanager* | head -1)
+            yes | "$sdkmanager" "platforms;android-35" > /dev/null || true
+          fi
+          test -f "$ANDROID_HOME/platforms/android-35/android.jar"
+          ls "$ANDROID_HOME/ndk"
+      # The emulator needs hardware acceleration, which GitHub's Linux runners give through KVM.
+      - name: Let the emulator use KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install the pinned toolchain and the emulator's target
+        run: |
+          rustup toolchain install
+          rustup target add x86_64-linux-android
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: visual-android
+          workspaces: |
+            . -> target
+            .nsh-src -> target
+      - name: Build the nsh CLI at the pinned NSH revision
+        working-directory: .nsh-src
+        run: cargo build -p nsh-cli --locked
+      - name: Take the screenshots
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: mkdir -p target/visual && .nsh-src/target/debug/nsh test examples/catalog/phone.test.tsx --target android
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: screenshots-android
+          path: target/visual/
+          if-no-files-found: error

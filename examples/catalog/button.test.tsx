@@ -1,6 +1,7 @@
-// The button's screenshots on NSH's hosts (ADR 0013): `nsh test examples/catalog --target <host>`, run from the
-// root of the repository, saves them in `target/visual`; `cargo run -p visual-checks -- target/visual` checks their
-// known pixels. `nsh test` takes a test only inside its app, so this file is beside the catalog's `nsh.json`.
+// The button's screenshots on NSH's desktop and web hosts (ADR 0013): `nsh test examples/catalog/button.test.tsx
+// --target <linux|web>`, run from the root of the repository, saves them in `target/visual`; `cargo run -p
+// visual-checks -- target/visual` checks their known pixels. `nsh test` takes a test only inside its app, so this
+// file is beside the catalog's `nsh.json`.
 //
 // The catalog shows every size, style, shape and availability of the button on a grid.
 // Each appearance gets one screenshot at rest and one with the mouse over the small round enabled button of each
