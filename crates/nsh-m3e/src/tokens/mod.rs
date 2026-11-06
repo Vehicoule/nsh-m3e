@@ -7,6 +7,8 @@ pub mod androidx;
 
 use androidx::motion_tokens::EASING_LINEAR_CUBIC_BEZIER;
 use androidx::palette_tokens::BLACK;
+use androidx::shape_tokens::CORNER_VALUE_NONE;
+use nsh_core::geometry::Points;
 
 /// A cubic Bézier easing curve from `(0, 0)` to `(1, 1)` through the control points `(x1, y1)` and `(x2, y2)`, as in
 /// CSS `cubic-bezier()` and NSH's `Easing::Bezier(x1, y1, x2, y2)`.
@@ -87,11 +89,104 @@ impl Default for Srgb {
     }
 }
 
+/// The shape of a component's container, as androidx builds it.
+///
+/// Only tokens build one, so every shape in this crate is Material 3's:
+///
+/// ```
+/// use nsh_m3e::tokens::Shape;
+/// use nsh_m3e::tokens::androidx::shape_tokens::{CORNER_EXTRA_SMALL_TOP, CORNER_FULL};
+///
+/// assert_eq!(CORNER_FULL, Shape::Circle);
+/// let Shape::Rounded(corners) = CORNER_EXTRA_SMALL_TOP else {
+///     unreachable!("androidx builds `CornerExtraSmallTop` with `RoundedCornerShape`");
+/// };
+/// assert_eq!((corners.top_start.0, corners.bottom_end.0), (4.0, 0.0));
+/// ```
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Shape {
+    /// Square corners: androidx `RectangleShape`.
+    Rectangle,
+    /// Each corner rounded by half the box's shorter side, which makes a circle of a square and a pill of a longer
+    /// box: androidx `CircleShape`. NSH's `rounded_full()` draws it.
+    Circle,
+    /// Each corner rounded by its own radius: androidx `RoundedCornerShape`.
+    Rounded(RoundedCorners),
+}
+
+impl Shape {
+    /// A [`Shape::Rounded`] with the radius of each corner, in androidx's order (`topStart`, `topEnd`, `bottomEnd`,
+    /// `bottomStart`).
+    pub(crate) const fn rounded(
+        top_start: Points,
+        top_end: Points,
+        bottom_end: Points,
+        bottom_start: Points,
+    ) -> Self {
+        Self::Rounded(RoundedCorners {
+            top_start,
+            top_end,
+            bottom_end,
+            bottom_start,
+        })
+    }
+
+    /// A [`Shape::Rounded`] with the same radius at every corner.
+    pub(crate) const fn rounded_all(radius: Points) -> Self {
+        Self::rounded(radius, radius, radius, radius)
+    }
+}
+
+/// The radius of each corner of a [`Shape::Rounded`], in NSH points (one dp each).
+///
+/// The corners are named by the reading direction, as androidx and NSH name them: in a left-to-right layout, the
+/// start is the left. NSH's `rounded_ss`, `rounded_se`, `rounded_ee` and `rounded_es` take them in this order.
+///
+/// ```
+/// use nsh_m3e::tokens::Shape;
+/// use nsh_m3e::tokens::androidx::shape_tokens::CORNER_LARGE_END;
+///
+/// let Shape::Rounded(corners) = CORNER_LARGE_END else {
+///     unreachable!("androidx builds `CornerLargeEnd` with `RoundedCornerShape`");
+/// };
+/// assert_eq!(
+///     [corners.top_start, corners.top_end, corners.bottom_end, corners.bottom_start].map(|r| r.0),
+///     [0.0, 16.0, 16.0, 0.0]
+/// );
+/// ```
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RoundedCorners {
+    /// The top corner on the start side.
+    pub top_start: Points,
+    /// The top corner on the end side.
+    pub top_end: Points,
+    /// The bottom corner on the end side.
+    pub bottom_end: Points,
+    /// The bottom corner on the start side.
+    pub bottom_start: Points,
+}
+
+impl Default for RoundedCorners {
+    /// Square corners: androidx `ShapeTokens.CornerValueNone` at each.
+    fn default() -> Self {
+        Self {
+            top_start: CORNER_VALUE_NONE,
+            top_end: CORNER_VALUE_NONE,
+            bottom_end: CORNER_VALUE_NONE,
+            bottom_start: CORNER_VALUE_NONE,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use androidx::motion_tokens::EASING_EMPHASIZED_ACCELERATE_CUBIC_BEZIER;
-    use androidx::{color_dark_tokens, color_light_tokens, elevation_tokens, palette_tokens};
+    use androidx::{
+        color_dark_tokens, color_light_tokens, elevation_tokens, palette_tokens, shape_tokens,
+    };
 
     #[test]
     fn new_keeps_each_control_point_in_place() {
@@ -154,5 +249,70 @@ mod tests {
         assert_eq!(elevation_tokens::LEVEL0.0.to_bits(), 0.0_f32.to_bits());
         assert_eq!(elevation_tokens::LEVEL2.0.to_bits(), 3.0_f32.to_bits());
         assert_eq!(elevation_tokens::LEVEL5.0.to_bits(), 12.0_f32.to_bits());
+    }
+
+    fn corners(shape: Shape) -> [f32; 4] {
+        let Shape::Rounded(corners) = shape else {
+            panic!("{shape:?} is not a rounded shape");
+        };
+        [
+            corners.top_start,
+            corners.top_end,
+            corners.bottom_end,
+            corners.bottom_start,
+        ]
+        .map(|radius| radius.0)
+    }
+
+    #[test]
+    fn rounded_keeps_each_corner_in_place() {
+        // androidx: `ShapeTokens.CornerLargeEnd` = `RoundedCornerShape(topStart = 0.0.dp, topEnd = 16.0.dp,
+        // bottomEnd = 16.0.dp, bottomStart = 0.0.dp)`, `CornerLargeStart` the mirror image. A start and an end
+        // swapped would turn one into the other.
+        assert_eq!(
+            corners(shape_tokens::CORNER_LARGE_END),
+            [0.0, 16.0, 16.0, 0.0]
+        );
+        assert_eq!(
+            corners(shape_tokens::CORNER_LARGE_START),
+            [16.0, 0.0, 0.0, 16.0]
+        );
+        // androidx: `ShapeTokens.CornerExtraSmallTop`: only the top is rounded, so a top and a bottom swapped shows.
+        assert_eq!(
+            corners(shape_tokens::CORNER_EXTRA_SMALL_TOP),
+            [4.0, 4.0, 0.0, 0.0]
+        );
+        // Direct, so every corner differs.
+        assert_eq!(
+            corners(Shape::rounded(
+                Points(1.0),
+                Points(2.0),
+                Points(3.0),
+                Points(4.0)
+            )),
+            [1.0, 2.0, 3.0, 4.0]
+        );
+    }
+
+    #[test]
+    fn rounded_all_puts_the_radius_at_every_corner() {
+        // androidx: `ShapeTokens.CornerExtraLarge` = `RoundedCornerShape(28.0.dp)`.
+        assert_eq!(corners(shape_tokens::CORNER_EXTRA_LARGE), [28.0; 4]);
+        assert_eq!(corners(Shape::rounded_all(Points(5.0))), [5.0; 4]);
+    }
+
+    #[test]
+    fn full_and_none_are_not_rounded_shapes() {
+        // androidx: `ShapeTokens.CornerFull` = `CircleShape`, `CornerNone` = `RectangleShape`.
+        assert_eq!(shape_tokens::CORNER_FULL, Shape::Circle);
+        assert_eq!(shape_tokens::CORNER_NONE, Shape::Rectangle);
+        assert_ne!(shape_tokens::CORNER_FULL, shape_tokens::CORNER_NONE);
+    }
+
+    #[test]
+    fn the_default_corners_are_square_and_not_another_size() {
+        let default = corners(Shape::Rounded(RoundedCorners::default())).map(f32::to_bits);
+        assert_eq!(default, [CORNER_VALUE_NONE.0.to_bits(); 4]);
+        assert_eq!(default, [0.0_f32.to_bits(); 4]);
     }
 }

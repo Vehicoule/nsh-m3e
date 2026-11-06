@@ -13,4 +13,5 @@ pub mod elevation_tokens;
 pub mod expressive_motion_tokens;
 pub mod motion_tokens;
 pub mod palette_tokens;
+pub mod shape_tokens;
 pub mod state_tokens;
