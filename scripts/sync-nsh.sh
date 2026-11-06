@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# Keeps the vendored NSH skills on the NSH commit pinned in the root Cargo.toml (ADR 0006).
+#
+#   scripts/sync-nsh.sh check          fail if .claude/skills differs from the pinned commit's skills
+#   scripts/sync-nsh.sh update [REV]   pin NSH to REV (default: the newest commit of NSH's main),
+#                                      copy its skills and refresh Cargo.lock
+set -euo pipefail
+
+repo_url="https://github.com/longbridge/nsh"
+skills=(nsh nsh-design-guides)
+
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+
+pinned_rev() {
+    sed -n 's/^nsh-core = { git = "https:\/\/github\.com\/longbridge\/nsh", rev = "\([0-9a-f]\{40\}\)" }$/\1/p' Cargo.toml
+}
+
+current="$(pinned_rev)"
+if [[ ! "$current" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "error: no NSH rev found for nsh-core in Cargo.toml" >&2
+    exit 1
+fi
+if [[ "$(grep -c "rev = \"$current\"" Cargo.toml)" -ne 2 ]]; then
+    echo "error: nsh-core and nsh-base must share the same rev in Cargo.toml" >&2
+    exit 1
+fi
+
+mode="${1:-}"
+case "$mode" in
+    check) rev="$current" ;;
+    update) rev="${2:-$(git ls-remote "$repo_url" refs/heads/main | cut -f1)}" ;;
+    *)
+        echo "usage: $0 check | update [REV]" >&2
+        exit 2
+        ;;
+esac
+if [[ ! "$rev" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "error: not a full commit hash: $rev" >&2
+    exit 1
+fi
+
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+git -C "$work" init -q
+git -C "$work" fetch -q --depth 1 "$repo_url" "$rev"
+git -C "$work" checkout -q FETCH_HEAD
+
+expected="$work/expected"
+mkdir -p "$expected"
+for skill in "${skills[@]}"; do
+    cp -R "$work/skills/$skill" "$expected/$skill"
+    cp "$work/LICENSE-APACHE" "$expected/$skill/LICENSE-APACHE"
+done
+
+if [[ "$mode" == "check" ]]; then
+    status=0
+    for skill in "${skills[@]}"; do
+        if ! diff -r "$expected/$skill" ".claude/skills/$skill" >/dev/null; then
+            echo "error: .claude/skills/$skill differs from NSH $rev; run scripts/sync-nsh.sh update $rev" >&2
+            status=1
+        fi
+    done
+    [[ "$status" -eq 0 ]] && echo "NSH skills match the pinned commit $rev"
+    exit "$status"
+fi
+
+for skill in "${skills[@]}"; do
+    rm -rf ".claude/skills/$skill"
+    cp -R "$expected/$skill" ".claude/skills/$skill"
+done
+
+if [[ "$rev" != "$current" ]]; then
+    # Every file that names the pinned commit moves to the new one; vendored copies are left alone.
+    git grep -l "$current" -- . ':!.claude/skills/nsh' ':!.claude/skills/nsh-design-guides' ':!reference' |
+        while IFS= read -r file; do
+            sed -i.bak "s/$current/$rev/g" "$file" && rm -f "$file.bak"
+        done
+    # Resolves the new rev into Cargo.lock without updating anything else.
+    cargo metadata --format-version 1 >/dev/null
+fi
+
+echo "NSH pinned to $rev (was $current)"
