@@ -91,7 +91,7 @@ impl Default for Srgb {
 mod tests {
     use super::*;
     use androidx::motion_tokens::EASING_EMPHASIZED_ACCELERATE_CUBIC_BEZIER;
-    use androidx::{color_dark_tokens, color_light_tokens, palette_tokens};
+    use androidx::{color_dark_tokens, color_light_tokens, elevation_tokens, palette_tokens};
 
     #[test]
     fn new_keeps_each_control_point_in_place() {
@@ -145,5 +145,14 @@ mod tests {
         assert_eq!(color_dark_tokens::PRIMARY, palette_tokens::PRIMARY80);
         assert_eq!(color_light_tokens::BACKGROUND, palette_tokens::NEUTRAL98);
         assert_ne!(color_light_tokens::PRIMARY, color_dark_tokens::PRIMARY);
+    }
+
+    #[test]
+    fn a_length_in_dp_is_the_same_number_of_nsh_points() {
+        // androidx: `ElevationTokens.Level0` = 0.0.dp, `Level2` = 3.0.dp, `Level5` = 12.0.dp. One dp is one NSH
+        // point (`nsh_core::geometry::Points`).
+        assert_eq!(elevation_tokens::LEVEL0.0.to_bits(), 0.0_f32.to_bits());
+        assert_eq!(elevation_tokens::LEVEL2.0.to_bits(), 3.0_f32.to_bits());
+        assert_eq!(elevation_tokens::LEVEL5.0.to_bits(), 12.0_f32.to_bits());
     }
 }

@@ -37,6 +37,13 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
+        file: "ElevationTokens.kt",
+        doc: &[
+            "The elevation levels 0 to 5: how far a surface sits above the one under it. androidx gives them in dp, \
+             the density-independent pixel, which is NSH's point.",
+        ],
+    },
+    Source {
         file: "ExpressiveMotionTokens.kt",
         doc: &[
             "The springs of the Expressive motion scheme: a stiffness and a damping *ratio* each, at unit mass. NSH's \
@@ -57,6 +64,13 @@ const SOURCES: &[Source] = &[
              error) at a range of tones from 0 (black) to 100 (white), in 8-bit sRGB.",
             "Components never draw with a palette color: they draw with a color role of the scheme, which names one \
              of these tones ([`super::color_light_tokens`], [`super::color_dark_tokens`]).",
+        ],
+    },
+    Source {
+        file: "StateTokens.kt",
+        doc: &[
+            "The opacities of the state layer: a layer of the content's color drawn over a component while it is \
+             hovered, focused, pressed or dragged.",
         ],
     },
 ];

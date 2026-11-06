@@ -59,6 +59,11 @@ pub(crate) fn module(object: &TokenObject, file: &str, doc: &[&str]) -> String {
                 ),
                 String::new(),
             ),
+            Value::Dp(length) => (
+                "Points",
+                format!("Points({})", literal(*length)),
+                String::new(),
+            ),
             Value::Srgb([red, green, blue]) => (
                 "Srgb",
                 format!("Srgb::new({red}, {green}, {blue})"),
@@ -94,15 +99,20 @@ pub(crate) fn module(object: &TokenObject, file: &str, doc: &[&str]) -> String {
     out
 }
 
-/// The `use` paths a module needs, in the order `rustfmt` sorts them: `super::` before `crate::`.
+/// The `use` paths a module needs, in the order `rustfmt` sorts them: `super::`, then `crate::`, then an external
+/// crate.
 fn imports(object: &TokenObject) -> Vec<String> {
     let mut types = BTreeSet::new();
     let mut modules = BTreeSet::new();
+    let mut points = false;
     for token in &object.tokens {
         match &token.value {
             Value::Number(_) => {}
             Value::CubicBezier(_) => {
                 types.insert("CubicBezier");
+            }
+            Value::Dp(_) => {
+                points = true;
             }
             Value::Srgb(_) => {
                 types.insert("Srgb");
@@ -124,6 +134,9 @@ fn imports(object: &TokenObject) -> Vec<String> {
         [] => {}
         [one] => imports.push(format!("crate::tokens::{one}")),
         many => imports.push(format!("crate::tokens::{{{}}}", many.join(", "))),
+    }
+    if points {
+        imports.push("nsh_core::geometry::Points".to_owned());
     }
     imports
 }
@@ -429,5 +442,44 @@ mod tests {
             },
         ]);
         assert_eq!(imports(&both), ["crate::tokens::{CubicBezier, Srgb}"]);
+    }
+
+    #[test]
+    fn writes_lengths_with_their_import() {
+        let object = sample(vec![Token {
+            name: "Level2".into(),
+            value: Value::Dp(3.0),
+        }]);
+        let out = module(&object, "SampleTokens.kt", &[]);
+        assert!(out.contains("\nuse nsh_core::geometry::Points;\n"), "{out}");
+        assert!(out.contains(
+            "\n/// androidx: `SampleTokens.Level2`.\npub const LEVEL2: Points = Points(3.0);\n"
+        ));
+        assert!(!out.contains("crate::tokens"));
+    }
+
+    #[test]
+    fn puts_the_nsh_import_after_super_and_crate_as_rustfmt_does() {
+        let mixed = sample(vec![
+            Token {
+                name: "Level2".into(),
+                value: Value::Dp(3.0),
+            },
+            Token {
+                name: "Background".into(),
+                value: Value::Color(Reference {
+                    object: "PaletteTokens".into(),
+                    token: "Neutral98".into(),
+                }),
+            },
+        ]);
+        assert_eq!(
+            imports(&mixed),
+            [
+                "super::palette_tokens",
+                "crate::tokens::Srgb",
+                "nsh_core::geometry::Points"
+            ]
+        );
     }
 }
