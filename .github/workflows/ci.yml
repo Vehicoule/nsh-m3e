@@ -38,8 +38,24 @@ jobs:
         run: cargo doc --workspace --no-deps --locked
         env:
           RUSTDOCFLAGS: -D warnings
+      - name: Generated tokens match the vendored androidx files
+        run: cargo xtask gen-tokens --check
       - name: NSH skills match the pinned NSH commit
         run: scripts/sync-nsh.sh check
+
+  # ADR 0005: a mutant that survives the tests means a test that asserts too little, and fails the check.
+  mutants:
+    name: mutants
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants --version 27.1.0 --locked
+      - name: Mutation testing
+        run: cargo mutants --workspace --cargo-arg=--locked
 
   deny:
     name: deny

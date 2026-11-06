@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = ["crates/*", "xtask"]
 
 [workspace.package]
 version = "0.0.0"
@@ -17,6 +17,9 @@ publish = false
 # `.github/workflows/nsh-bump.yml` (ADR 0006). Both crates always share the same `rev`.
 nsh-core = { git = "https://github.com/longbridge/nsh", rev = "adc46050b5125833a32482f0df1c1fd3d138c471" }
 nsh-base = { git = "https://github.com/longbridge/nsh", rev = "adc46050b5125833a32482f0df1c1fd3d138c471" }
+# Property tests on token logic (ADR 0005). Test-only; without the default `fork` and `timeout` features, which
+# pull in process and temp-file crates the tests do not need.
+proptest = { version = "1.12.0", default-features = false, features = ["std"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

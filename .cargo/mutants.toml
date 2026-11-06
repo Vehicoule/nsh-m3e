@@ -1,0 +1,5 @@
+# cargo-mutants configuration (ADR 0005). Every surviving mutant fails CI.
+
+# `main` only maps `run`'s result to an exit code and an error message, so no test can call it; `run` and everything
+# under it are tested.
+exclude_re = ["replace main -> ExitCode with"]
