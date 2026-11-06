@@ -67,6 +67,15 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
+        file: "ShapeTokens.kt",
+        doc: &[
+            "The corner shapes, from square (`CORNER_NONE`) to fully round (`CORNER_FULL`), and the corner sizes \
+             alone (`CORNER_VALUE_*`), in dp, which is NSH's point.",
+            "Components name a shape through an androidx `ShapeKeyTokens` key, which has the name of one of the \
+             shapes here: `ShapeKeyTokens.CornerFull` is [`CORNER_FULL`].",
+        ],
+    },
+    Source {
         file: "StateTokens.kt",
         doc: &[
             "The opacities of the state layer: a layer of the content's color drawn over a component while it is \

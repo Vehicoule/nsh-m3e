@@ -6,7 +6,7 @@ use std::fmt::Write as _;
 
 use std::collections::BTreeSet;
 
-use crate::kotlin::{TokenObject, Value};
+use crate::kotlin::{Shape, TokenObject, Value};
 
 /// `rustfmt`'s default `max_width`.
 const MAX_WIDTH: usize = 100;
@@ -64,6 +64,7 @@ pub(crate) fn module(object: &TokenObject, file: &str, doc: &[&str]) -> String {
                 format!("Points({})", literal(*length)),
                 String::new(),
             ),
+            Value::Shape(shape) => ("Shape", shape_expression(shape), String::new()),
             Value::Srgb([red, green, blue]) => (
                 "Srgb",
                 format!("Srgb::new({red}, {green}, {blue})"),
@@ -99,6 +100,29 @@ pub(crate) fn module(object: &TokenObject, file: &str, doc: &[&str]) -> String {
     out
 }
 
+/// The library's `Shape` for an androidx shape: one call, so `rustfmt` lays it out as it does `CubicBezier::new`.
+fn shape_expression(shape: &Shape) -> String {
+    match shape {
+        Shape::Rectangle => "Shape::Rectangle".to_owned(),
+        Shape::Circle => "Shape::Circle".to_owned(),
+        Shape::Rounded(radii) => {
+            let [first, rest @ ..] = radii;
+            if rest
+                .iter()
+                .all(|radius| radius.to_bits() == first.to_bits())
+            {
+                format!("Shape::rounded_all(Points({}))", literal(*first))
+            } else {
+                let points: Vec<String> = radii
+                    .iter()
+                    .map(|radius| format!("Points({})", literal(*radius)))
+                    .collect();
+                format!("Shape::rounded({})", points.join(", "))
+            }
+        }
+    }
+}
+
 /// The `use` paths a module needs, in the order `rustfmt` sorts them: `super::`, then `crate::`, then an external
 /// crate.
 fn imports(object: &TokenObject) -> Vec<String> {
@@ -113,6 +137,12 @@ fn imports(object: &TokenObject) -> Vec<String> {
             }
             Value::Dp(_) => {
                 points = true;
+            }
+            Value::Shape(shape) => {
+                types.insert("Shape");
+                if matches!(shape, Shape::Rounded(_)) {
+                    points = true;
+                }
             }
             Value::Srgb(_) => {
                 types.insert("Srgb");
@@ -215,7 +245,7 @@ fn convert(name: &str, upper: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::kotlin::{Reference, Token};
+    use crate::kotlin::{Reference, Shape, Token};
 
     fn color(name: &str, object: &str, token: &str) -> Token {
         Token {
@@ -480,6 +510,45 @@ mod tests {
                 "crate::tokens::Srgb",
                 "nsh_core::geometry::Points"
             ]
+        );
+    }
+
+    #[test]
+    fn writes_each_shape_as_one_call_with_its_corners_in_order() {
+        assert_eq!(shape_expression(&Shape::Rectangle), "Shape::Rectangle");
+        assert_eq!(shape_expression(&Shape::Circle), "Shape::Circle");
+        assert_eq!(
+            shape_expression(&Shape::Rounded([8.0; 4])),
+            "Shape::rounded_all(Points(8.0))"
+        );
+        assert_eq!(
+            shape_expression(&Shape::Rounded([0.0, 16.0, 12.0, 4.0])),
+            "Shape::rounded(Points(0.0), Points(16.0), Points(12.0), Points(4.0))"
+        );
+        // One corner that differs, wherever it is, is not the same radius everywhere.
+        for corner in 0..4 {
+            let mut radii = [8.0; 4];
+            radii[corner] = 4.0;
+            assert!(
+                shape_expression(&Shape::Rounded(radii)).starts_with("Shape::rounded("),
+                "{radii:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_shape_imports_points_only_when_it_has_radii() {
+        let shape = |shape| {
+            sample(vec![Token {
+                name: "S".into(),
+                value: Value::Shape(shape),
+            }])
+        };
+        assert_eq!(imports(&shape(Shape::Circle)), ["crate::tokens::Shape"]);
+        assert_eq!(imports(&shape(Shape::Rectangle)), ["crate::tokens::Shape"]);
+        assert_eq!(
+            imports(&shape(Shape::Rounded([8.0; 4]))),
+            ["crate::tokens::Shape", "nsh_core::geometry::Points"]
         );
     }
 }
