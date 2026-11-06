@@ -312,7 +312,7 @@ mod tests {
     #[test]
     fn a_spring_starts_where_it_starts_and_ends_on_its_target() {
         let spring = parameters(SpringToken::DefaultSpatial);
-        assert!(spring_position(20.0, 100.0, 0.0, spring, 0.0).abs() - 20.0 < 1e-9);
+        assert!((spring_position(20.0, 100.0, 0.0, spring, 0.0) - 20.0).abs() < 1e-9);
         assert!((spring_position(20.0, 100.0, 0.0, spring, 10.0) - 100.0).abs() < 1e-9);
         // The default spatial spring overshoots (ζ = 0.8); an effects spring never does (ζ = 1).
         let peak = |spring| {
@@ -389,6 +389,7 @@ mod tests {
                 spring.damping.to_bits(),
                 spec.damping_coefficient().to_bits()
             );
+            assert_eq!(spring.mass.to_bits(), SPRING_MASS.to_bits());
             assert_eq!(spring.frame_rate, None);
             // While it plays, the engine sends nothing: no batch, so no layout either.
             assert!(recording.in_step("run").is_empty(), "{token:?}");
