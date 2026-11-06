@@ -17,7 +17,7 @@ site may describe a newer version than the one this repository builds against.
 
 | What | Where | Pinned |
 |---|---|---|
-| Official token values | [`reference/androidx-material3-tokens/`](../reference/androidx-material3-tokens/) (from `androidx/androidx`, `compose/material3/material3/src/commonMain/kotlin/androidx/compose/material3/tokens/`) | `a8b393d51f9bdcfcac8f0a4a0992ecad1b27ba55` (2026-11-06) |
+| Official token values | [`reference/androidx-material3-tokens/`](../reference/androidx-material3-tokens/) (from `androidx/androidx`, `compose/material3/material3/src/commonMain/kotlin/androidx/compose/material3/tokens/`) | `a8b393d51f9bdcfcac8f0a4a0992ecad1b27ba55`, moved by `scripts/sync-androidx.sh` when the tokens change |
 | Official implementation (behavior, layout, how tokens are used) | https://github.com/androidx/androidx/tree/androidx-main/compose/material3/material3 | read at the same revision |
 | Guidelines (anatomy, states, usage, motion) | https://m3.material.io, sections Foundations, Styles, Components | not pinned (web) |
 | Dynamic color algorithm (HCT, schemes) | https://github.com/material-foundation/material-color-utilities | to pin when used (ADR to come) |

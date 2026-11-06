@@ -65,6 +65,7 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked
 cargo deny check
+scripts/sync-androidx.sh check
 cargo xtask gen-tokens --check
 scripts/sync-nsh.sh check
 cargo mutants --workspace --cargo-arg=--locked   # cargo-mutants 27.1.0
@@ -84,7 +85,7 @@ request, and report what you ran.
 | `docs/` | Requirements and references |
 | `reference/` | Vendored sources of truth, pinned, never edited by hand |
 | `.claude/skills/` | Vendored skills for coding agents, pinned (the NSH ones are synced by `scripts/sync-nsh.sh`) |
-| `scripts/` | Repository tooling (`sync-nsh.sh`: keep the NSH skills on the pinned NSH commit) |
+| `scripts/` | Repository tooling (`sync-nsh.sh`: keep the NSH skills on the pinned NSH commit; `sync-androidx.sh`: keep `reference/androidx-material3-tokens/` on the pinned androidx commit) |
 
 A token module that a component needs and that does not exist yet is added by listing its androidx file in
 `SOURCES` (`xtask/src/main.rs`) and running `cargo xtask gen-tokens`, never by typing the values. The generator
