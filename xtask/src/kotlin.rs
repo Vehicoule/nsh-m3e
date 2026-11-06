@@ -44,9 +44,58 @@ pub(crate) enum Value {
     /// `val X = RectangleShape`, `val X = CircleShape` or `val X = RoundedCornerShape(...)`, on one line or over
     /// several.
     Shape(Shape),
-    /// `inline val X: androidx.compose.ui.graphics.Color` / `get() = PaletteTokens.Neutral98`: the color of
-    /// another token, of another object or, written `get() = Primary`, of the same one.
-    Color(Reference),
+    /// `inline val X: androidx.compose.ui.unit.TextUnit` / `get() = 16.sp` or `get() = 0.5.sp`: a text size in
+    /// scaled pixels, as the `Float` androidx makes of the number.
+    Sp(f32),
+    /// `inline val X: FontFamily` / `get() = FontFamily.SansSerif`.
+    FontFamily(FontFamily),
+    /// `inline val X: FontWeight` / `get() = FontWeight.Medium`: the weight, from 100 to 900.
+    FontWeight(u16),
+    /// `inline val X: androidx.compose.ui.graphics.Color` / `get() = PaletteTokens.Neutral98`: the value of another
+    /// token, of another object or, written `get() = Primary`, of the same one. The getter's type says what kind of
+    /// value it is.
+    Reference(Kind, Reference),
+}
+
+/// What a [`Value::Reference`] names, from the getter's type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Kind {
+    /// `Color`: a color, or a reference to one.
+    Color,
+    /// `FontFamily`: a font family, or a reference to one.
+    FontFamily,
+    /// `FontWeight`: a font weight, or a reference to one.
+    FontWeight,
+}
+
+impl Kind {
+    /// Whether `value` is a value of this kind, so that a reference of this kind may name it.
+    pub(crate) fn holds(self, value: &Value) -> bool {
+        match (self, value) {
+            (Self::Color, Value::Srgb(_))
+            | (Self::FontFamily, Value::FontFamily(_))
+            | (Self::FontWeight, Value::FontWeight(_)) => true,
+            (kind, Value::Reference(other, _)) => kind == *other,
+            _ => false,
+        }
+    }
+}
+
+impl fmt::Display for Kind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Color => "color",
+            Self::FontFamily => "font family",
+            Self::FontWeight => "font weight",
+        })
+    }
+}
+
+/// A generic font family: androidx `FontFamily.SansSerif`, the one these files use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FontFamily {
+    /// `FontFamily.SansSerif`.
+    SansSerif,
 }
 
 /// A shape, as androidx builds one.
@@ -238,7 +287,8 @@ enum BodyLine {
 }
 
 fn body_line(text: &str) -> Result<BodyLine, ParseErrorKind> {
-    if text.is_empty() {
+    // A line comment holds no token (`TypeScaleTokens` has one, a note above its emphasized styles).
+    if text.is_empty() || text.starts_with("//") {
         return Ok(BodyLine::Blank);
     }
     if text == "}" {
@@ -351,9 +401,36 @@ fn getter_line(text: &str, name: String, ty: &str, object: &str) -> Result<Token
         "CubicBezierEasing" => curve(expression).ok_or_else(unsupported)??,
         "Color" | "androidx.compose.ui.graphics.Color" => match srgb(expression) {
             Some(channels) => Value::Srgb(channels?),
-            None => Value::Color(reference(expression, object).ok_or_else(unsupported)??),
+            None => Value::Reference(
+                Kind::Color,
+                reference(expression, object).ok_or_else(unsupported)??,
+            ),
         },
         "androidx.compose.ui.unit.Dp" => Value::Dp(dp(expression).ok_or_else(unsupported)??),
+        "androidx.compose.ui.unit.TextUnit" => {
+            let literal = expression.strip_suffix(".sp").ok_or_else(unsupported)?;
+            Value::Sp(sp(literal)?)
+        }
+        "FontFamily" | "androidx.compose.ui.text.font.FontFamily" => match expression {
+            "FontFamily.SansSerif" => Value::FontFamily(FontFamily::SansSerif),
+            // Another generic family is a value this reader does not know, not a token of an object `FontFamily`.
+            _ if expression.starts_with("FontFamily.") => return Err(unsupported()),
+            _ => Value::Reference(
+                Kind::FontFamily,
+                reference(expression, object).ok_or_else(unsupported)??,
+            ),
+        },
+        "FontWeight" | "androidx.compose.ui.text.font.FontWeight" => match expression {
+            // androidx `FontWeight.kt`: `Normal = W400`, `Medium = W500`, `Bold = W700`.
+            "FontWeight.Normal" => Value::FontWeight(400),
+            "FontWeight.Medium" => Value::FontWeight(500),
+            "FontWeight.Bold" => Value::FontWeight(700),
+            _ if expression.starts_with("FontWeight.") => return Err(unsupported()),
+            _ => Value::Reference(
+                Kind::FontWeight,
+                reference(expression, object).ok_or_else(unsupported)??,
+            ),
+        },
         _ => return Err(unsupported()),
     };
     Ok(Token { name, value })
@@ -458,6 +535,35 @@ fn number(literal: &str) -> Result<f32, ParseErrorKind> {
     Ok(narrow)
 }
 
+/// The number before Kotlin's `.sp`, an `Int` (`16`) or a `Double` (`0.5`, `-0.2`), as the `Float` androidx makes
+/// of it: `Int.sp` and `Double.sp` both call `toFloat()` (androidx `TextUnit.kt`), which rounds to the nearest
+/// `Float`. A `Double` whose decimal is exactly halfway between two `f32`s is refused: the decimal and the `Double`
+/// could round to different ones.
+fn sp(literal: &str) -> Result<f32, ParseErrorKind> {
+    let bad = || ParseErrorKind::BadNumber(literal.to_owned());
+    let unsigned = literal.strip_prefix('-').unwrap_or(literal);
+    let all_digits = |part: &str| !part.is_empty() && part.chars().all(|c| c.is_ascii_digit());
+    let plain = match unsigned.split_once('.') {
+        Some((whole, fraction)) => all_digits(whole) && all_digits(fraction),
+        None => all_digits(unsigned),
+    };
+    if !plain {
+        return Err(bad());
+    }
+    let narrow: f32 = literal.parse().map_err(|_| bad())?;
+    let wide: f64 = literal.parse().map_err(|_| bad())?;
+    // `narrow` is the `f32` nearest the decimal. It is also the one nearest the `Double` when the `Double` lies
+    // strictly between the midpoints to its neighbours; each midpoint has 25 significant bits, so `f64` holds it
+    // exactly.
+    let below = f64::midpoint(f64::from(narrow), f64::from(narrow.next_down()));
+    let above = f64::midpoint(f64::from(narrow), f64::from(narrow.next_up()));
+    if below < wide && wide < above {
+        Ok(narrow)
+    } else {
+        Err(ParseErrorKind::Inexact(literal.to_owned()))
+    }
+}
+
 /// An 8-bit color channel: a plain integer from 0 to 255.
 fn channel(literal: &str) -> Result<u8, ParseErrorKind> {
     let bad = || ParseErrorKind::BadChannel(literal.to_owned());
@@ -510,10 +616,13 @@ mod tests {
     }
 
     fn color(object: &str, token: &str) -> Value {
-        Value::Color(Reference {
-            object: object.into(),
-            token: token.into(),
-        })
+        Value::Reference(
+            Kind::Color,
+            Reference {
+                object: object.into(),
+                token: token.into(),
+            },
+        )
     }
 
     fn only_value(body: &str) -> Value {
@@ -802,6 +911,185 @@ mod tests {
         );
         let closing_line = HEADER.lines().count() + 5;
         assert_eq!(error.line, closing_line);
+    }
+
+    fn getter(ty: &str, expression: &str) -> String {
+        format!("    inline val X: {ty}\n        get() = {expression}\n")
+    }
+
+    #[test]
+    fn reads_text_units_as_the_float_androidx_makes() {
+        let sp = |expression: &str| match only_value(&getter(
+            "androidx.compose.ui.unit.TextUnit",
+            expression,
+        )) {
+            Value::Sp(size) => size.to_bits(),
+            other => panic!("{expression}: {other:?}"),
+        };
+        // An `Int`, a `Double`, a negative `Double` and zero, from `TypeScaleTokens`.
+        assert_eq!(sp("16.sp"), 16.0_f32.to_bits());
+        assert_eq!(sp("24.0.sp"), 24.0_f32.to_bits());
+        assert_eq!(sp("-0.2.sp"), (-0.2_f32).to_bits());
+        assert_eq!(sp("0.sp"), 0.0_f32.to_bits());
+        // A `Double` with no exact `f32`: androidx's `toFloat()` keeps the nearest one.
+        assert_eq!(sp("0.1.sp"), 0.1_f32.to_bits());
+    }
+
+    #[test]
+    fn rejects_a_text_unit_of_another_form() {
+        let error =
+            |expression: &str| error_kind(&getter("androidx.compose.ui.unit.TextUnit", expression));
+        assert_eq!(
+            error("16.em"),
+            ParseErrorKind::Unsupported("get() = 16.em".into())
+        );
+        assert_eq!(
+            error("16"),
+            ParseErrorKind::Unsupported("get() = 16".into())
+        );
+        for literal in [
+            "1e5", ".5", "5.", "+1", "", "0x10", "1_000", "1.0f", "--1", "NaN",
+        ] {
+            assert_eq!(
+                error(&format!("{literal}.sp")),
+                ParseErrorKind::BadNumber(literal.into()),
+                "{literal}"
+            );
+        }
+        // A `TextUnit` named by its short type is not a form these files use.
+        assert_eq!(
+            error_kind(&getter("TextUnit", "16.sp")),
+            ParseErrorKind::Unsupported("get() = 16.sp".into())
+        );
+    }
+
+    #[test]
+    fn refuses_a_text_unit_halfway_between_two_floats() {
+        // 1 + 2^-24 lies exactly halfway between 1.0 and the next `f32`, and 1 - 2^-25 halfway between 1.0 and the
+        // one before. A `Double` holds both exactly; which `f32` androidx gets would depend on the rounding.
+        for literal in ["1.000000059604644775390625", "0.9999999701976776123046875"] {
+            assert_eq!(
+                sp(literal),
+                Err(ParseErrorKind::Inexact(literal.into())),
+                "{literal}"
+            );
+        }
+        // Their neighbours a little inside round to 1.0 either way.
+        assert_eq!(sp("1.00000005960464").unwrap().to_bits(), 1.0_f32.to_bits());
+        assert_eq!(sp("0.99999997019768").unwrap().to_bits(), 1.0_f32.to_bits());
+        assert_eq!(sp("-0.5").unwrap().to_bits(), (-0.5_f32).to_bits());
+    }
+
+    #[test]
+    fn reads_font_families_weights_and_references_to_them() {
+        for ty in ["FontFamily", "androidx.compose.ui.text.font.FontFamily"] {
+            assert_eq!(
+                only_value(&getter(ty, "FontFamily.SansSerif")),
+                Value::FontFamily(FontFamily::SansSerif)
+            );
+            assert_eq!(
+                only_value(&getter(ty, "TypefaceTokens.Plain")),
+                Value::Reference(
+                    Kind::FontFamily,
+                    Reference {
+                        object: "TypefaceTokens".into(),
+                        token: "Plain".into()
+                    }
+                )
+            );
+        }
+        for ty in ["FontWeight", "androidx.compose.ui.text.font.FontWeight"] {
+            // androidx `FontWeight.kt`: `Normal = W400`, `Medium = W500`, `Bold = W700`.
+            assert_eq!(
+                only_value(&getter(ty, "FontWeight.Normal")),
+                Value::FontWeight(400)
+            );
+            assert_eq!(
+                only_value(&getter(ty, "FontWeight.Medium")),
+                Value::FontWeight(500)
+            );
+            assert_eq!(
+                only_value(&getter(ty, "FontWeight.Bold")),
+                Value::FontWeight(700)
+            );
+            assert_eq!(
+                only_value(&getter(ty, "WeightBold")),
+                Value::Reference(
+                    Kind::FontWeight,
+                    Reference {
+                        object: "SampleTokens".into(),
+                        token: "WeightBold".into()
+                    }
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_a_family_or_weight_it_does_not_know() {
+        for (ty, expression) in [
+            ("FontFamily", "FontFamily.Serif"),
+            ("FontFamily", "FontFamily.Default"),
+            ("FontFamily", "FontFamily(Font(1))"),
+            ("FontWeight", "FontWeight.W600"),
+            ("FontWeight", "FontWeight.Light"),
+            ("FontWeight", "FontWeight(400)"),
+        ] {
+            assert_eq!(
+                error_kind(&getter(ty, expression)),
+                ParseErrorKind::Unsupported(format!("get() = {expression}")),
+                "{expression}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_line_comment_in_the_object_is_skipped_and_a_block_comment_is_not() {
+        let tokens = parse(&file("    // A note.\n    const val A = 1.0\n"))
+            .unwrap()
+            .tokens;
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(
+            error_kind("    /* A note. */\n    const val A = 1.0\n"),
+            ParseErrorKind::Unsupported("/* A note. */".into())
+        );
+    }
+
+    #[test]
+    fn a_reference_holds_only_values_of_its_kind() {
+        let reference = |kind| {
+            Value::Reference(
+                kind,
+                Reference {
+                    object: "A".into(),
+                    token: "B".into(),
+                },
+            )
+        };
+        let values = [
+            Value::Srgb([0, 0, 0]),
+            Value::FontFamily(FontFamily::SansSerif),
+            Value::FontWeight(400),
+        ];
+        let kinds = [Kind::Color, Kind::FontFamily, Kind::FontWeight];
+        for (index, kind) in kinds.into_iter().enumerate() {
+            for (other, value) in values.iter().enumerate() {
+                assert_eq!(kind.holds(value), index == other, "{kind} holds {value:?}");
+            }
+            for other in kinds {
+                assert_eq!(
+                    kind.holds(&reference(other)),
+                    kind == other,
+                    "{kind} holds {other}"
+                );
+            }
+            assert!(!kind.holds(&Value::Number(1.0)));
+            assert!(!kind.holds(&Value::Sp(1.0)));
+        }
+        assert_eq!(
+            kinds.map(|kind| kind.to_string()),
+            ["color", "font family", "font weight"]
+        );
     }
 
     #[test]

@@ -89,6 +89,24 @@ impl Default for Srgb {
     }
 }
 
+/// A generic font family: a kind of typeface the platform chooses, as androidx `FontFamily.SansSerif` is.
+///
+/// Only tokens name one, so every family in this crate is Material 3's:
+///
+/// ```
+/// use nsh_m3e::tokens::GenericFontFamily;
+/// use nsh_m3e::tokens::androidx::typeface_tokens::PLAIN;
+///
+/// assert_eq!(PLAIN, GenericFontFamily::SansSerif);
+/// ```
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum GenericFontFamily {
+    /// The platform's sans-serif typeface: androidx `FontFamily.SansSerif` (CSS `sans-serif`). NSH draws text that
+    /// sets no font family in the app's default font, its `font-sans` token, or else the system font.
+    SansSerif,
+}
+
 /// The shape of a component's container, as androidx builds it.
 ///
 /// Only tokens build one, so every shape in this crate is Material 3's:
@@ -186,7 +204,9 @@ mod tests {
     use androidx::motion_tokens::EASING_EMPHASIZED_ACCELERATE_CUBIC_BEZIER;
     use androidx::{
         color_dark_tokens, color_light_tokens, elevation_tokens, palette_tokens, shape_tokens,
+        type_scale_tokens, typeface_tokens,
     };
+    use nsh_core::element::FontWeight;
 
     #[test]
     fn new_keeps_each_control_point_in_place() {
@@ -314,5 +334,64 @@ mod tests {
         let default = corners(Shape::Rounded(RoundedCorners::default())).map(f32::to_bits);
         assert_eq!(default, [CORNER_VALUE_NONE.0.to_bits(); 4]);
         assert_eq!(default, [0.0_f32.to_bits(); 4]);
+    }
+
+    #[test]
+    fn the_weights_are_androidx_numbers_and_nsh_names() {
+        // androidx `FontWeight.kt`: `Normal = W400`, `Medium = W500`, `Bold = W700`; `TypefaceTokens` names them
+        // regular, medium and bold.
+        assert_eq!(typeface_tokens::WEIGHT_REGULAR, FontWeight(400));
+        assert_eq!(typeface_tokens::WEIGHT_MEDIUM, FontWeight(500));
+        assert_eq!(typeface_tokens::WEIGHT_BOLD, FontWeight(700));
+        assert_eq!(typeface_tokens::WEIGHT_REGULAR, FontWeight::NORMAL);
+        assert_eq!(typeface_tokens::WEIGHT_MEDIUM, FontWeight::MEDIUM);
+        assert_eq!(typeface_tokens::WEIGHT_BOLD, FontWeight::BOLD);
+    }
+
+    #[test]
+    fn a_type_style_keeps_each_value_in_its_place() {
+        // androidx `TypeScaleTokens.BodyLarge*`: Plain, WeightRegular, 16.sp, 24.0.sp, 0.5.sp. Size, line height
+        // and tracking all differ, so a swap shows.
+        assert_eq!(type_scale_tokens::BODY_LARGE_FONT, typeface_tokens::PLAIN);
+        assert_eq!(
+            type_scale_tokens::BODY_LARGE_WEIGHT,
+            typeface_tokens::WEIGHT_REGULAR
+        );
+        assert_eq!(
+            [
+                type_scale_tokens::BODY_LARGE_SIZE,
+                type_scale_tokens::BODY_LARGE_LINE_HEIGHT,
+                type_scale_tokens::BODY_LARGE_TRACKING,
+            ]
+            .map(|length| length.0.to_bits()),
+            [16.0_f32, 24.0, 0.5].map(f32::to_bits)
+        );
+        // androidx: `TypeScaleTokens.DisplayLargeTracking` = -0.2.sp, the one negative value.
+        assert_eq!(
+            type_scale_tokens::DISPLAY_LARGE_TRACKING.0.to_bits(),
+            (-0.2_f32).to_bits()
+        );
+    }
+
+    #[test]
+    fn an_emphasized_style_is_heavier_than_its_plain_one() {
+        // androidx: `TypeScaleTokens.TitleSmallWeight` = `WeightMedium`, `TitleSmallEmphasizedWeight` =
+        // `WeightBold`; `LabelLargeWeight` = `WeightMedium`, `BodyLargeEmphasizedWeight` = `WeightMedium`.
+        assert_eq!(
+            type_scale_tokens::TITLE_SMALL_WEIGHT,
+            typeface_tokens::WEIGHT_MEDIUM
+        );
+        assert_eq!(
+            type_scale_tokens::TITLE_SMALL_EMPHASIZED_WEIGHT,
+            typeface_tokens::WEIGHT_BOLD
+        );
+        assert_ne!(
+            type_scale_tokens::BODY_LARGE_WEIGHT,
+            type_scale_tokens::BODY_LARGE_EMPHASIZED_WEIGHT
+        );
+        assert_eq!(
+            type_scale_tokens::DISPLAY_LARGE_FONT,
+            typeface_tokens::BRAND
+        );
     }
 }

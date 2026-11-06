@@ -82,13 +82,29 @@ const SOURCES: &[Source] = &[
              hovered, focused, pressed or dragged.",
         ],
     },
+    Source {
+        file: "TypeScaleTokens.kt",
+        doc: &[
+            "The type scale: for each style (display, headline, title, body and label, each large, medium and \
+             small, and each also emphasized), its font, weight, size, line height and tracking.",
+            "Sizes, line heights and tracking are in sp, the scaled pixel, as NSH points. NSH scales a text's size \
+             and line height by the user's text size, as Android scales sp; it does not scale tracking.",
+        ],
+    },
+    Source {
+        file: "TypefaceTokens.kt",
+        doc: &[
+            "The typefaces of the type scale (brand and plain) and its three weights (regular, medium and bold).",
+        ],
+    },
 ];
 
 const INDEX_DOC: &[&str] = &[
     "The Material 3 tokens, generated from the androidx Kotlin files vendored in \
      `reference/androidx-material3-tokens/` (ADR 0003).",
     "Each constant names its androidx token in its documentation. Numbers are `f32`, the type NSH takes; the \
-     generator refuses a value that `f32` cannot hold exactly.",
+     generator refuses a value that `f32` cannot hold exactly, except a text unit (`0.1.sp`), which androidx \
+     itself rounds to the nearest `f32`.",
 ];
 
 const REFERENCE_DIR: &str = "reference/androidx-material3-tokens";
@@ -115,6 +131,7 @@ enum Error {
     BadReference {
         path: PathBuf,
         token: String,
+        kind: kotlin::Kind,
         reference: kotlin::Reference,
     },
     Outdated(Vec<PathBuf>),
@@ -135,10 +152,11 @@ impl fmt::Display for Error {
             Error::BadReference {
                 path,
                 token,
+                kind,
                 reference,
             } => write!(
                 f,
-                "{}: `{token}` refers to `{}.{}`, which is not a generated color",
+                "{}: `{token}` refers to `{}.{}`, which is not a generated {kind}",
                 path.display(),
                 reference.object,
                 reference.token
@@ -269,12 +287,12 @@ fn gen_tokens(root: &Path, mode: Mode) -> Result<(), Error> {
     }
 }
 
-/// Fails unless every color reference names a color token of a generated object, so a reference is never emitted
-/// to a constant that does not exist or has another type.
+/// Fails unless every reference names a token of its own kind (a color for a color) in a generated object, so a
+/// reference is never emitted to a constant that does not exist or has another type.
 fn check_references(objects: &[(PathBuf, kotlin::TokenObject)]) -> Result<(), Error> {
     for (path, object) in objects {
         for token in &object.tokens {
-            let kotlin::Value::Color(reference) = &token.value else {
+            let kotlin::Value::Reference(kind, reference) = &token.value else {
                 continue;
             };
             let target = objects
@@ -286,16 +304,11 @@ fn check_references(objects: &[(PathBuf, kotlin::TokenObject)]) -> Result<(), Er
                         .iter()
                         .find(|candidate| candidate.name == reference.token)
                 });
-            let is_color = target.is_some_and(|target| {
-                matches!(
-                    target.value,
-                    kotlin::Value::Srgb(_) | kotlin::Value::Color(_)
-                )
-            });
-            if !is_color {
+            if !target.is_some_and(|target| kind.holds(&target.value)) {
                 return Err(Error::BadReference {
                     path: path.clone(),
                     token: token.name.clone(),
+                    kind: *kind,
                     reference: reference.clone(),
                 });
             }
@@ -512,6 +525,7 @@ mod tests {
                 path,
                 token,
                 reference,
+                ..
             }) => (
                 path,
                 token,
@@ -562,6 +576,48 @@ mod tests {
     }
 
     #[test]
+    fn a_reference_must_name_a_token_of_its_own_kind() {
+        let typeface = || {
+            object(
+                "internal object TypefaceTokens {\n    inline val Plain: FontFamily\n        get() = FontFamily.SansSerif\n    inline val WeightBold: FontWeight\n        get() = FontWeight.Bold\n}\n",
+            )
+        };
+        let scale = |ty: &str, target: &str| {
+            object(&format!(
+                "internal object ScaleTokens {{\n    inline val X: {ty}\n        get() = TypefaceTokens.{target}\n    inline val Y: {ty}\n        get() = X\n}}\n"
+            ))
+        };
+        // Each kind names its own, directly or through another reference.
+        check_references(&[typeface(), scale("FontFamily", "Plain")]).unwrap();
+        check_references(&[typeface(), scale("FontWeight", "WeightBold")]).unwrap();
+        // A weight that names a family, or a family that names a weight, is refused with its kind.
+        for (ty, target, kind) in [
+            ("FontWeight", "Plain", kotlin::Kind::FontWeight),
+            ("FontFamily", "WeightBold", kotlin::Kind::FontFamily),
+        ] {
+            match check_references(&[typeface(), scale(ty, target)]) {
+                Err(Error::BadReference {
+                    token, kind: found, ..
+                }) => assert_eq!((token.as_str(), found), ("X", kind)),
+                other => panic!("expected BadReference, got {other:?}"),
+            }
+        }
+        let error = Error::BadReference {
+            path: PathBuf::from("A.kt"),
+            token: "B".into(),
+            kind: kotlin::Kind::FontWeight,
+            reference: kotlin::Reference {
+                object: "C".into(),
+                token: "D".into(),
+            },
+        };
+        assert_eq!(
+            error.to_string(),
+            "A.kt: `B` refers to `C.D`, which is not a generated font weight"
+        );
+    }
+
+    #[test]
     fn a_bad_reference_fails_the_generation_before_anything_is_written() {
         let scratch = Scratch::new("reference");
         let root = scratch.0.as_path();
@@ -584,6 +640,7 @@ mod tests {
         let reference = Error::BadReference {
             path: PathBuf::from("A.kt"),
             token: "B".into(),
+            kind: kotlin::Kind::Color,
             reference: kotlin::Reference {
                 object: "C".into(),
                 token: "D".into(),

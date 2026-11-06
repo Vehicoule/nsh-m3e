@@ -6,7 +6,7 @@ use std::fmt::Write as _;
 
 use std::collections::BTreeSet;
 
-use crate::kotlin::{Shape, TokenObject, Value};
+use crate::kotlin::{FontFamily, Kind, Shape, TokenObject, Value};
 
 /// `rustfmt`'s default `max_width`.
 const MAX_WIDTH: usize = 100;
@@ -59,19 +59,27 @@ pub(crate) fn module(object: &TokenObject, file: &str, doc: &[&str]) -> String {
                 ),
                 String::new(),
             ),
-            Value::Dp(length) => (
+            Value::Dp(length) | Value::Sp(length) => (
                 "Points",
                 format!("Points({})", literal(*length)),
                 String::new(),
             ),
+            Value::FontFamily(FontFamily::SansSerif) => (
+                "GenericFontFamily",
+                "GenericFontFamily::SansSerif".to_owned(),
+                String::new(),
+            ),
+            Value::FontWeight(weight) => {
+                ("FontWeight", format!("FontWeight({weight})"), String::new())
+            }
             Value::Shape(shape) => ("Shape", shape_expression(shape), String::new()),
             Value::Srgb([red, green, blue]) => (
                 "Srgb",
                 format!("Srgb::new({red}, {green}, {blue})"),
                 String::new(),
             ),
-            Value::Color(reference) => (
-                "Srgb",
+            Value::Reference(kind, reference) => (
+                kind_type(*kind),
                 if reference.object == object.name {
                     screaming_snake(&reference.token)
                 } else {
@@ -123,32 +131,55 @@ fn shape_expression(shape: &Shape) -> String {
     }
 }
 
-/// The `use` paths a module needs, in the order `rustfmt` sorts them: `super::`, then `crate::`, then an external
-/// crate.
+/// The Rust type of a value of this kind.
+fn kind_type(kind: Kind) -> &'static str {
+    match kind {
+        Kind::Color => "Srgb",
+        Kind::FontFamily => "GenericFontFamily",
+        Kind::FontWeight => "FontWeight",
+    }
+}
+
+/// NSH's `FontWeight`, which the library uses as it is.
+const FONT_WEIGHT: &str = "nsh_core::element::FontWeight";
+/// NSH's `Points`.
+const POINTS: &str = "nsh_core::geometry::Points";
+
+/// The `use` paths a module needs, in the order `rustfmt` sorts them: `super::`, then `crate::`, then the external
+/// paths in alphabetical order.
 fn imports(object: &TokenObject) -> Vec<String> {
     let mut types = BTreeSet::new();
     let mut modules = BTreeSet::new();
-    let mut points = false;
+    let mut external = BTreeSet::new();
     for token in &object.tokens {
         match &token.value {
             Value::Number(_) => {}
             Value::CubicBezier(_) => {
                 types.insert("CubicBezier");
             }
-            Value::Dp(_) => {
-                points = true;
+            Value::Dp(_) | Value::Sp(_) => {
+                external.insert(POINTS);
             }
             Value::Shape(shape) => {
                 types.insert("Shape");
                 if matches!(shape, Shape::Rounded(_)) {
-                    points = true;
+                    external.insert(POINTS);
                 }
             }
             Value::Srgb(_) => {
                 types.insert("Srgb");
             }
-            Value::Color(reference) => {
-                types.insert("Srgb");
+            Value::FontFamily(_) => {
+                types.insert("GenericFontFamily");
+            }
+            Value::FontWeight(_) => {
+                external.insert(FONT_WEIGHT);
+            }
+            Value::Reference(kind, reference) => {
+                match kind {
+                    Kind::Color | Kind::FontFamily => types.insert(kind_type(*kind)),
+                    Kind::FontWeight => external.insert(FONT_WEIGHT),
+                };
                 if reference.object != object.name {
                     modules.insert(snake(&reference.object));
                 }
@@ -165,9 +196,7 @@ fn imports(object: &TokenObject) -> Vec<String> {
         [one] => imports.push(format!("crate::tokens::{one}")),
         many => imports.push(format!("crate::tokens::{{{}}}", many.join(", "))),
     }
-    if points {
-        imports.push("nsh_core::geometry::Points".to_owned());
-    }
+    imports.extend(external.into_iter().map(str::to_owned));
     imports
 }
 
@@ -250,10 +279,13 @@ mod tests {
     fn color(name: &str, object: &str, token: &str) -> Token {
         Token {
             name: name.into(),
-            value: Value::Color(Reference {
-                object: object.into(),
-                token: token.into(),
-            }),
+            value: Value::Reference(
+                Kind::Color,
+                Reference {
+                    object: object.into(),
+                    token: token.into(),
+                },
+            ),
         }
     }
 
@@ -497,10 +529,13 @@ mod tests {
             },
             Token {
                 name: "Background".into(),
-                value: Value::Color(Reference {
-                    object: "PaletteTokens".into(),
-                    token: "Neutral98".into(),
-                }),
+                value: Value::Reference(
+                    Kind::Color,
+                    Reference {
+                        object: "PaletteTokens".into(),
+                        token: "Neutral98".into(),
+                    },
+                ),
             },
         ]);
         assert_eq!(
@@ -550,5 +585,94 @@ mod tests {
             imports(&shape(Shape::Rounded([8.0; 4]))),
             ["crate::tokens::Shape", "nsh_core::geometry::Points"]
         );
+    }
+
+    #[test]
+    fn writes_type_scale_values_with_their_types_and_imports() {
+        let reference = |name: &str, kind, token: &str| Token {
+            name: name.into(),
+            value: Value::Reference(
+                kind,
+                Reference {
+                    object: "TypefaceTokens".into(),
+                    token: token.into(),
+                },
+            ),
+        };
+        let object = sample(vec![
+            Token {
+                name: "Plain".into(),
+                value: Value::FontFamily(FontFamily::SansSerif),
+            },
+            Token {
+                name: "WeightBold".into(),
+                value: Value::FontWeight(700),
+            },
+            Token {
+                name: "BodySize".into(),
+                value: Value::Sp(16.0),
+            },
+            reference("BodyFont", Kind::FontFamily, "Plain"),
+            reference("BodyWeight", Kind::FontWeight, "WeightRegular"),
+        ]);
+        let out = module(&object, "SampleTokens.kt", &[]);
+        for line in [
+            "pub const PLAIN: GenericFontFamily = GenericFontFamily::SansSerif;",
+            "pub const WEIGHT_BOLD: FontWeight = FontWeight(700);",
+            "pub const BODY_SIZE: Points = Points(16.0);",
+            "/// androidx: `SampleTokens.BodyFont` = `TypefaceTokens.Plain`.\npub const BODY_FONT: GenericFontFamily = typeface_tokens::PLAIN;",
+            "pub const BODY_WEIGHT: FontWeight = typeface_tokens::WEIGHT_REGULAR;",
+        ] {
+            assert!(out.contains(&format!("\n{line}\n")), "{line}\n{out}");
+        }
+        assert_eq!(
+            imports(&object),
+            [
+                "super::typeface_tokens",
+                "crate::tokens::GenericFontFamily",
+                "nsh_core::element::FontWeight",
+                "nsh_core::geometry::Points",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_kind_imports_its_own_type_only() {
+        let only = |value| {
+            imports(&sample(vec![Token {
+                name: "X".into(),
+                value,
+            }]))
+        };
+        let reference = |kind| {
+            Value::Reference(
+                kind,
+                Reference {
+                    object: "SampleTokens".into(),
+                    token: "Y".into(),
+                },
+            )
+        };
+        assert_eq!(only(reference(Kind::Color)), ["crate::tokens::Srgb"]);
+        assert_eq!(
+            only(reference(Kind::FontFamily)),
+            ["crate::tokens::GenericFontFamily"]
+        );
+        assert_eq!(
+            only(reference(Kind::FontWeight)),
+            ["nsh_core::element::FontWeight"]
+        );
+        assert_eq!(
+            only(Value::FontFamily(FontFamily::SansSerif)),
+            ["crate::tokens::GenericFontFamily"]
+        );
+        assert_eq!(
+            only(Value::FontWeight(400)),
+            ["nsh_core::element::FontWeight"]
+        );
+        assert_eq!(only(Value::Sp(1.0)), ["nsh_core::geometry::Points"]);
+        assert_eq!(kind_type(Kind::Color), "Srgb");
+        assert_eq!(kind_type(Kind::FontFamily), "GenericFontFamily");
+        assert_eq!(kind_type(Kind::FontWeight), "FontWeight");
     }
 }
