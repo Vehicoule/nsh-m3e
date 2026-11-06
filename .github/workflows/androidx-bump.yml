@@ -1,0 +1,93 @@
+name: androidx bump
+
+# When the M3 token files on androidx-main have changed, copies them, regenerates the Rust tokens and opens (or
+# updates) one pull request (ADR 0003). androidx-main moves many times a day and the tokens rarely, so the pin only
+# moves when the files do.
+on:
+  schedule:
+    - cron: "30 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: androidx-bump
+  cancel-in-progress: false
+
+env:
+  BRANCH: androidx-bump
+  TOKENS_PATH: compose/material3/material3/src/commonMain/kotlin/androidx/compose/material3/tokens
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+      - name: Install the pinned toolchain
+        run: rustup toolchain install
+      - name: Copy the newest androidx token files
+        id: sync
+        run: |
+          old="$(scripts/sync-androidx.sh pinned)"
+          scripts/sync-androidx.sh update
+          new="$(scripts/sync-androidx.sh pinned)"
+          echo "old=$old" >> "$GITHUB_OUTPUT"
+          echo "new=$new" >> "$GITHUB_OUTPUT"
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Regenerate the Rust tokens
+        id: gen
+        if: steps.sync.outputs.changed == 'true'
+        # A failure is reported in the pull request instead of stopping here: CI then shows the generator's error,
+        # and the fix (teaching `xtask/` the new form) goes in the same pull request.
+        run: |
+          if cargo xtask gen-tokens 2> "$RUNNER_TEMP/gen-tokens.log"; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            cat "$RUNNER_TEMP/gen-tokens.log"
+          fi
+      - name: Open or update the pull request
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OLD: ${{ steps.sync.outputs.old }}
+          NEW: ${{ steps.sync.outputs.new }}
+          GEN_OK: ${{ steps.gen.outputs.ok }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          files="$(git status --porcelain | sed 's/^.. /- `/; s/$/`/')"
+          git switch -C "$BRANCH"
+          git add -A
+          title="tokens: Update the androidx tokens to ${NEW:0:12}"
+          history="https://github.com/androidx/androidx/commits/${NEW}/${TOKENS_PATH}"
+          git commit -q -m "$title" -m "Token history: $history"
+          git push --force origin "$BRANCH"
+          if [ "$GEN_OK" = "true" ]; then
+            generator="The Rust tokens were regenerated with \`cargo xtask gen-tokens\`; the diff of \`crates/nsh-m3e/src/tokens/androidx/\` shows every M3 value that changed."
+          else
+            generator="**\`cargo xtask gen-tokens\` rejected the new files**, so CI is red: $(sed 's/^xtask: //' "$RUNNER_TEMP/gen-tokens.log" | head -c 1500). Teach \`xtask/\` the new form (with a test) in this pull request; never edit the vendored files."
+          fi
+          body="$(printf '%s\n\n%s\n\n%s\n\n%s\n\n%s\n' \
+            "Copies the M3 token files from androidx \`${NEW:0:12}\` (newest \`androidx-main\`; was \`${OLD:0:12}\`), because they changed (ADR 0003)." \
+            "Changed files:
+          ${files}" \
+            "$generator" \
+            "Token history upstream: $history" \
+            "Opened by \`.github/workflows/androidx-bump.yml\`. Check the changed values against the components that use them, then merge when CI is green.")"
+          if [ -n "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')" ]; then
+            gh pr edit "$BRANCH" --title "$title" --body "$body"
+          else
+            gh pr create --base main --head "$BRANCH" --title "$title" --body "$body"
+          fi
+          # Pushes made with GITHUB_TOKEN start no workflow, so CI is started explicitly on the bump commit.
+          gh workflow run ci.yml --ref "$BRANCH"

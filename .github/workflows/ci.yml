@@ -38,6 +38,8 @@ jobs:
         run: cargo doc --workspace --no-deps --locked
         env:
           RUSTDOCFLAGS: -D warnings
+      - name: Vendored androidx tokens match the pinned androidx commit
+        run: scripts/sync-androidx.sh check
       - name: Generated tokens match the vendored androidx files
         run: cargo xtask gen-tokens --check
       - name: NSH skills match the pinned NSH commit
