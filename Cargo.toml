@@ -17,7 +17,7 @@ publish = false
 # `.github/workflows/nsh-bump.yml` (ADR 0006). Its crates always share the same `rev`, and `version` is NSH's version
 # at that `rev`, so `cargo deny` does not take them for wildcards (ADR 0009); `scripts/sync-nsh.sh` keeps both.
 nsh-core = { git = "https://github.com/longbridge/nsh", rev = "897fd9c2d968b341fcd81ceb34e991b13167e558", version = "0.4.0" }
-nsh-base = { git = "https://github.com/longbridge/nsh", rev = "897fd9c2d968b341fcd81ceb34e991b13167e558", version = "0.4.0" }
+nsh-base = { git = "https://github.com/longbridge/nsh", rev = "897fd9c2d968b341fcd81ceb34e991b13167e558", version = "0.4.0", default-features = false }
 # NSH's headless engine and test driver, for the animation measurements of ADR 0010. Test-only, without default
 # features: no network client, no JavaScript runtime.
 nsh-engine = { git = "https://github.com/longbridge/nsh", rev = "897fd9c2d968b341fcd81ceb34e991b13167e558", version = "0.4.0", default-features = false }
