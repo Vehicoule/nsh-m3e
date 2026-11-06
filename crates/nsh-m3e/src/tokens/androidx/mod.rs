@@ -8,13 +8,23 @@
 //! takes; the generator refuses a value that `f32` cannot hold exactly, except a text unit
 //! (`0.1.sp`), which androidx itself rounds to the nearest `f32`.
 
+pub mod button_large_tokens;
+pub mod button_medium_tokens;
+pub mod button_small_tokens;
+pub mod button_xlarge_tokens;
+pub mod button_xsmall_tokens;
 pub mod color_dark_tokens;
 pub mod color_light_tokens;
+pub mod elevated_button_tokens;
 pub mod elevation_tokens;
 pub mod expressive_motion_tokens;
+pub mod filled_button_tokens;
 pub mod motion_tokens;
+pub mod outlined_button_tokens;
 pub mod palette_tokens;
 pub mod shape_tokens;
 pub mod state_tokens;
+pub mod text_button_tokens;
+pub mod tonal_button_tokens;
 pub mod type_scale_tokens;
 pub mod typeface_tokens;

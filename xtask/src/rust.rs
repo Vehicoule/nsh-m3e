@@ -6,7 +6,7 @@ use std::fmt::Write as _;
 
 use std::collections::BTreeSet;
 
-use crate::kotlin::{FontFamily, Kind, Shape, TokenObject, Value};
+use crate::kotlin::{FontFamily, Kind, Reference, Shape, TokenObject, Value};
 
 /// `rustfmt`'s default `max_width`.
 const MAX_WIDTH: usize = 100;
@@ -80,17 +80,12 @@ pub(crate) fn module(object: &TokenObject, file: &str, doc: &[&str]) -> String {
             ),
             Value::Reference(kind, reference) => (
                 kind_type(*kind),
-                if reference.object == object.name {
-                    screaming_snake(&reference.token)
-                } else {
-                    format!(
-                        "{}::{}",
-                        snake(&reference.object),
-                        screaming_snake(&reference.token)
-                    )
-                },
+                reference_expression(*kind, reference, &object.name),
                 format!(" = `{}.{}`", reference.object, reference.token),
             ),
+            // `gen_tokens` makes no module of a file of keys; a key is written as its class's name, which says what
+            // it is should that ever change.
+            Value::Key(class) => ("&str", format!("{class:?}"), String::new()),
         };
         let _ = writeln!(
             out,
@@ -137,6 +132,32 @@ fn kind_type(kind: Kind) -> &'static str {
         Kind::Color => "Srgb",
         Kind::FontFamily => "GenericFontFamily",
         Kind::FontWeight => "FontWeight",
+        Kind::Length => "Points",
+        Kind::ColorRole => "ColorRole",
+        Kind::ShapeKey => "Shape",
+    }
+}
+
+/// The module a reference's constant is in, when it is another module: a color role is a variant of
+/// `ColorRole`, and a shape key names its shape in `shape_tokens`.
+fn reference_module(kind: Kind, reference: &Reference, object: &str) -> Option<String> {
+    match kind {
+        Kind::ColorRole => None,
+        Kind::ShapeKey => Some("shape_tokens".to_owned()),
+        _ if reference.object == object => None,
+        _ => Some(snake(&reference.object)),
+    }
+}
+
+/// The Rust expression for a reference made in the object named `object`.
+fn reference_expression(kind: Kind, reference: &Reference, object: &str) -> String {
+    if kind == Kind::ColorRole {
+        return format!("ColorRole::{}", reference.token);
+    }
+    let constant = screaming_snake(&reference.token);
+    match reference_module(kind, reference, object) {
+        Some(module) => format!("{module}::{constant}"),
+        None => constant,
     }
 }
 
@@ -145,15 +166,16 @@ const FONT_WEIGHT: &str = "nsh_core::element::FontWeight";
 /// NSH's `Points`.
 const POINTS: &str = "nsh_core::geometry::Points";
 
-/// The `use` paths a module needs, in the order `rustfmt` sorts them: `super::`, then `crate::`, then the external
-/// paths in alphabetical order.
+/// The `use` paths a module needs, in the order `rustfmt` sorts them: `super::`, then `crate::` (`color` before
+/// `tokens`), then the external paths in alphabetical order.
 fn imports(object: &TokenObject) -> Vec<String> {
     let mut types = BTreeSet::new();
     let mut modules = BTreeSet::new();
     let mut external = BTreeSet::new();
+    let mut color_role = false;
     for token in &object.tokens {
         match &token.value {
-            Value::Number(_) => {}
+            Value::Number(_) | Value::Key(_) => {}
             Value::CubicBezier(_) => {
                 types.insert("CubicBezier");
             }
@@ -177,11 +199,19 @@ fn imports(object: &TokenObject) -> Vec<String> {
             }
             Value::Reference(kind, reference) => {
                 match kind {
-                    Kind::Color | Kind::FontFamily => types.insert(kind_type(*kind)),
-                    Kind::FontWeight => external.insert(FONT_WEIGHT),
-                };
-                if reference.object != object.name {
-                    modules.insert(snake(&reference.object));
+                    Kind::Color | Kind::FontFamily | Kind::ShapeKey => {
+                        types.insert(kind_type(*kind));
+                    }
+                    Kind::FontWeight => {
+                        external.insert(FONT_WEIGHT);
+                    }
+                    Kind::Length => {
+                        external.insert(POINTS);
+                    }
+                    Kind::ColorRole => color_role = true,
+                }
+                if let Some(module) = reference_module(*kind, reference, &object.name) {
+                    modules.insert(module);
                 }
             }
         }
@@ -190,6 +220,9 @@ fn imports(object: &TokenObject) -> Vec<String> {
         .into_iter()
         .map(|module| format!("super::{module}"))
         .collect();
+    if color_role {
+        imports.push("crate::color::ColorRole".to_owned());
+    }
     let types: Vec<&str> = types.into_iter().collect();
     match types.as_slice() {
         [] => {}
@@ -674,5 +707,130 @@ mod tests {
         assert_eq!(kind_type(Kind::Color), "Srgb");
         assert_eq!(kind_type(Kind::FontFamily), "GenericFontFamily");
         assert_eq!(kind_type(Kind::FontWeight), "FontWeight");
+        assert_eq!(
+            only(reference(Kind::Length)),
+            ["nsh_core::geometry::Points"]
+        );
+        assert_eq!(
+            only(reference(Kind::ShapeKey)),
+            ["super::shape_tokens", "crate::tokens::Shape"]
+        );
+        assert_eq!(
+            only(reference(Kind::ColorRole)),
+            ["crate::color::ColorRole"]
+        );
+        assert_eq!(kind_type(Kind::Length), "Points");
+        assert_eq!(kind_type(Kind::ColorRole), "ColorRole");
+        assert_eq!(kind_type(Kind::ShapeKey), "Shape");
+        // A key is never generated, and needs no import.
+        assert_eq!(only(Value::Key("ColorToken".into())), Vec::<String>::new());
+    }
+
+    fn named(object: &str, token: &str) -> Reference {
+        Reference {
+            object: object.into(),
+            token: token.into(),
+        }
+    }
+
+    #[test]
+    fn writes_each_reference_where_its_constant_is() {
+        let expression =
+            |kind, object, token| reference_expression(kind, &named(object, token), "ButtonTokens");
+        // A color role is a variant of the scheme's `ColorRole`, named as the key is.
+        assert_eq!(
+            expression(Kind::ColorRole, "ColorSchemeKeyTokens", "OnPrimary"),
+            "ColorRole::OnPrimary"
+        );
+        // A shape key names the shape of the same name in `shape_tokens`.
+        assert_eq!(
+            expression(Kind::ShapeKey, "ShapeKeyTokens", "CornerFull"),
+            "shape_tokens::CORNER_FULL"
+        );
+        // A length in another module, and in this one.
+        assert_eq!(
+            expression(Kind::Length, "ElevationTokens", "Level1"),
+            "elevation_tokens::LEVEL1"
+        );
+        assert_eq!(
+            expression(Kind::Length, "ButtonTokens", "ContainerHeight"),
+            "CONTAINER_HEIGHT"
+        );
+        let module = |kind, object| reference_module(kind, &named(object, "A"), "ButtonTokens");
+        assert_eq!(module(Kind::ColorRole, "ColorSchemeKeyTokens"), None);
+        assert_eq!(
+            module(Kind::ShapeKey, "ShapeKeyTokens").as_deref(),
+            Some("shape_tokens")
+        );
+        assert_eq!(
+            module(Kind::Color, "PaletteTokens").as_deref(),
+            Some("palette_tokens")
+        );
+        assert_eq!(module(Kind::Color, "ButtonTokens"), None);
+    }
+
+    #[test]
+    fn writes_button_tokens_with_the_color_role_import_before_the_token_types() {
+        let token = |name: &str, kind, object: &str, target: &str| Token {
+            name: name.into(),
+            value: Value::Reference(kind, named(object, target)),
+        };
+        let object = sample(vec![
+            token(
+                "ContainerColor",
+                Kind::ColorRole,
+                "ColorSchemeKeyTokens",
+                "Primary",
+            ),
+            token(
+                "ContainerElevation",
+                Kind::Length,
+                "ElevationTokens",
+                "Level0",
+            ),
+            token(
+                "ContainerShapeRound",
+                Kind::ShapeKey,
+                "ShapeKeyTokens",
+                "CornerFull",
+            ),
+            Token {
+                name: "ContainerHeight".into(),
+                value: Value::Dp(40.0),
+            },
+        ]);
+        let out = module(&object, "SampleTokens.kt", &[]);
+        for line in [
+            "/// androidx: `SampleTokens.ContainerColor` = `ColorSchemeKeyTokens.Primary`.
+pub const CONTAINER_COLOR: ColorRole = ColorRole::Primary;",
+            "pub const CONTAINER_ELEVATION: Points = elevation_tokens::LEVEL0;",
+            "pub const CONTAINER_SHAPE_ROUND: Shape = shape_tokens::CORNER_FULL;",
+            "pub const CONTAINER_HEIGHT: Points = Points(40.0);",
+        ] {
+            assert!(out.contains(&format!("\n{line}\n")), "{line}\n{out}");
+        }
+        assert_eq!(
+            imports(&object),
+            [
+                "super::elevation_tokens",
+                "super::shape_tokens",
+                "crate::color::ColorRole",
+                "crate::tokens::Shape",
+                "nsh_core::geometry::Points",
+            ]
+        );
+    }
+
+    #[test]
+    fn writes_a_key_as_the_name_of_its_class() {
+        let object = sample(vec![Token {
+            name: "Primary".into(),
+            value: Value::Key("ColorToken".into()),
+        }]);
+        let out = module(&object, "SampleTokens.kt", &[]);
+        assert!(
+            out.contains("\n/// androidx: `SampleTokens.Primary`.\npub const PRIMARY: &str = \"ColorToken\";\n"),
+            "{out}"
+        );
     }
 }

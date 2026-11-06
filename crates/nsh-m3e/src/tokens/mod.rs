@@ -201,10 +201,13 @@ impl Default for RoundedCorners {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::color::{ColorRole, ColorScheme};
     use androidx::motion_tokens::EASING_EMPHASIZED_ACCELERATE_CUBIC_BEZIER;
     use androidx::{
-        color_dark_tokens, color_light_tokens, elevation_tokens, palette_tokens, shape_tokens,
-        type_scale_tokens, typeface_tokens,
+        button_large_tokens, button_medium_tokens, button_small_tokens, button_xlarge_tokens,
+        button_xsmall_tokens, color_dark_tokens, color_light_tokens, elevated_button_tokens,
+        elevation_tokens, filled_button_tokens, palette_tokens, shape_tokens, type_scale_tokens,
+        typeface_tokens,
     };
     use nsh_core::element::FontWeight;
 
@@ -392,6 +395,75 @@ mod tests {
         assert_eq!(
             type_scale_tokens::DISPLAY_LARGE_FONT,
             typeface_tokens::BRAND
+        );
+    }
+
+    #[test]
+    fn a_button_color_is_a_role_resolved_by_the_scheme() {
+        // androidx: `FilledButtonTokens.ContainerColor` = `ColorSchemeKeyTokens.Primary`, and
+        // `ColorLightTokens.Primary` = `PaletteTokens.Primary40`, `ColorDarkTokens.Primary` = `Primary80`.
+        assert_eq!(filled_button_tokens::CONTAINER_COLOR, ColorRole::Primary);
+        assert_eq!(
+            ColorScheme::BASELINE_LIGHT.get(filled_button_tokens::CONTAINER_COLOR),
+            palette_tokens::PRIMARY40
+        );
+        assert_eq!(
+            ColorScheme::BASELINE_DARK.get(filled_button_tokens::CONTAINER_COLOR),
+            palette_tokens::PRIMARY80
+        );
+        // androidx: `FilledButtonTokens.LabelTextColor` = `ColorSchemeKeyTokens.OnPrimary`: not the container's role.
+        assert_eq!(filled_button_tokens::LABEL_TEXT_COLOR, ColorRole::OnPrimary);
+    }
+
+    #[test]
+    fn a_button_shape_is_the_shape_its_key_names() {
+        // androidx: `ButtonSmallTokens.ContainerShapeRound` = `ShapeKeyTokens.CornerFull`, which is
+        // `ShapeTokens.CornerFull` = `CircleShape`; `PressedContainerShape` = `CornerSmall` = 8.0.dp at every corner.
+        assert_eq!(button_small_tokens::CONTAINER_SHAPE_ROUND, Shape::Circle);
+        assert_eq!(
+            button_small_tokens::PRESSED_CONTAINER_SHAPE,
+            shape_tokens::CORNER_SMALL
+        );
+        assert_eq!(
+            corners(button_small_tokens::PRESSED_CONTAINER_SHAPE),
+            [8.0; 4]
+        );
+    }
+
+    #[test]
+    fn button_sizes_grow_from_extra_small_to_extra_large() {
+        // androidx: `ContainerHeight` of `ButtonXSmallTokens` to `ButtonXLargeTokens`: 32, 40, 56, 96 and 136 dp.
+        let heights = [
+            button_xsmall_tokens::CONTAINER_HEIGHT,
+            button_small_tokens::CONTAINER_HEIGHT,
+            button_medium_tokens::CONTAINER_HEIGHT,
+            button_large_tokens::CONTAINER_HEIGHT,
+            button_xlarge_tokens::CONTAINER_HEIGHT,
+        ]
+        .map(|height| height.0.to_bits());
+        assert_eq!(
+            heights,
+            [32.0_f32, 40.0, 56.0, 96.0, 136.0].map(f32::to_bits)
+        );
+    }
+
+    #[test]
+    fn a_button_elevation_is_an_elevation_level() {
+        // androidx: `ElevatedButtonTokens.ContainerElevation` = `ElevationTokens.Level1` (1.0.dp) and
+        // `HoveredContainerElevation` = `Level2` (3.0.dp): hovering raises the button.
+        assert_eq!(
+            elevated_button_tokens::CONTAINER_ELEVATION.0.to_bits(),
+            1.0_f32.to_bits()
+        );
+        assert_eq!(
+            elevated_button_tokens::HOVERED_CONTAINER_ELEVATION
+                .0
+                .to_bits(),
+            3.0_f32.to_bits()
+        );
+        assert_eq!(
+            elevated_button_tokens::HOVERED_CONTAINER_ELEVATION,
+            elevation_tokens::LEVEL2
         );
     }
 }

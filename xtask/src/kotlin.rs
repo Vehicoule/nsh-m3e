@@ -51,6 +51,9 @@ pub(crate) enum Value {
     FontFamily(FontFamily),
     /// `inline val X: FontWeight` / `get() = FontWeight.Medium`: the weight, from 100 to 900.
     FontWeight(u16),
+    /// `val X = ColorToken(25)` in a file of keys: a key, named by its class (`ColorToken`). Its number is
+    /// androidx's internal id and is not kept.
+    Key(String),
     /// `inline val X: androidx.compose.ui.graphics.Color` / `get() = PaletteTokens.Neutral98`: the value of another
     /// token, of another object or, written `get() = Primary`, of the same one. The getter's type says what kind of
     /// value it is.
@@ -66,6 +69,12 @@ pub(crate) enum Kind {
     FontFamily,
     /// `FontWeight`: a font weight, or a reference to one.
     FontWeight,
+    /// `androidx.compose.ui.unit.Dp`: a length, or a reference to one (`ElevationTokens.Level1`).
+    Length,
+    /// `ColorToken`: a key of `ColorSchemeKeyTokens`, a color role of the scheme.
+    ColorRole,
+    /// `ShapeToken`: a key of `ShapeKeyTokens`, which names the shape of the same name in `ShapeTokens`.
+    ShapeKey,
 }
 
 impl Kind {
@@ -74,7 +83,10 @@ impl Kind {
         match (self, value) {
             (Self::Color, Value::Srgb(_))
             | (Self::FontFamily, Value::FontFamily(_))
-            | (Self::FontWeight, Value::FontWeight(_)) => true,
+            | (Self::FontWeight, Value::FontWeight(_))
+            | (Self::Length, Value::Dp(_)) => true,
+            (Self::ColorRole, Value::Key(class)) => class == "ColorToken",
+            (Self::ShapeKey, Value::Key(class)) => class == "ShapeToken",
             (kind, Value::Reference(other, _)) => kind == *other,
             _ => false,
         }
@@ -87,6 +99,9 @@ impl fmt::Display for Kind {
             Self::Color => "color",
             Self::FontFamily => "font family",
             Self::FontWeight => "font weight",
+            Self::Length => "length",
+            Self::ColorRole => "color role",
+            Self::ShapeKey => "shape key",
         })
     }
 }
@@ -260,6 +275,14 @@ fn header_line(text: &str, object: &mut TokenObject) -> Result<State, ParseError
         return Ok(State::Header);
     }
     let is_comment = text.starts_with("/*") || text.starts_with('*') || text.starts_with("//");
+    // The class of a file of keys: `@JvmInline internal value class ColorToken(val id: Int)`.
+    let is_key_class = text
+        .strip_prefix("@JvmInline internal value class ")
+        .and_then(|rest| rest.strip_suffix("(val id: Int)"))
+        .is_some_and(|class| checked_name(class).is_ok() && class.ends_with("Token"));
+    if is_key_class {
+        return Ok(State::Header);
+    }
     if text.is_empty() || is_comment || text.starts_with("package ") || text.starts_with("import ")
     {
         return Ok(State::Header);
@@ -348,6 +371,9 @@ fn value_expression(expression: &str) -> Result<Value, ParseErrorKind> {
         "CircleShape" => return Ok(Value::Shape(Shape::Circle)),
         _ => {}
     }
+    if let Some(key) = key(expression) {
+        return Ok(key);
+    }
     if let Some(argument) = expression
         .strip_prefix("CornerSize(")
         .and_then(|rest| rest.strip_suffix(')'))
@@ -386,6 +412,17 @@ fn value_expression(expression: &str) -> Result<Value, ParseErrorKind> {
     Ok(Value::Shape(Shape::Rounded(radii)))
 }
 
+/// `ColorToken(25)`, a key of the class `ColorToken`; `None` for any other form.
+fn key(expression: &str) -> Option<Value> {
+    let (class, rest) = expression.split_once('(')?;
+    let id = rest.strip_suffix(')')?;
+    let is_key = class.ends_with("Token")
+        && checked_name(class).is_ok()
+        && !id.is_empty()
+        && id.chars().all(|c| c.is_ascii_digit());
+    is_key.then(|| Value::Key(class.to_owned()))
+}
+
 /// `4.0.dp`, as a number of points; `None` when the expression is not a length in dp.
 fn dp(expression: &str) -> Option<Result<f32, ParseErrorKind>> {
     expression.strip_suffix(".dp").map(number)
@@ -406,7 +443,26 @@ fn getter_line(text: &str, name: String, ty: &str, object: &str) -> Result<Token
                 reference(expression, object).ok_or_else(unsupported)??,
             ),
         },
-        "androidx.compose.ui.unit.Dp" => Value::Dp(dp(expression).ok_or_else(unsupported)??),
+        "androidx.compose.ui.unit.Dp" => match dp(expression) {
+            Some(length) => Value::Dp(length?),
+            // A number with no unit is not a length, and not a reference either.
+            None if expression.starts_with(|c: char| c.is_ascii_digit() || c == '-') => {
+                return Err(unsupported());
+            }
+            None => Value::Reference(
+                Kind::Length,
+                reference(expression, object).ok_or_else(unsupported)??,
+            ),
+        },
+        // A key always names its key object: a bare name would be a token of this object, never a key.
+        "ColorToken" if expression.starts_with("ColorSchemeKeyTokens.") => Value::Reference(
+            Kind::ColorRole,
+            reference(expression, object).ok_or_else(unsupported)??,
+        ),
+        "ShapeToken" if expression.starts_with("ShapeKeyTokens.") => Value::Reference(
+            Kind::ShapeKey,
+            reference(expression, object).ok_or_else(unsupported)??,
+        ),
         "androidx.compose.ui.unit.TextUnit" => {
             let literal = expression.strip_suffix(".sp").ok_or_else(unsupported)?;
             Value::Sp(sp(literal)?)
@@ -744,9 +800,9 @@ mod tests {
         );
         assert_eq!(
             error_kind(
-                "    inline val C: ColorToken\n        get() = ColorSchemeKeyTokens.Primary\n"
+                "    inline val C: TypographyToken\n        get() = TypographyKeyTokens.LabelLarge\n"
             ),
-            ParseErrorKind::Unsupported("get() = ColorSchemeKeyTokens.Primary".into())
+            ParseErrorKind::Unsupported("get() = TypographyKeyTokens.LabelLarge".into())
         );
     }
 
@@ -776,8 +832,8 @@ mod tests {
             ParseErrorKind::Unsupported("get() = 3.0.sp".into())
         );
         assert_eq!(
-            error("ElevationTokens.Level0"),
-            ParseErrorKind::Unsupported("get() = ElevationTokens.Level0".into())
+            error("ElevationTokens.Level0.copy()"),
+            ParseErrorKind::Unsupported("get() = ElevationTokens.Level0.copy()".into())
         );
         assert_eq!(error("3.dp"), ParseErrorKind::BadNumber("3".into()));
         assert_eq!(error("0.1.dp"), ParseErrorKind::Inexact("0.1".into()));
@@ -1056,6 +1112,137 @@ mod tests {
     }
 
     #[test]
+    fn reads_a_reference_to_a_length() {
+        assert_eq!(
+            only_value(&getter(
+                "androidx.compose.ui.unit.Dp",
+                "ElevationTokens.Level1"
+            )),
+            Value::Reference(
+                Kind::Length,
+                Reference {
+                    object: "ElevationTokens".into(),
+                    token: "Level1".into(),
+                },
+            )
+        );
+        // A negative number with no unit is neither a length nor a reference.
+        assert_eq!(
+            error_kind(&getter("androidx.compose.ui.unit.Dp", "-1.0")),
+            ParseErrorKind::Unsupported("get() = -1.0".into())
+        );
+    }
+
+    fn key_file(class: &str, body: &str) -> String {
+        format!(
+            "{HEADER}@JvmInline internal value class {class}(val id: Int)\n\ninternal object SampleKeyTokens {{\n{body}}}\n"
+        )
+    }
+
+    #[test]
+    fn reads_a_file_of_keys_without_their_ids() {
+        let object = parse(&key_file(
+            "ColorToken",
+            "    val Background = ColorToken(0)\n    val Primary = ColorToken(25)\n",
+        ))
+        .unwrap();
+        assert_eq!(object.name, "SampleKeyTokens");
+        assert_eq!(
+            object.tokens,
+            vec![
+                Token {
+                    name: "Background".into(),
+                    value: Value::Key("ColorToken".into())
+                },
+                Token {
+                    name: "Primary".into(),
+                    value: Value::Key("ColorToken".into())
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_a_key_class_or_a_key_of_another_form() {
+        let class_error =
+            |class: &str| parse(&key_file(class, "    val A = ColorToken(0)\n")).unwrap_err();
+        // A class that is not a key (no `Token` suffix) or not a plain name is a form these files do not use.
+        for class in ["Color", "colorToken", "Color_Token"] {
+            assert_eq!(
+                class_error(class).kind,
+                ParseErrorKind::Unsupported(format!(
+                    "@JvmInline internal value class {class}(val id: Int)"
+                )),
+                "{class}"
+            );
+        }
+        assert_eq!(
+            parse(&format!(
+                "{HEADER}@JvmInline internal value class ColorToken(val id: Long)\n\ninternal object A {{\n}}\n"
+            ))
+            .unwrap_err()
+            .kind,
+            ParseErrorKind::Unsupported(
+                "@JvmInline internal value class ColorToken(val id: Long)".into()
+            )
+        );
+        for expression in [
+            "ColorToken()",
+            "ColorToken(a)",
+            "ColorToken(-1)",
+            "ColorToken(1.0)",
+            "ColorToken(1",
+            "Color(1)",
+            "colorToken(1)",
+        ] {
+            assert_eq!(
+                error_kind(&format!("    val A = {expression}\n")),
+                ParseErrorKind::Unsupported(format!("val A = {expression}")),
+                "{expression}"
+            );
+        }
+    }
+
+    #[test]
+    fn reads_a_color_role_or_a_shape_key_named_by_its_key_object() {
+        let reference = |kind, object: &str, token: &str| {
+            Value::Reference(
+                kind,
+                Reference {
+                    object: object.into(),
+                    token: token.into(),
+                },
+            )
+        };
+        assert_eq!(
+            only_value(&getter("ColorToken", "ColorSchemeKeyTokens.Primary")),
+            reference(Kind::ColorRole, "ColorSchemeKeyTokens", "Primary")
+        );
+        assert_eq!(
+            only_value(&getter("ShapeToken", "ShapeKeyTokens.CornerFull")),
+            reference(Kind::ShapeKey, "ShapeKeyTokens", "CornerFull")
+        );
+        // A key of the other key object, or a bare name, is not a form these files use.
+        for (ty, expression) in [
+            ("ColorToken", "ShapeKeyTokens.CornerFull"),
+            ("ShapeToken", "ColorSchemeKeyTokens.Primary"),
+            ("ColorToken", "Primary"),
+            ("ShapeToken", "CornerFull"),
+        ] {
+            assert_eq!(
+                error_kind(&getter(ty, expression)),
+                ParseErrorKind::Unsupported(format!("get() = {expression}")),
+                "{ty} = {expression}"
+            );
+        }
+        // A key object with a bad token name reports the name.
+        assert_eq!(
+            error_kind(&getter("ColorToken", "ColorSchemeKeyTokens.primary")),
+            ParseErrorKind::BadName("primary".into())
+        );
+    }
+
+    #[test]
     fn a_reference_holds_only_values_of_its_kind() {
         let reference = |kind| {
             Value::Reference(
@@ -1070,8 +1257,18 @@ mod tests {
             Value::Srgb([0, 0, 0]),
             Value::FontFamily(FontFamily::SansSerif),
             Value::FontWeight(400),
+            Value::Dp(1.0),
+            Value::Key("ColorToken".into()),
+            Value::Key("ShapeToken".into()),
         ];
-        let kinds = [Kind::Color, Kind::FontFamily, Kind::FontWeight];
+        let kinds = [
+            Kind::Color,
+            Kind::FontFamily,
+            Kind::FontWeight,
+            Kind::Length,
+            Kind::ColorRole,
+            Kind::ShapeKey,
+        ];
         for (index, kind) in kinds.into_iter().enumerate() {
             for (other, value) in values.iter().enumerate() {
                 assert_eq!(kind.holds(value), index == other, "{kind} holds {value:?}");
@@ -1085,10 +1282,18 @@ mod tests {
             }
             assert!(!kind.holds(&Value::Number(1.0)));
             assert!(!kind.holds(&Value::Sp(1.0)));
+            assert!(!kind.holds(&Value::Key("TypographyToken".into())));
         }
         assert_eq!(
             kinds.map(|kind| kind.to_string()),
-            ["color", "font family", "font weight"]
+            [
+                "color",
+                "font family",
+                "font weight",
+                "length",
+                "color role",
+                "shape key"
+            ]
         );
     }
 
