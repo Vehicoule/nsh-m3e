@@ -13,7 +13,7 @@ Only the user moves an ADR from Proposed to Accepted.
 | [0003](0003-tokens-from-androidx.md) | M3 values come from the androidx tokens, generated into Rust | Accepted |
 | [0004](0004-spring-damping-conversion.md) | Spring damping ratio converted to NSH's coefficient | Accepted |
 | [0005](0005-verification.md) | How correctness is shown: property tests, mutation testing, no Lean | Accepted |
-| [0006](0006-pinned-versions-and-dependencies.md) | Pinned versions and the dependency policy | Accepted |
+| [0006](0006-pinned-versions-and-dependencies.md) | Pinned versions and the dependency policy (bump merge amended by 0014) | Accepted |
 | [0007](0007-license.md) | The library is licensed under MPL-2.0 | Accepted |
 | [0008](0008-color-scheme-in-nsh-tokens.md) | The M3 color scheme lives in NSH's tokens as `md-sys-color-*` | Accepted |
 | [0009](0009-depend-on-nsh-with-targeted-deny-exceptions.md) | Depend on NSH, with targeted `cargo deny` exceptions | Accepted |
@@ -21,3 +21,4 @@ Only the user moves an ADR from Proposed to Accepted.
 | [0011](0011-morph-shapes-with-a-drawn-container.md) | Shapes morph on press in a drawn container whose corners follow the M3E spring | Accepted |
 | [0012](0012-follow-androidx-components-where-tokens-are-wrong.md) | Where androidx's component and its token files disagree, follow the component | Accepted |
 | [0013](0013-visual-checks-on-nsh-hosts.md) | Visual checks on NSH's real hosts, with test scripts in TypeScript | Accepted |
+| [0014](0014-merge-nsh-bumps-on-green.md) | The NSH bump pull request merges itself when every check is green | Accepted |

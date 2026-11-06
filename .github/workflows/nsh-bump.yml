@@ -1,6 +1,7 @@
 name: NSH bump
 
-# Moves the NSH pin to the newest commit of NSH's main and opens (or updates) one pull request (ADR 0006).
+# Moves the NSH pin to the newest commit of NSH's main and opens (or updates) one pull request (ADR 0006), which
+# `nsh-bump-merge.yml` merges once every check is green (ADR 0014).
 on:
   schedule:
     - cron: "0 5 * * *"
@@ -70,7 +71,7 @@ jobs:
           body="$(printf '%s\n\n%s\n\n%s\n' \
             "Moves the NSH pin from \`${OLD:0:12}\` to \`${NEW:0:12}\` (newest commit of NSH's \`main\`) and syncs the NSH skills from it (ADR 0006)." \
             "NSH changes: https://github.com/longbridge/nsh/compare/${OLD}...${NEW}" \
-            "Opened by \`.github/workflows/nsh-bump.yml\`. Merge when CI is green; if it is red, the fix goes in this pull request.")"
+            "Opened by \`.github/workflows/nsh-bump.yml\`, merged by \`.github/workflows/nsh-bump-merge.yml\` once every check is green (ADR 0014); if one is red, the fix goes in this pull request.")"
           if [ -n "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')" ]; then
             gh pr edit "$BRANCH" --title "deps: Update NSH to ${NEW:0:12}" --body "$body"
           else
