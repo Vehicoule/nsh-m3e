@@ -20,3 +20,4 @@ Only the user moves an ADR from Proposed to Accepted.
 | [0010](0010-measure-animations-in-ci.md) | Animations measured in CI from their operations, replayed in NSH's graph at 120 Hz | Accepted |
 | [0011](0011-morph-shapes-with-a-drawn-container.md) | Shapes morph on press in a drawn container whose corners follow the M3E spring | Accepted |
 | [0012](0012-follow-androidx-components-where-tokens-are-wrong.md) | Where androidx's component and its token files disagree, follow the component | Accepted |
+| [0013](0013-visual-checks-on-nsh-hosts.md) | Visual checks on NSH's real hosts, with test scripts in TypeScript | Proposed |
