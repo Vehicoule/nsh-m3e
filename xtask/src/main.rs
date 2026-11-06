@@ -25,6 +25,41 @@ struct Source {
 
 const SOURCES: &[Source] = &[
     Source {
+        file: "ButtonLargeTokens.kt",
+        doc: &[
+            "The large button's size: its container's height and shapes (round, square, pressed and selected), its \
+             leading and trailing space, its icon's size and the space between icon and label.",
+        ],
+    },
+    Source {
+        file: "ButtonMediumTokens.kt",
+        doc: &[
+            "The medium button's size: its container's height and shapes (round, square, pressed and selected), its \
+             leading and trailing space, its icon's size and the space between icon and label.",
+        ],
+    },
+    Source {
+        file: "ButtonSmallTokens.kt",
+        doc: &[
+            "The small button's size: its container's height and shapes (round, square, pressed and selected), its \
+             leading and trailing space, its icon's size and the space between icon and label.",
+        ],
+    },
+    Source {
+        file: "ButtonXLargeTokens.kt",
+        doc: &[
+            "The extra large button's size: its container's height and shapes (round, square, pressed and selected), its \
+             leading and trailing space, its icon's size and the space between icon and label.",
+        ],
+    },
+    Source {
+        file: "ButtonXSmallTokens.kt",
+        doc: &[
+            "The extra small button's size: its container's height and shapes (round, square, pressed and selected), its \
+             leading and trailing space, its icon's size and the space between icon and label.",
+        ],
+    },
+    Source {
         file: "ColorDarkTokens.kt",
         doc: &[
             "The baseline dark color scheme: each color role as a tone of [`super::palette_tokens`].",
@@ -34,6 +69,13 @@ const SOURCES: &[Source] = &[
         file: "ColorLightTokens.kt",
         doc: &[
             "The baseline light color scheme: each color role as a tone of [`super::palette_tokens`].",
+        ],
+    },
+    Source {
+        file: "ElevatedButtonTokens.kt",
+        doc: &[
+            "The elevated button's colors and elevation in each state. Colors are roles of the scheme \
+             ([`crate::color::ColorRole`]), resolved against the light or dark [`crate::color::ColorScheme`].",
         ],
     },
     Source {
@@ -52,9 +94,23 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
+        file: "FilledButtonTokens.kt",
+        doc: &[
+            "The filled button's colors and elevation in each state. Colors are roles of the scheme \
+             ([`crate::color::ColorRole`]), resolved against the light or dark [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
         file: "MotionTokens.kt",
         doc: &[
             "Durations, in milliseconds (the unit of NSH's `Timing::duration_ms`), and easing curves.",
+        ],
+    },
+    Source {
+        file: "OutlinedButtonTokens.kt",
+        doc: &[
+            "The outlined button's colors and elevation in each state. Colors are roles of the scheme \
+             ([`crate::color::ColorRole`]), resolved against the light or dark [`crate::color::ColorScheme`].",
         ],
     },
     Source {
@@ -83,6 +139,20 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
+        file: "TextButtonTokens.kt",
+        doc: &[
+            "The text button's colors and elevation in each state. Colors are roles of the scheme \
+             ([`crate::color::ColorRole`]), resolved against the light or dark [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
+        file: "TonalButtonTokens.kt",
+        doc: &[
+            "The tonal button's colors and elevation in each state. Colors are roles of the scheme \
+             ([`crate::color::ColorRole`]), resolved against the light or dark [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
         file: "TypeScaleTokens.kt",
         doc: &[
             "The type scale: for each style (display, headline, title, body and label, each large, medium and \
@@ -98,6 +168,10 @@ const SOURCES: &[Source] = &[
         ],
     },
 ];
+
+/// Vendored files of keys (`val Primary = ColorToken(25)`) that component tokens name, read to check those names
+/// but not turned into modules: the library has its own type for each kind of key.
+const KEY_SOURCES: &[&str] = &["ColorSchemeKeyTokens.kt", "ShapeKeyTokens.kt"];
 
 const INDEX_DOC: &[&str] = &[
     "The Material 3 tokens, generated from the androidx Kotlin files vendored in \
@@ -210,24 +284,34 @@ fn mode(args: &[String]) -> Result<Mode, Error> {
     }
 }
 
+/// Reads and parses one vendored file, whose object must have the file's name.
+fn read_object(root: &Path, file: &str) -> Result<(PathBuf, kotlin::TokenObject), Error> {
+    let path = root.join(REFERENCE_DIR).join(file);
+    let text = read(&path)?;
+    let object = kotlin::parse(&text).map_err(|source| Error::Parse {
+        path: path.clone(),
+        source,
+    })?;
+    if Some(object.name.as_str()) != file.strip_suffix(".kt") {
+        return Err(Error::WrongObject {
+            path,
+            found: object.name,
+        });
+    }
+    Ok((path, object))
+}
+
 /// Generates every module in memory, then writes or compares them all, so a failure leaves no half-written state.
 fn gen_tokens(root: &Path, mode: Mode) -> Result<(), Error> {
     let output_dir = root.join(OUTPUT_DIR);
-    let mut objects = Vec::with_capacity(SOURCES.len());
+    let mut objects = Vec::with_capacity(SOURCES.len() + KEY_SOURCES.len());
     for source in SOURCES {
-        let path = root.join(REFERENCE_DIR).join(source.file);
-        let text = read(&path)?;
-        let object = kotlin::parse(&text).map_err(|source| Error::Parse {
-            path: path.clone(),
-            source,
-        })?;
-        if Some(object.name.as_str()) != source.file.strip_suffix(".kt") {
-            return Err(Error::WrongObject {
-                path,
-                found: object.name,
-            });
-        }
-        objects.push((path, object));
+        objects.push(read_object(root, source.file)?);
+    }
+    // The key files come last: references are checked against them, and the zip below, which stops with
+    // `SOURCES`, never makes a module of them.
+    for file in KEY_SOURCES {
+        objects.push(read_object(root, file)?);
     }
     check_references(&objects)?;
     let mut files = Vec::with_capacity(SOURCES.len() + 1);
@@ -304,7 +388,22 @@ fn check_references(objects: &[(PathBuf, kotlin::TokenObject)]) -> Result<(), Er
                         .iter()
                         .find(|candidate| candidate.name == reference.token)
                 });
-            if !target.is_some_and(|target| kind.holds(&target.value)) {
+            // A shape key names the shape of the same name in `ShapeTokens`, which must exist too.
+            let shape = (*kind == kotlin::Kind::ShapeKey).then(|| {
+                objects
+                    .iter()
+                    .find(|(_, other)| other.name == "ShapeTokens")
+                    .and_then(|(_, other)| {
+                        other
+                            .tokens
+                            .iter()
+                            .find(|candidate| candidate.name == reference.token)
+                    })
+            });
+            let shape_found = shape.is_none_or(|shape| {
+                shape.is_some_and(|shape| matches!(shape.value, kotlin::Value::Shape(_)))
+            });
+            if !shape_found || !target.is_some_and(|target| kind.holds(&target.value)) {
                 return Err(Error::BadReference {
                     path: path.clone(),
                     token: token.name.clone(),
@@ -378,10 +477,14 @@ mod tests {
             let _ = fs::remove_dir_all(&dir);
             let real_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
             fs::create_dir_all(dir.join(REFERENCE_DIR)).unwrap();
-            for source in SOURCES {
+            let files = SOURCES
+                .iter()
+                .map(|source| source.file)
+                .chain(KEY_SOURCES.iter().copied());
+            for file in files {
                 fs::copy(
-                    real_root.join(REFERENCE_DIR).join(source.file),
-                    dir.join(REFERENCE_DIR).join(source.file),
+                    real_root.join(REFERENCE_DIR).join(file),
+                    dir.join(REFERENCE_DIR).join(file),
                 )
                 .unwrap();
             }
@@ -617,6 +720,144 @@ mod tests {
         );
     }
 
+    const COLOR_KEYS: &str = "@JvmInline internal value class ColorToken(val id: Int)\ninternal object ColorSchemeKeyTokens {\n    val Primary = ColorToken(25)\n}\n";
+    const SHAPE_KEYS: &str = "@JvmInline internal value class ShapeToken(val id: Int)\ninternal object ShapeKeyTokens {\n    val CornerFull = ShapeToken(5)\n    val CornerSmall = ShapeToken(12)\n}\n";
+
+    fn button(ty: &str, target: &str) -> (PathBuf, kotlin::TokenObject) {
+        object(&format!(
+            "internal object ButtonTokens {{\n    inline val X: {ty}\n        get() = {target}\n}}\n"
+        ))
+    }
+
+    fn bad_kind(objects: &[(PathBuf, kotlin::TokenObject)]) -> kotlin::Kind {
+        match check_references(objects) {
+            Err(Error::BadReference { token, kind, .. }) => {
+                assert_eq!(token, "X");
+                kind
+            }
+            other => panic!("expected BadReference, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_color_role_must_name_a_key_of_the_color_scheme() {
+        let role = |target| button("ColorToken", target);
+        check_references(&[object(COLOR_KEYS), role("ColorSchemeKeyTokens.Primary")]).unwrap();
+        // A key the file does not have, or no file of keys at all.
+        assert_eq!(
+            bad_kind(&[object(COLOR_KEYS), role("ColorSchemeKeyTokens.Tertiary")]),
+            kotlin::Kind::ColorRole
+        );
+        assert_eq!(
+            bad_kind(&[role("ColorSchemeKeyTokens.Primary")]),
+            kotlin::Kind::ColorRole
+        );
+        // A key of another class under the same object name is not a color role.
+        let shape_keys_named_as_colors =
+            object(&SHAPE_KEYS.replace("ShapeKeyTokens", "ColorSchemeKeyTokens"));
+        assert_eq!(
+            bad_kind(&[
+                shape_keys_named_as_colors,
+                role("ColorSchemeKeyTokens.CornerFull")
+            ]),
+            kotlin::Kind::ColorRole
+        );
+    }
+
+    #[test]
+    fn a_shape_key_must_name_a_key_and_a_shape_of_the_same_name() {
+        let shapes = |body: &str| object(&format!("internal object ShapeTokens {{\n{body}}}\n"));
+        let key = |target| button("ShapeToken", target);
+        let full = "    val CornerFull = CircleShape\n";
+        check_references(&[
+            shapes(full),
+            object(SHAPE_KEYS),
+            key("ShapeKeyTokens.CornerFull"),
+        ])
+        .unwrap();
+        // A shape with no key, a key with no shape, a key whose namesake is a corner size, not a shape.
+        assert_eq!(
+            bad_kind(&[
+                shapes(full),
+                object(SHAPE_KEYS),
+                key("ShapeKeyTokens.CornerLarge")
+            ]),
+            kotlin::Kind::ShapeKey
+        );
+        assert_eq!(
+            bad_kind(&[
+                shapes(full),
+                object(SHAPE_KEYS),
+                key("ShapeKeyTokens.CornerSmall")
+            ]),
+            kotlin::Kind::ShapeKey
+        );
+        assert_eq!(
+            bad_kind(&[
+                shapes("    val CornerFull = CornerSize(4.0.dp)\n"),
+                object(SHAPE_KEYS),
+                key("ShapeKeyTokens.CornerFull"),
+            ]),
+            kotlin::Kind::ShapeKey
+        );
+        assert_eq!(
+            bad_kind(&[object(SHAPE_KEYS), key("ShapeKeyTokens.CornerFull")]),
+            kotlin::Kind::ShapeKey
+        );
+    }
+
+    #[test]
+    fn a_length_must_name_a_length() {
+        let elevation = || {
+            object(
+                "internal object ElevationTokens {\n    inline val Level1: androidx.compose.ui.unit.Dp\n        get() = 1.0.dp\n    const val Opacity = 1.0\n}\n",
+            )
+        };
+        let length = |target| button("androidx.compose.ui.unit.Dp", target);
+        check_references(&[elevation(), length("ElevationTokens.Level1")]).unwrap();
+        assert_eq!(
+            bad_kind(&[elevation(), length("ElevationTokens.Opacity")]),
+            kotlin::Kind::Length
+        );
+    }
+
+    #[test]
+    fn a_file_of_keys_is_checked_but_never_generated() {
+        let scratch = Scratch::new("keys");
+        let root = scratch.0.as_path();
+        let keys = root.join(REFERENCE_DIR).join("ShapeKeyTokens.kt");
+        let text = fs::read_to_string(&keys).unwrap();
+
+        // A key a button names is gone: the generation fails before writing anything.
+        fs::write(&keys, text.replace("val CornerFull = ", "val CornerFul = ")).unwrap();
+        assert!(matches!(
+            gen_tokens(root, Mode::Write),
+            Err(Error::BadReference {
+                kind: kotlin::Kind::ShapeKey,
+                ..
+            })
+        ));
+        assert!(!root.join(OUTPUT_DIR).exists());
+
+        // A file of keys that defines another object is refused like any source.
+        fs::write(
+            &keys,
+            text.replace("object ShapeKeyTokens", "object OtherKeyTokens"),
+        )
+        .unwrap();
+        assert!(matches!(
+            gen_tokens(root, Mode::Write),
+            Err(Error::WrongObject { found, .. }) if found == "OtherKeyTokens"
+        ));
+
+        fs::write(&keys, &text).unwrap();
+        gen_tokens(root, Mode::Write).unwrap();
+        for file in KEY_SOURCES {
+            let module = format!("{}.rs", rust::snake(file.strip_suffix(".kt").unwrap()));
+            assert!(!root.join(OUTPUT_DIR).join(module).exists(), "{file}");
+        }
+    }
+
     #[test]
     fn a_bad_reference_fails_the_generation_before_anything_is_written() {
         let scratch = Scratch::new("reference");
@@ -685,6 +926,19 @@ mod tests {
             let object = kotlin::parse(&text).unwrap();
             assert_eq!(Some(object.name.as_str()), source.file.strip_suffix(".kt"));
             assert!(!object.tokens.is_empty(), "{}", source.file);
+        }
+        for file in KEY_SOURCES {
+            let text = read(&root.join(REFERENCE_DIR).join(file)).unwrap();
+            let object = kotlin::parse(&text).unwrap();
+            assert_eq!(Some(object.name.as_str()), file.strip_suffix(".kt"));
+            assert!(!object.tokens.is_empty(), "{file}");
+            assert!(
+                object
+                    .tokens
+                    .iter()
+                    .all(|token| matches!(token.value, kotlin::Value::Key(_))),
+                "{file}"
+            );
         }
     }
 }
