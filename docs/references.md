@@ -7,7 +7,7 @@ site may describe a newer version than the one this repository builds against.
 
 | What | Where | Pinned |
 |---|---|---|
-| Source | https://github.com/longbridge/nsh, branch `main` | `adc46050b5125833a32482f0df1c1fd3d138c471`, the `rev` in the root `Cargo.toml`, bumped daily ([ADR 0006](adr/0006-pinned-versions-and-dependencies.md)) |
+| Source | https://github.com/longbridge/nsh, branch `main` | `897fd9c2d968b341fcd81ceb34e991b13167e558`, the `rev` in the root `Cargo.toml`, bumped daily ([ADR 0006](adr/0006-pinned-versions-and-dependencies.md)) |
 | Coding and Design Guides, mode pages, recipes | [`.claude/skills/nsh/`](../.claude/skills/nsh/), [`.claude/skills/nsh-design-guides/`](../.claude/skills/nsh-design-guides/) | same revision |
 | Docs site (newest release, may be ahead) | https://nsh.dev, index for agents: https://nsh.dev/llms.txt | not pinned |
 | Animation and `Spring` | https://nsh.dev/docs/animation.md, `crates/nsh-core/src/element/animated.rs` | same revision |
