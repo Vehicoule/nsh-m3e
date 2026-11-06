@@ -6,6 +6,19 @@ all-features = true
 [advisories]
 # Any known vulnerability or unmaintained crate fails the check.
 yanked = "deny"
+# Exceptions for NSH's own dependencies, one advisory each, decided by the user (ADR 0009). Each names the code path
+# and why this library does not reach it. When NSH no longer pulls the crate in, `cargo deny` reports the ignore as
+# unused: remove it then.
+ignore = [
+    # `zip` 8 through NSH's `nsh-updater`, which extracts downloaded update archives (`install.rs`). The fix is in
+    # zip 9; NSH's `main` still requires `zip = "8"`. This library never installs updates.
+    { id = "RUSTSEC-2026-0367", reason = "zip 8 via nsh-updater's update extraction, unused by this library (ADR 0009)" },
+    { id = "RUSTSEC-2026-0368", reason = "zip 8 via nsh-updater's update extraction, unused by this library (ADR 0009)" },
+    { id = "RUSTSEC-2026-0369", reason = "zip 8 via nsh-updater's update extraction, unused by this library (ADR 0009)" },
+    { id = "RUSTSEC-2026-0429", reason = "zip 8 via nsh-updater's update extraction, unused by this library (ADR 0009)" },
+    # `ttf-parser` is unmaintained, with no known vulnerability; NSH's `nsh-macros` reads fonts with it at build time.
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser, unmaintained, used by NSH's macros at build time (ADR 0009)" },
+]
 
 [licenses]
 # Licenses compatible with distributing the app under GPL-3.0.
@@ -21,6 +34,11 @@ allow = [
     "Zlib",
 ]
 confidence-threshold = 0.93
+# Mozilla's root certificates, which NSH's TLS (`rustls`, `tokio-tungstenite`) trusts, are data under the Community
+# Data License Agreement, a permissive license with no copyleft. Allowed for this crate only (ADR 0009).
+exceptions = [
+    { crate = "webpki-roots", allow = ["CDLA-Permissive-2.0"] },
+]
 
 [bans]
 multiple-versions = "warn"

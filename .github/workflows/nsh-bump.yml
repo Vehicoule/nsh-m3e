@@ -42,9 +42,9 @@ jobs:
       - name: Pin the newest NSH commit and sync its skills
         id: sync
         run: |
-          old="$(sed -n 's/^nsh-core = { git = "https:\/\/github\.com\/longbridge\/nsh", rev = "\([0-9a-f]\{40\}\)" }$/\1/p' Cargo.toml)"
+          old="$(sed -n 's/^nsh-core = { git = "https:\/\/github\.com\/longbridge\/nsh", rev = "\([0-9a-f]\{40\}\)", version = "[^"]*" }$/\1/p' Cargo.toml)"
           scripts/sync-nsh.sh update
-          new="$(sed -n 's/^nsh-core = { git = "https:\/\/github\.com\/longbridge\/nsh", rev = "\([0-9a-f]\{40\}\)" }$/\1/p' Cargo.toml)"
+          new="$(sed -n 's/^nsh-core = { git = "https:\/\/github\.com\/longbridge\/nsh", rev = "\([0-9a-f]\{40\}\)", version = "[^"]*" }$/\1/p' Cargo.toml)"
           echo "old=$old" >> "$GITHUB_OUTPUT"
           echo "new=$new" >> "$GITHUB_OUTPUT"
           if git diff --quiet && [ -z "$(git status --porcelain)" ]; then

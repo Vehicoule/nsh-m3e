@@ -13,7 +13,17 @@ root="$(git rev-parse --show-toplevel)"
 cd "$root"
 
 pinned_rev() {
-    sed -n 's/^nsh-core = { git = "https:\/\/github\.com\/longbridge\/nsh", rev = "\([0-9a-f]\{40\}\)" }$/\1/p' Cargo.toml
+    sed -n 's/^nsh-core = { git = "https:\/\/github\.com\/longbridge\/nsh", rev = "\([0-9a-f]\{40\}\)", version = "[^"]*" }$/\1/p' Cargo.toml
+}
+
+# The NSH version Cargo.toml declares beside the rev (ADR 0009).
+pinned_version() {
+    sed -n 's/^nsh-core = { git = "[^"]*", rev = "[0-9a-f]\{40\}", version = "\([^"]*\)" }$/\1/p' Cargo.toml
+}
+
+# NSH's own version at the fetched commit: its workspace package version.
+nsh_version() {
+    sed -n '/^\[workspace\.package\]$/,/^\[/s/^version = "\([^"]*\)"$/\1/p' "$work/Cargo.toml" | head -n 1
 }
 
 current="$(pinned_rev)"
@@ -53,8 +63,18 @@ for skill in "${skills[@]}"; do
     cp "$work/LICENSE-APACHE" "$expected/$skill/LICENSE-APACHE"
 done
 
+version="$(nsh_version)"
+if [[ -z "$version" ]]; then
+    echo "error: no workspace version in NSH's Cargo.toml at $rev" >&2
+    exit 1
+fi
+
 if [[ "$mode" == "check" ]]; then
     status=0
+    if [[ "$(pinned_version)" != "$version" ]]; then
+        echo "error: Cargo.toml declares NSH $(pinned_version), but NSH $rev is $version; run scripts/sync-nsh.sh update $rev" >&2
+        status=1
+    fi
     for skill in "${skills[@]}"; do
         if ! diff -r "$expected/$skill" ".claude/skills/$skill" >/dev/null; then
             echo "error: .claude/skills/$skill differs from NSH $rev; run scripts/sync-nsh.sh update $rev" >&2
@@ -76,6 +96,12 @@ if [[ "$rev" != "$current" ]]; then
         while IFS= read -r file; do
             sed -i.bak "s/$current/$rev/g" "$file" && rm -f "$file.bak"
         done
+fi
+old_version="$(pinned_version)"
+if [[ "$version" != "$old_version" ]]; then
+    sed -i.bak "s/rev = \"$rev\", version = \"$old_version\"/rev = \"$rev\", version = \"$version\"/" Cargo.toml && rm -f Cargo.toml.bak
+fi
+if [[ "$rev" != "$current" || "$version" != "$old_version" ]]; then
     # Resolves the new rev into Cargo.lock without updating anything else.
     cargo metadata --format-version 1 >/dev/null
 fi
