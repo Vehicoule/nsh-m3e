@@ -1,6 +1,6 @@
 # 0013. Take the visual checks on NSH's real hosts, with test scripts in TypeScript
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-06
 - Deciders: the user
 
@@ -59,11 +59,11 @@ All facts below are at NSH's pinned revision `897fd9c2d968`.
 
 ## Decision
 
-Recommended: option 1. It is what NSH's authors do for their own Rust components, and the only one that shows the
-native views the app ships on. The library and the app stay Rust; only test scripts run by the `nsh` CLI are
+Option 1, chosen by the user on 2026-11-06. It is what NSH's authors do for their own Rust components, and the only
+one that shows the native views the app ships on. The library and the app stay Rust; only test scripts run by the `nsh` CLI are
 TypeScript.
 
-Which hosts run in CI, recommended:
+Which hosts run in CI:
 
 - on each pull request touching `crates/`: Linux (GTK under `xvfb-run`) and the web (headless Chromium), which NSH's
   own CI runs on the same runners;
