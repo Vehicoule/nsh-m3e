@@ -16,12 +16,12 @@ publish = false
 # NSH follows its `main` branch, pinned to one commit and bumped daily by
 # `.github/workflows/nsh-bump.yml` (ADR 0006). Its crates always share the same `rev`, and `version` is NSH's version
 # at that `rev`, so `cargo deny` does not take them for wildcards (ADR 0009); `scripts/sync-nsh.sh` keeps both.
-nsh-core = { git = "https://github.com/longbridge/nsh", rev = "897fd9c2d968b341fcd81ceb34e991b13167e558", version = "0.4.0" }
-nsh-base = { git = "https://github.com/longbridge/nsh", rev = "897fd9c2d968b341fcd81ceb34e991b13167e558", version = "0.4.0", default-features = false }
+nsh-core = { git = "https://github.com/longbridge/nsh", rev = "7571948ee4ad05fbc0b08d774e6afc63e039773d", version = "0.4.0" }
+nsh-base = { git = "https://github.com/longbridge/nsh", rev = "7571948ee4ad05fbc0b08d774e6afc63e039773d", version = "0.4.0", default-features = false }
 # NSH's headless engine and test driver, for the animation measurements of ADR 0010. Test-only, without default
 # features: no network client, no JavaScript runtime.
-nsh-engine = { git = "https://github.com/longbridge/nsh", rev = "897fd9c2d968b341fcd81ceb34e991b13167e558", version = "0.4.0", default-features = false }
-nsh-testing = { git = "https://github.com/longbridge/nsh", rev = "897fd9c2d968b341fcd81ceb34e991b13167e558", version = "0.4.0", default-features = false }
+nsh-engine = { git = "https://github.com/longbridge/nsh", rev = "7571948ee4ad05fbc0b08d774e6afc63e039773d", version = "0.4.0", default-features = false }
+nsh-testing = { git = "https://github.com/longbridge/nsh", rev = "7571948ee4ad05fbc0b08d774e6afc63e039773d", version = "0.4.0", default-features = false }
 # Property tests on token logic (ADR 0005). Test-only; without the default `fork` and `timeout` features, which
 # pull in process and temp-file crates the tests do not need.
 proptest = { version = "1.12.0", default-features = false, features = ["std"] }
