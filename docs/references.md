@@ -37,3 +37,10 @@ The androidx tokens win over the website when they differ: they are what the off
 
 The full `actionbook/rust-skills` plugin (https://github.com/actionbook/rust-skills) can be installed as a Claude Code
 plugin by whoever wants it; only its `coding-guidelines` skill is vendored here.
+
+## Verification tools
+
+| What | Where | Pinned |
+|---|---|---|
+| Property tests | https://docs.rs/proptest | `1.12.0` in the root `Cargo.toml`, exact version in `Cargo.lock` |
+| Mutation testing | https://mutants.rs | `27.1.0`, installed by CI (`.github/workflows/ci.yml`) |
