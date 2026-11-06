@@ -8,9 +8,9 @@ on:
     - cron: "30 5 * * 1"
   workflow_dispatch:
 
+# The bot app's token does the writing.
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: androidx-bump
@@ -24,9 +24,22 @@ jobs:
   bump:
     runs-on: ubuntu-latest
     steps:
+      - name: Get a token for the repository's bot app
+        # A pull request opened with GITHUB_TOKEN has its CI held until a maintainer approves it, and GitHub has no
+        # setting to change that. One opened with the app's token runs CI like any other. The app is installed on this
+        # repository with Contents and Pull requests read and write; its id and key are the BOT_APP_ID and
+        # BOT_PRIVATE_KEY repository secrets.
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
+          token: ${{ steps.app.outputs.token }}
       - name: Install the pinned toolchain
         run: rustup toolchain install
       - name: Copy the newest androidx token files
@@ -57,13 +70,15 @@ jobs:
       - name: Open or update the pull request
         if: steps.sync.outputs.changed == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
           OLD: ${{ steps.sync.outputs.old }}
           NEW: ${{ steps.sync.outputs.new }}
           GEN_OK: ${{ steps.gen.outputs.ok }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          user_id="$(gh api "/users/${APP_SLUG}[bot]" --jq .id)"
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${user_id}+${APP_SLUG}[bot]@users.noreply.github.com"
           files="$(git status --porcelain | sed 's/^.. /- `/; s/$/`/')"
           git switch -C "$BRANCH"
           git add -A
@@ -82,7 +97,7 @@ jobs:
           ${files}" \
             "$generator" \
             "Token history upstream: $history" \
-            "Opened by \`.github/workflows/androidx-bump.yml\`. GitHub holds its CI run until a maintainer approves it (\`Approve workflows to run\` below). Check the changed values against the components that use them, then merge when CI is green.")"
+            "Opened by \`.github/workflows/androidx-bump.yml\`. Check the changed values against the components that use them, then merge when CI is green.")"
           if [ -n "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')" ]; then
             gh pr edit "$BRANCH" --title "$title" --body "$body"
           else
