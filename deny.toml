@@ -32,7 +32,3 @@ unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 # NSH is used from its repository, pinned by revision (ADR 0006).
 allow-git = ["https://github.com/longbridge/nsh"]
-
-[licenses.private]
-# The workspace's own crates are not published; their license is the repository's.
-ignore = true
