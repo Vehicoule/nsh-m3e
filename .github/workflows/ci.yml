@@ -18,6 +18,12 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
   RUSTFLAGS: -D warnings
+  # The property tests (`proptest`, ADR 0005) run the same cases on every run, as the user decided on 2026-11-06:
+  # a red run is the code's, never the draw's, and reproduces with the same two variables. 256 is proptest's own
+  # default number of cases, written here so it cannot change with a proptest release; the seed is any fixed value.
+  # Locally, without them, each run draws new cases.
+  PROPTEST_CASES: 256
+  PROPTEST_RNG_SEED: 20261106
 
 jobs:
   check:
