@@ -1,6 +1,6 @@
 # 0010. Measure animations in CI by what the component sends and how NSH's graph plays it
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-06
 - Deciders: the user
 
@@ -106,13 +106,14 @@ any of these numbers, so every run gives the same ones; CI would reproduce them.
 
 ## Decision
 
-Proposed: **option 1** is the CI gate for every animated component.
+**Option 1** is the CI gate for every animated component, with the `nsh-testing` harness and its `CC0-1.0` exception
+for `hexf-parse`. The user chose it on 2026-11-06.
 
 - **Device measurements** stay manual, reported as AGENTS.md rule 8 asks: the gesture, the device, the build profile
   and the number of runs. They stay manual until a device runner (option 3) is decided in its own ADR.
-- **Recommended harness:** use `nsh-testing`'s `Headless`, which ADR 0005 already plans for behavior tests. This needs
+- **Harness:** use `nsh-testing`'s `Headless`, which ADR 0005 already plans for behavior tests. This needs
   a `CC0-1.0` exception for `hexf-parse` only, used by tests only, written in `deny.toml` like the `webpki-roots` one.
-  - Alternative: use `nsh-engine` alone, with a test sink written here, as NSH's own engine tests do
+  - The alternative not taken: `nsh-engine` alone, with a test sink written here, as NSH's own engine tests do
     (`crates/nsh-engine/tests/engine/rust_animation.rs`). That needs no exception, but adds more test code to
     maintain, and loses selectors, presses and hovers.
 
