@@ -15,8 +15,8 @@ publish = false
 [workspace.dependencies]
 # NSH follows its `main` branch, pinned to one commit and bumped daily by
 # `.github/workflows/nsh-bump.yml` (ADR 0006). Both crates always share the same `rev`.
-nsh-core = { git = "https://github.com/longbridge/nsh", rev = "adc46050b5125833a32482f0df1c1fd3d138c471" }
-nsh-base = { git = "https://github.com/longbridge/nsh", rev = "adc46050b5125833a32482f0df1c1fd3d138c471" }
+nsh-core = { git = "https://github.com/longbridge/nsh", rev = "897fd9c2d968b341fcd81ceb34e991b13167e558" }
+nsh-base = { git = "https://github.com/longbridge/nsh", rev = "897fd9c2d968b341fcd81ceb34e991b13167e558" }
 # Property tests on token logic (ADR 0005). Test-only; without the default `fork` and `timeout` features, which
 # pull in process and temp-file crates the tests do not need.
 proptest = { version = "1.12.0", default-features = false, features = ["std"] }
