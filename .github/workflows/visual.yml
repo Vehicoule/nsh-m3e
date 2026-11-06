@@ -9,14 +9,6 @@ name: Visual checks
 
 on:
   pull_request:
-    paths:
-      - "crates/**"
-      - "examples/**"
-      - "tests/visual/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "rust-toolchain.toml"
-      - ".github/workflows/visual.yml"
   push:
     branches: [main]
   # To run the checks by hand on any branch from the Actions tab.
@@ -49,24 +41,47 @@ jobs:
         host: [linux, web]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The merge commit and its first parent, the base: what the pull request changes.
+          fetch-depth: 2
+      # The job runs on every pull request, so that its check can be required, but it does its work only when the
+      # pull request changes what the screenshots show; otherwise it passes at once. On `main` and by hand, always.
+      - name: See whether the pull request changes what the screenshots show
+        id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "visual=true" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only HEAD^1 HEAD | grep -E \
+              '^(crates/|examples/|tests/visual/|Cargo\.toml$|Cargo\.lock$|rust-toolchain\.toml$|\.github/workflows/visual\.yml$)'; then
+            echo "visual=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Nothing the screenshots show changes: no screenshot to take."
+            echo "visual=false" >> "$GITHUB_OUTPUT"
+          fi
       # As NSH's CI installs them: clang for QuickJS in the `nsh` CLI, GTK 4, WebKitGTK and GStreamer for the Linux
       # host (the web runtime's build links the app's Linux entry too), LLVM for the web runtime's C code, Xvfb for
       # a display.
       - name: Install clang, LLVM, GTK 4, WebKitGTK, GStreamer and Xvfb
+        if: steps.changes.outputs.visual == 'true'
         run: >
           sudo apt-get update && sudo apt-get install -y clang llvm libclang-dev libgtk-4-dev libwebkitgtk-6.0-dev
           libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev xvfb
       - name: Install the pinned toolchain
+        if: steps.changes.outputs.visual == 'true'
         run: rustup toolchain install
       - name: Add the web target
-        if: matrix.host == 'web'
+        if: matrix.host == 'web' && steps.changes.outputs.visual == 'true'
         run: rustup target add wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: steps.changes.outputs.visual == 'true'
         with:
           key: visual-${{ matrix.host }}
       # The CLI at the NSH revision the library is pinned to (root `Cargo.toml`), so the hosts are built from the
       # same NSH as the library. `cargo install` rebuilds it when the revision changes.
       - name: Install the nsh CLI at the pinned NSH revision
+        if: steps.changes.outputs.visual == 'true'
         run: |
           rev=$(grep -m1 -o 'rev = "[0-9a-f]*"' Cargo.toml | cut -d'"' -f2)
           test -n "$rev"
@@ -76,6 +91,7 @@ jobs:
           # `ci.yml` lints this repository's code with `-D warnings`.
           RUSTFLAGS: ""
       - name: Take the screenshots
+        if: steps.changes.outputs.visual == 'true'
         run: |
           mkdir -p target/visual
           if [ "${{ matrix.host }}" = linux ]; then
@@ -88,9 +104,10 @@ jobs:
         env:
           RUSTFLAGS: ""
       - name: Check the screenshots' known pixels
+        if: steps.changes.outputs.visual == 'true'
         run: cargo run -p visual-checks --locked -- target/visual
       - name: Keep the screenshots
-        if: always()
+        if: always() && steps.changes.outputs.visual == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: screenshots-${{ matrix.host }}

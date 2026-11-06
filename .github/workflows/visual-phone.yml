@@ -10,14 +10,6 @@ name: Visual checks on phones
 
 on:
   pull_request:
-    paths:
-      - "crates/**"
-      - "examples/**"
-      - "tests/visual/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "rust-toolchain.toml"
-      - ".github/workflows/visual-phone.yml"
   push:
     branches: [main]
   workflow_dispatch:
@@ -46,36 +38,61 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The merge commit and its first parent, the base: what the pull request changes.
+          fetch-depth: 2
+      # The job runs on every pull request, so that its check can be required, but it does its work only when the
+      # pull request changes what the screenshots show; otherwise it passes at once. On `main` and by hand, always.
+      - name: See whether the pull request changes what the screenshots show
+        id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "visual=true" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only HEAD^1 HEAD | grep -E \
+              '^(crates/|examples/|tests/visual/|Cargo\.toml$|Cargo\.lock$|rust-toolchain\.toml$|\.github/workflows/visual-phone\.yml$)'; then
+            echo "visual=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Nothing the screenshots show changes: no screenshot to take."
+            echo "visual=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Read the pinned NSH revision
+        if: steps.changes.outputs.visual == 'true'
         id: nsh
         run: |
           rev=$(grep -m1 -o 'rev = "[0-9a-f]*"' Cargo.toml | cut -d'"' -f2)
           test -n "$rev"
           echo "rev=$rev" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.changes.outputs.visual == 'true'
         with:
           repository: longbridge/nsh
           ref: ${{ steps.nsh.outputs.rev }}
           path: .nsh-src
       - name: Install the pinned toolchain and the simulator's target
+        if: steps.changes.outputs.visual == 'true'
         run: |
           rustup toolchain install
           rustup target add aarch64-apple-ios-sim
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: steps.changes.outputs.visual == 'true'
         with:
           key: visual-ios
           workspaces: |
             . -> target
             .nsh-src -> target
       - name: Build the nsh CLI at the pinned NSH revision
+        if: steps.changes.outputs.visual == 'true'
         working-directory: .nsh-src
         run: cargo build -p nsh-cli --locked
       - name: Take the screenshots
+        if: steps.changes.outputs.visual == 'true'
         run: |
           mkdir -p target/visual
           .nsh-src/target/debug/nsh test examples/catalog/phone.test.tsx --target ios
       - name: Keep the screenshots
-        if: always()
+        if: always() && steps.changes.outputs.visual == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: screenshots-ios
@@ -87,13 +104,34 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The merge commit and its first parent, the base: what the pull request changes.
+          fetch-depth: 2
+      # The job runs on every pull request, so that its check can be required, but it does its work only when the
+      # pull request changes what the screenshots show; otherwise it passes at once. On `main` and by hand, always.
+      - name: See whether the pull request changes what the screenshots show
+        id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "visual=true" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only HEAD^1 HEAD | grep -E \
+              '^(crates/|examples/|tests/visual/|Cargo\.toml$|Cargo\.lock$|rust-toolchain\.toml$|\.github/workflows/visual-phone\.yml$)'; then
+            echo "visual=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Nothing the screenshots show changes: no screenshot to take."
+            echo "visual=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Read the pinned NSH revision
+        if: steps.changes.outputs.visual == 'true'
         id: nsh
         run: |
           rev=$(grep -m1 -o 'rev = "[0-9a-f]*"' Cargo.toml | cut -d'"' -f2)
           test -n "$rev"
           echo "rev=$rev" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.changes.outputs.visual == 'true'
         with:
           repository: longbridge/nsh
           ref: ${{ steps.nsh.outputs.rev }}
@@ -101,12 +139,15 @@ jobs:
       # As NSH's release workflow builds the Android runtime: clang for QuickJS, Java 17 (`javac`, `d8`), the SDK's
       # `platforms;android-35` and the image's NDK.
       - name: Install clang
+        if: steps.changes.outputs.visual == 'true'
         run: sudo apt-get update && sudo apt-get install -y clang llvm libclang-dev
       - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        if: steps.changes.outputs.visual == 'true'
         with:
           distribution: temurin
           java-version: "17"
       - name: Install the Android platform
+        if: steps.changes.outputs.visual == 'true'
         run: |
           if [[ ! -f "$ANDROID_HOME/platforms/android-35/android.jar" ]]; then
             sdkmanager=$(ls "$ANDROID_HOME"/cmdline-tools/latest/bin/sdkmanager* | head -1)
@@ -116,6 +157,7 @@ jobs:
           ls "$ANDROID_HOME/ndk"
       # The emulator needs hardware acceleration, which GitHub's Linux runners give through KVM.
       - name: Let the emulator use KVM
+        if: steps.changes.outputs.visual == 'true'
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
@@ -123,16 +165,19 @@ jobs:
       # The catalog's library is built for every ABI of NSH's Android runtime (`ABIS` in `crates/xtask/src/android.rs`),
       # not only the emulator's.
       - name: Install the pinned toolchain and the Android targets
+        if: steps.changes.outputs.visual == 'true'
         run: |
           rustup toolchain install
           rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: steps.changes.outputs.visual == 'true'
         with:
           key: visual-android
           workspaces: |
             . -> target
             .nsh-src -> target
       - name: Build the nsh CLI at the pinned NSH revision
+        if: steps.changes.outputs.visual == 'true'
         working-directory: .nsh-src
         run: cargo build -p nsh-cli --locked
       # NSH's build of its Android runtime gives bindgen the NDK's C headers with `-isystem` when the NDK has no
@@ -143,6 +188,7 @@ jobs:
       # dashes before the underscored name NSH sets, so this takes their place; the shell cannot name such a variable,
       # hence `env`.
       - name: Give bindgen the NDK's clang headers as its resource directory
+        if: steps.changes.outputs.visual == 'true'
         run: |
           toolchain="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
           resource=$(ls -d "$toolchain"/lib/clang/* | head -1)
@@ -162,6 +208,7 @@ jobs:
           cat "$wrapper"
           echo "WITH_NDK_BINDGEN=$wrapper" >> "$GITHUB_ENV"
       - name: Take the screenshots
+        if: steps.changes.outputs.visual == 'true'
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 35
@@ -170,7 +217,7 @@ jobs:
           disable-animations: true
           script: mkdir -p target/visual && "$WITH_NDK_BINDGEN" .nsh-src/target/debug/nsh test examples/catalog/phone.test.tsx --target android
       - name: Keep the screenshots
-        if: always()
+        if: always() && steps.changes.outputs.visual == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: screenshots-android
