@@ -18,3 +18,4 @@ Only the user moves an ADR from Proposed to Accepted.
 | [0008](0008-color-scheme-in-nsh-tokens.md) | The M3 color scheme lives in NSH's tokens as `md-sys-color-*` | Accepted |
 | [0009](0009-depend-on-nsh-with-targeted-deny-exceptions.md) | Depend on NSH, with targeted `cargo deny` exceptions | Accepted |
 | [0010](0010-measure-animations-in-ci.md) | Animations measured in CI from their operations, replayed in NSH's graph at 120 Hz | Accepted |
+| [0011](0011-morph-shapes-with-a-drawn-container.md) | Shapes morph on press in a drawn container whose corners follow the M3E spring | Accepted |
