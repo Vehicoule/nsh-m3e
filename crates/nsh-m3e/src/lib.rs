@@ -7,6 +7,8 @@
 //! Every design value comes from the Material 3 tokens vendored in `reference/androidx-material3-tokens/`, never from
 //! memory. The rules for working on this crate are in `AGENTS.md` at the root of the repository.
 
+#[cfg(test)]
+mod animation_probe;
 pub mod color;
 pub mod motion;
 pub mod tokens;

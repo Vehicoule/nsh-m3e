@@ -12,6 +12,7 @@ site may describe a newer version than the one this repository builds against.
 | Docs site (newest release, may be ahead) | https://nsh.dev, index for agents: https://nsh.dev/llms.txt | not pinned |
 | Animation and `Spring` | https://nsh.dev/docs/animation.md, `crates/nsh-core/src/element/animated.rs` | same revision |
 | Base components (behavior, no look) | https://nsh.dev/modules/nsh-base.md, `crates/nsh-base/` | same revision |
+| Headless engine and test driver (animation measurements, ADR 0010) | [`.claude/skills/nsh/references/rust-testing.md`](../.claude/skills/nsh/references/rust-testing.md), `crates/nsh-testing/`, `crates/nsh-engine/`, `crates/nsh-core/src/animation/` | same revision |
 
 ## Material 3 Expressive
 

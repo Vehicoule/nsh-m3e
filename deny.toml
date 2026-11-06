@@ -36,8 +36,12 @@ allow = [
 confidence-threshold = 0.93
 # Mozilla's root certificates, which NSH's TLS (`rustls`, `tokio-tungstenite`) trusts, are data under the Community
 # Data License Agreement, a permissive license with no copyleft. Allowed for this crate only (ADR 0009).
+# `hexf-parse` reads hexadecimal float literals for `naga`, NSH's shader compiler, which `nsh-testing` turns on. It is
+# dedicated to the public domain under CC0-1.0 and is used by tests only, never shipped. Allowed for this crate only
+# (ADR 0010).
 exceptions = [
     { crate = "webpki-roots", allow = ["CDLA-Permissive-2.0"] },
+    { crate = "hexf-parse", allow = ["CC0-1.0"] },
 ]
 
 [bans]

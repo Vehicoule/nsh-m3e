@@ -31,8 +31,10 @@ if [[ ! "$current" =~ ^[0-9a-f]{40}$ ]]; then
     echo "error: no NSH rev found for nsh-core in Cargo.toml" >&2
     exit 1
 fi
-if [[ "$(grep -c "rev = \"$current\"" Cargo.toml)" -ne 2 ]]; then
-    echo "error: nsh-core and nsh-base must share the same rev in Cargo.toml" >&2
+# Every NSH crate (nsh-core, nsh-base, and the test-only nsh-engine and nsh-testing) is pinned to the same rev.
+nsh_deps="$(grep -c '^nsh-[a-z-]* = { git = "https://github.com/longbridge/nsh"' Cargo.toml)"
+if [[ "$nsh_deps" -lt 2 || "$(grep -c "rev = \"$current\"" Cargo.toml)" -ne "$nsh_deps" ]]; then
+    echo "error: every NSH crate in Cargo.toml must share the rev of nsh-core" >&2
     exit 1
 fi
 
