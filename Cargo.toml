@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "xtask"]
+members = ["crates/*", "examples/catalog", "tests/visual", "xtask"]
 
 [workspace.package]
 version = "0.0.0"
@@ -22,6 +22,12 @@ nsh-base = { git = "https://github.com/longbridge/nsh", rev = "7571948ee4ad05fbc
 # features: no network client, no JavaScript runtime.
 nsh-engine = { git = "https://github.com/longbridge/nsh", rev = "7571948ee4ad05fbc0b08d774e6afc63e039773d", version = "0.4.0", default-features = false }
 nsh-testing = { git = "https://github.com/longbridge/nsh", rev = "7571948ee4ad05fbc0b08d774e6afc63e039773d", version = "0.4.0", default-features = false }
+# The library and the catalog app, for the visual checks (ADR 0013).
+nsh-m3e = { path = "crates/nsh-m3e", version = "0.0.0" }
+catalog = { path = "examples/catalog", version = "0.0.0" }
+# Reads the screenshots of the visual checks (ADR 0013): pure Rust, decoding only. `image` was the alternative; it
+# decodes many formats and pulls in far more.
+png = { version = "0.18.1", default-features = false }
 # Property tests on token logic (ADR 0005). Test-only; without the default `fork` and `timeout` features, which
 # pull in process and temp-file crates the tests do not need.
 proptest = { version = "1.12.0", default-features = false, features = ["std"] }

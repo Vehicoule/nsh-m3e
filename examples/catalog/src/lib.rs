@@ -1,0 +1,127 @@
+//! The catalog: every component of `nsh-m3e` in each of its states, for the visual checks of ADR 0013.
+//!
+//! `nsh test` opens it on NSH's hosts (`button.test.tsx`, beside its `nsh.json`) and saves screenshots of it; `visual-checks`
+//! reads the pixels it knows in them, at the places [`grid`] gives. The catalog is a Rust app (`nsh.json` names its
+//! root, [`Catalog`]); nothing in it runs JavaScript.
+
+pub mod grid;
+
+use nsh_core::element::AdaptiveColor;
+use nsh_core::prelude::*;
+use nsh_m3e::button::button;
+use nsh_m3e::color::ColorScheme;
+
+use crate::grid::{Availability, Cell};
+
+#[native_module("catalog/native")]
+fn native(registry: &mut Registry) {
+    registry.register::<Catalog>();
+}
+
+/// Every button of the catalog at its place on the [`grid`], on the scheme's surface color.
+#[component]
+pub fn Catalog() -> impl IntoElement {
+    let surface = AdaptiveColor::rgb(
+        ColorScheme::BASELINE_LIGHT.surface.to_hex(),
+        ColorScheme::BASELINE_DARK.surface.to_hex(),
+    );
+    Cell::all().fold(view().relative().size_full().bg(surface), |page, cell| {
+        let (x, y) = cell.origin();
+        page.child(
+            view()
+                .absolute()
+                .left(x)
+                .top(y)
+                .test_id(&cell.test_id())
+                .child(
+                    button()
+                        .label(cell.label())
+                        .style(cell.style)
+                        .shape(cell.shape)
+                        .size(cell.size)
+                        .disabled(cell.availability == Availability::Disabled),
+                ),
+        )
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, PoisonError};
+
+    use nsh_core::geometry::{Bounds, Points};
+    use nsh_core::{AccessibilityRole, MountItem, NodeId};
+    use nsh_engine::{EngineConfig, Root};
+    use nsh_testing::Headless;
+
+    use super::*;
+
+    #[test]
+    fn the_app_registers_its_root() {
+        let registry = registry();
+        assert_eq!(registry.specifier(), Some("catalog/native"));
+        let exports: Vec<String> = registry.specs().iter().map(|s| s.export.clone()).collect();
+        assert_eq!(exports, ["Catalog"]);
+    }
+
+    /// Every button is at its place on the grid, inside a view with its test id, enabled or disabled as its cell
+    /// says.
+    #[test]
+    fn every_button_is_where_the_grid_says() {
+        let mut app = Headless::start(EngineConfig::new(Root::of::<Catalog>())).unwrap();
+        let items: Arc<Mutex<Vec<MountItem>>> = Arc::default();
+        let sink = Arc::clone(&items);
+        app.observe(move |_, batch| {
+            sink.lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .extend(batch.items.iter().cloned());
+        });
+        app.wait_for("Filled").unwrap();
+        let items = items.lock().unwrap_or_else(PoisonError::into_inner).clone();
+
+        let mut ids = HashMap::new();
+        let mut frames: HashMap<NodeId, Bounds<Points>> = HashMap::new();
+        let mut disabled = HashMap::new();
+        let mut parents = HashMap::new();
+        for item in &items {
+            match item {
+                MountItem::ViewProps { id, props } => {
+                    if let Some(test_id) = &props.test_id {
+                        ids.insert(test_id.to_string(), *id);
+                    }
+                    if props.accessibility.role == AccessibilityRole::Button {
+                        disabled.insert(*id, props.accessibility.state.disabled);
+                    }
+                }
+                MountItem::Frame { id, frame } => {
+                    frames.insert(*id, *frame);
+                }
+                MountItem::Insert { parent, child, .. } => {
+                    parents.insert(*child, *parent);
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(disabled.len(), Cell::all().count());
+        for cell in Cell::all() {
+            let id = ids[&cell.test_id()];
+            let (x, y) = cell.origin();
+            assert_eq!(
+                (frames[&id].origin.x, frames[&id].origin.y),
+                (x, y),
+                "{cell:?}"
+            );
+            let button = parents
+                .iter()
+                .find(|(_, parent)| **parent == id)
+                .map(|(child, _)| *child)
+                .unwrap();
+            assert_eq!(
+                disabled[&button],
+                cell.availability == Availability::Disabled,
+                "{cell:?}"
+            );
+        }
+    }
+}
