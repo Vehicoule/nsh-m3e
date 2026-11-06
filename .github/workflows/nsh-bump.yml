@@ -9,7 +9,6 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  actions: write
 
 concurrency:
   group: nsh-bump
@@ -56,11 +55,9 @@ jobs:
           body="$(printf '%s\n\n%s\n\n%s\n' \
             "Moves the NSH pin from \`${OLD:0:12}\` to \`${NEW:0:12}\` (newest commit of NSH's \`main\`) and syncs the NSH skills from it (ADR 0006)." \
             "NSH changes: https://github.com/longbridge/nsh/compare/${OLD}...${NEW}" \
-            "Opened by \`.github/workflows/nsh-bump.yml\`. Merge when CI is green; if it is red, the fix goes in this pull request.")"
+            "Opened by \`.github/workflows/nsh-bump.yml\`. GitHub holds its CI run until a maintainer approves it (\`Approve workflows to run\` below). Merge when CI is green; if it is red, the fix goes in this pull request.")"
           if [ -n "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')" ]; then
             gh pr edit "$BRANCH" --title "deps: Update NSH to ${NEW:0:12}" --body "$body"
           else
             gh pr create --base main --head "$BRANCH" --title "deps: Update NSH to ${NEW:0:12}" --body "$body"
           fi
-          # Pushes made with GITHUB_TOKEN start no workflow, so CI is started explicitly on the bump commit.
-          gh workflow run ci.yml --ref "$BRANCH"

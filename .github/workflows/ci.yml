@@ -4,7 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
-  # The NSH bump workflow starts CI this way: pushes made with GITHUB_TOKEN start no workflow.
+  # To run CI by hand on any branch from the Actions tab.
   workflow_dispatch:
 
 permissions:

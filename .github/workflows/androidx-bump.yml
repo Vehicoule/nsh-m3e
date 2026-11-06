@@ -11,7 +11,6 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  actions: write
 
 concurrency:
   group: androidx-bump
@@ -83,11 +82,9 @@ jobs:
           ${files}" \
             "$generator" \
             "Token history upstream: $history" \
-            "Opened by \`.github/workflows/androidx-bump.yml\`. Check the changed values against the components that use them, then merge when CI is green.")"
+            "Opened by \`.github/workflows/androidx-bump.yml\`. GitHub holds its CI run until a maintainer approves it (\`Approve workflows to run\` below). Check the changed values against the components that use them, then merge when CI is green.")"
           if [ -n "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')" ]; then
             gh pr edit "$BRANCH" --title "$title" --body "$body"
           else
             gh pr create --base main --head "$BRANCH" --title "$title" --body "$body"
           fi
-          # Pushes made with GITHUB_TOKEN start no workflow, so CI is started explicitly on the bump commit.
-          gh workflow run ci.yml --ref "$BRANCH"
