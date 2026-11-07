@@ -8,7 +8,7 @@
 //! state layer over it ([`DrawnShape::state_layer`]), so both keep the same corners while they move.
 //!
 //! Only shapes whose four corners are the same can morph: [`Corners::of`] tells. Every container shape of the button
-//! tokens is one.
+//! and icon button tokens is one.
 //!
 //! [ADR 0011]: https://github.com/Vehicoule/nsh-m3e/blob/main/docs/adr/0011-morph-shapes-with-a-drawn-container.md
 
@@ -52,6 +52,14 @@ impl Corners {
             Self::Radius(radius) => radius.0,
         }
     }
+}
+
+/// The corners the drawn container gives `shape`. Every container shape of the component tokens has the same four
+/// corners (the components' `every_*_shape_can_morph` tests check theirs), so the fully rounded fallback is never
+/// taken; it is there so that a token with uneven corners, which no drawn container can draw, still gives a
+/// component, not a panic.
+pub(crate) fn corners(shape: Shape) -> Corners {
+    Corners::of(shape).unwrap_or(Corners::Full)
 }
 
 /// Half of `size`'s shorter side: the largest radius its corners can take.

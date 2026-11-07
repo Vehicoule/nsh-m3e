@@ -11,6 +11,11 @@
 mod animation_probe;
 pub mod button;
 pub mod color;
+pub mod icon;
+pub mod icon_button;
 mod morph;
+#[cfg(test)]
+mod morph_probe;
 pub mod motion;
+mod tint;
 pub mod tokens;
