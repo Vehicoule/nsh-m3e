@@ -103,6 +103,9 @@ jobs:
   android:
     name: visual (android)
     runs-on: ubuntu-24.04
+    env:
+      # As NSH's release workflow installs them (see the install step), listed once for the cache key and the install.
+      APT_PACKAGES: clang llvm libclang-dev
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -140,25 +143,38 @@ jobs:
           path: .nsh-src
       # apt's downloads are kept between runs, as in `visual.yml`: Azure's Ubuntu mirror sometimes serves them at
       # about 50 kB/s.
-      - name: Read the runner image's version
-        id: image
+      - name: List the packages apt will download
+        id: apt
         if: steps.changes.outputs.visual == 'true'
-        run: echo "version=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
+        run: |
+          sudo apt-get update
+          mkdir -p "$RUNNER_TEMP/apt-empty/partial"
+          # Every file apt would download into an empty archive directory, with its version in its name: the key
+          # changes as soon as one package does.
+          # shellcheck disable=SC2086 # one word per package
+          sudo apt-get install -qq -y --print-uris -o Dir::Cache::Archives="$RUNNER_TEMP/apt-empty" $APT_PACKAGES \
+            > "$RUNNER_TEMP/apt-uris"
+          cat "$RUNNER_TEMP/apt-uris"
+          echo "hash=$(sha256sum "$RUNNER_TEMP/apt-uris" | cut -c1-16)" >> "$GITHUB_OUTPUT"
       - name: Restore apt's downloaded packages
         if: steps.changes.outputs.visual == 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/apt-archives
-          key: apt-visual-android-${{ steps.image.outputs.version }}-${{ hashFiles('.github/workflows/visual-phone.yml') }}
+          key: apt-visual-android-${{ steps.apt.outputs.hash }}
+          # A new package version restores the last entry, downloads only what changed, and saves a new entry.
+          restore-keys: apt-visual-android-
       # As NSH's release workflow builds the Android runtime: clang for QuickJS, Java 17 (`javac`, `d8`), the SDK's
       # `platforms;android-35` and the image's NDK.
       - name: Install clang
         if: steps.changes.outputs.visual == 'true'
         run: |
           mkdir -p ~/apt-archives/partial
-          sudo apt-get update
+          # shellcheck disable=SC2086 # one word per package
           sudo apt-get install -y -o Dir::Cache::Archives="$HOME/apt-archives" -o APT::Keep-Downloaded-Packages=true \
-            clang llvm libclang-dev
+            $APT_PACKAGES
+          # Drops the files of versions the mirror no longer has, so the entry does not grow with every update.
+          sudo apt-get autoclean -qq -o Dir::Cache::Archives="$HOME/apt-archives"
           # apt wrote them as root; the cache saves them as this user.
           sudo chown -R "$USER" ~/apt-archives
       - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0

@@ -35,6 +35,11 @@ jobs:
   visual:
     name: visual (${{ matrix.host }})
     runs-on: ubuntu-24.04
+    env:
+      # As NSH's CI installs them (see the install step), listed once for the cache key and the install.
+      APT_PACKAGES: >-
+        clang llvm libclang-dev libgtk-4-dev libwebkitgtk-6.0-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+        xvfb
     strategy:
       fail-fast: false
       matrix:
@@ -63,18 +68,28 @@ jobs:
           fi
       # apt's downloads are kept between runs: Azure's Ubuntu mirror sometimes serves them at about 50 kB/s, and two
       # runs of 2026-11-06 spent 32 minutes fetching these packages' 102 MB. With the downloads restored, apt fetches
-      # only the indexes and what changed. The key moves with the runner image, whose package versions move with it,
-      # and with this file, which lists the packages.
-      - name: Read the runner image's version
-        id: image
+      # only the indexes and what changed. The key is the list of files apt would download, versions included.
+      - name: List the packages apt will download
+        id: apt
         if: steps.changes.outputs.visual == 'true'
-        run: echo "version=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
+        run: |
+          sudo apt-get update
+          mkdir -p "$RUNNER_TEMP/apt-empty/partial"
+          # Every file apt would download into an empty archive directory, with its version in its name: the key
+          # changes as soon as one package does.
+          # shellcheck disable=SC2086 # one word per package
+          sudo apt-get install -qq -y --print-uris -o Dir::Cache::Archives="$RUNNER_TEMP/apt-empty" $APT_PACKAGES \
+            > "$RUNNER_TEMP/apt-uris"
+          cat "$RUNNER_TEMP/apt-uris"
+          echo "hash=$(sha256sum "$RUNNER_TEMP/apt-uris" | cut -c1-16)" >> "$GITHUB_OUTPUT"
       - name: Restore apt's downloaded packages
         if: steps.changes.outputs.visual == 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/apt-archives
-          key: apt-visual-${{ steps.image.outputs.version }}-${{ hashFiles('.github/workflows/visual.yml') }}
+          key: apt-visual-${{ steps.apt.outputs.hash }}
+          # A new package version restores the last entry, downloads only what changed, and saves a new entry.
+          restore-keys: apt-visual-
       # As NSH's CI installs them: clang for QuickJS in the `nsh` CLI, GTK 4, WebKitGTK and GStreamer for the Linux
       # host (the web runtime's build links the app's Linux entry too), LLVM for the web runtime's C code, Xvfb for
       # a display.
@@ -82,10 +97,11 @@ jobs:
         if: steps.changes.outputs.visual == 'true'
         run: |
           mkdir -p ~/apt-archives/partial
-          sudo apt-get update
+          # shellcheck disable=SC2086 # one word per package
           sudo apt-get install -y -o Dir::Cache::Archives="$HOME/apt-archives" -o APT::Keep-Downloaded-Packages=true \
-            clang llvm libclang-dev libgtk-4-dev libwebkitgtk-6.0-dev libgstreamer1.0-dev \
-            libgstreamer-plugins-base1.0-dev xvfb
+            $APT_PACKAGES
+          # Drops the files of versions the mirror no longer has, so the entry does not grow with every update.
+          sudo apt-get autoclean -qq -o Dir::Cache::Archives="$HOME/apt-archives"
           # apt wrote them as root; the cache saves them as this user.
           sudo chown -R "$USER" ~/apt-archives
       - name: Install the pinned toolchain
