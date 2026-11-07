@@ -9,6 +9,7 @@
 
 #[cfg(test)]
 mod animation_probe;
+pub mod badge;
 pub mod button;
 pub mod color;
 pub mod elevation;
