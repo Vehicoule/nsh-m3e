@@ -28,8 +28,12 @@ components=(
     ComposeMaterial3Flags.kt
     ProgressIndicator.kt
     WavyProgressIndicator.kt
+    TextField.kt
+    OutlinedTextField.kt
+    TextFieldDefaults.kt
     internal/LinearWavyProgressModifiers.kt
     internal/CircularWavyProgressModifiers.kt
+    internal/TextFieldImpl.kt
     Snackbar.kt
     ComposeMaterial3Flags.kt
 )

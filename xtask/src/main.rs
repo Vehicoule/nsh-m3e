@@ -145,6 +145,16 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
+        file: "FilledTextFieldTokens.kt",
+        object: None,
+        doc: &[
+            "The filled text field's colors in each state (enabled, hovered, focused, error, disabled), its active \
+             indicator's height, its container's shape, its icons' size and its text styles. Colors are roles of the \
+             scheme ([`crate::color::ColorRole`]), resolved against the light or dark [`crate::color::ColorScheme`]; \
+             the `*_OPACITY` constants are the opacity of the disabled color over its role.",
+        ],
+    },
+    Source {
         file: "FilledTonalButtonTokens.kt",
         object: None,
         doc: &[
@@ -220,6 +230,17 @@ const SOURCES: &[Source] = &[
             "The outlined icon button's icon and outline colors in each state, and those of the outlined icon toggle button selected and \
              unselected. Colors are roles of the scheme ([`crate::color::ColorRole`]), resolved against the light or \
              dark [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
+        file: "OutlinedTextFieldTokens.kt",
+        object: None,
+        doc: &[
+            "The outlined text field's colors in each state (enabled, hovered, focused, error, disabled), its \
+             outline's width, its container's height and shape, its icons' size and its text styles. Colors are roles \
+             of the scheme ([`crate::color::ColorRole`]), resolved against the light or dark \
+             [`crate::color::ColorScheme`]; the `*_OPACITY` constants are the opacity of the disabled color over its \
+             role.",
         ],
     },
     Source {
