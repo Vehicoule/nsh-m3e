@@ -138,11 +138,29 @@ jobs:
           repository: longbridge/nsh
           ref: ${{ steps.nsh.outputs.rev }}
           path: .nsh-src
+      # apt's downloads are kept between runs, as in `visual.yml`: Azure's Ubuntu mirror sometimes serves them at
+      # about 50 kB/s.
+      - name: Read the runner image's version
+        id: image
+        if: steps.changes.outputs.visual == 'true'
+        run: echo "version=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
+      - name: Restore apt's downloaded packages
+        if: steps.changes.outputs.visual == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/apt-archives
+          key: apt-visual-android-${{ steps.image.outputs.version }}-${{ hashFiles('.github/workflows/visual-phone.yml') }}
       # As NSH's release workflow builds the Android runtime: clang for QuickJS, Java 17 (`javac`, `d8`), the SDK's
       # `platforms;android-35` and the image's NDK.
       - name: Install clang
         if: steps.changes.outputs.visual == 'true'
-        run: sudo apt-get update && sudo apt-get install -y clang llvm libclang-dev
+        run: |
+          mkdir -p ~/apt-archives/partial
+          sudo apt-get update
+          sudo apt-get install -y -o Dir::Cache::Archives="$HOME/apt-archives" -o APT::Keep-Downloaded-Packages=true \
+            clang llvm libclang-dev
+          # apt wrote them as root; the cache saves them as this user.
+          sudo chown -R "$USER" ~/apt-archives
       - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         if: steps.changes.outputs.visual == 'true'
         with:
