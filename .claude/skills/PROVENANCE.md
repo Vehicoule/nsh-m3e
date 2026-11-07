@@ -6,8 +6,8 @@ their own.
 
 | Skill | Source | Revision | License |
 |---|---|---|---|
-| `nsh` | https://github.com/longbridge/nsh/tree/main/skills/nsh | `7571948ee4ad05fbc0b08d774e6afc63e039773d` | Apache-2.0, © Longbridge (`LICENSE-APACHE`) |
-| `nsh-design-guides` | https://github.com/longbridge/nsh/tree/main/skills/nsh-design-guides | `7571948ee4ad05fbc0b08d774e6afc63e039773d` | Apache-2.0, © Longbridge (`LICENSE-APACHE`) |
+| `nsh` | https://github.com/longbridge/nsh/tree/main/skills/nsh | `a78c6190fcf8ae84b8a6cba0082b1f27950ff828` | Apache-2.0, © Longbridge (`LICENSE-APACHE`) |
+| `nsh-design-guides` | https://github.com/longbridge/nsh/tree/main/skills/nsh-design-guides | `a78c6190fcf8ae84b8a6cba0082b1f27950ff828` | Apache-2.0, © Longbridge (`LICENSE-APACHE`) |
 | `rust-best-practices` | https://github.com/stolinski/s-stack/tree/main/skills/rust-best-practices, based on Apollo GraphQL's Rust Best Practices handbook | `3cc9e7c22e7e1039297ac6aa98923dc1ac963351` | MIT (declared in the skill's front matter) |
 | `rust-coding-guidelines` | https://github.com/actionbook/rust-skills/tree/main/skills/coding-guidelines (renamed from `coding-guidelines`) | `5c40d3ad785193231b7d0dbfb8e1eb447e5edd94` | MIT (declared in the project's README) |
 
