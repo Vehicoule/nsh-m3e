@@ -1,6 +1,6 @@
-# 0017. Draw icons from SVG path data on a canvas, filled with a token color, and ship Material Symbols' outlined icons
+# 0017. Draw icons from SVG path data on a canvas, filled with a token color, and ship every Material Symbol in its three styles
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-07
 - Deciders: the user
 
@@ -66,14 +66,17 @@ of the others, debug or release: a Rust constant is copied where it is used and 
   - The library's API and documentation get 8,314 more names. An app pays only for the icons it shows.
   - The generated files carry Material Symbols' license, Apache-2.0, beside MPL-2.0, as the generated tokens carry
     androidx's ([ADR 0007](0007-license.md), `REUSE.toml`).
-- **c. As b, in the three styles**: about 12 MB copied, and the app picks its style.
+- **c. As b, in the three styles**: about 12 MB copied, 24,942 names (4,157 icons × 2 fills × 3 styles), and the app
+  picks its style.
 - **d. As b, for a chosen list of icons only**, which grows with the app: the smallest copy, and a pull request for each
   new batch of icons.
 
 ## Decision
 
-Recommended: **1 and b**. Icons are path data drawn on a canvas and filled with a token color, and the library ships
-every Material Symbol in the outlined style, filled and not, generated from the files copied at the pinned commit.
+**1 and c**, chosen by the user. Icons are path data drawn on a canvas and filled with a token color, and the library
+ships every Material Symbol in the three styles (outlined, rounded, sharp), filled and not, generated from the files
+copied at the pinned commit. Option b was recommended; the user chose c. The app can pick its style, and change it,
+without a pull request to the library.
 
 ## Consequences
 
@@ -82,7 +85,9 @@ every Material Symbol in the outlined style, filled and not, generated from the 
 - A test checks the icon's drawing: its path data, its scale to the token size and its fill from the token color, in
   every state.
 - The visual checks read the icon's pixels against its token color on every host, the web included.
-- A script keeps `reference/material-symbols/` on the pinned commit and CI checks it, as `scripts/sync-androidx.sh`
-  does; `cargo xtask` generates the icons from it and `--check` fails when they drift. The generated icons come in a pull
-  request of their own, after the icon button.
+- Each style is its own module of generated constants, so the app names the style it uses. Outlined is M3's default
+  style; the library sets no default and the app chooses.
+- A script keeps `reference/material-symbols/` (the three styles, about 12 MB) on the pinned commit and CI checks it,
+  as `scripts/sync-androidx.sh` does; `cargo xtask` generates the icons from it and `--check` fails when they drift.
+  The generated icons come in a pull request of their own, after the icon button.
 - Multicolor images stay with NSH's `image` and `svg`. They are not icons in this library.
