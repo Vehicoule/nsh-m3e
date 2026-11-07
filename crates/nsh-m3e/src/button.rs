@@ -402,10 +402,11 @@ pub fn Button(props: ButtonProps, cx: Scope<ButtonEvent>) -> impl IntoElement {
                 }),
         )
         .child(
-            // The state layer: the label's color over the whole container, in its shape, shown by the button's own
-            // states with nothing running (androidx's ripple, `RippleDefaults.RippleAlpha`, in the content color).
+            // The state layer: the label's color over the container inside its outline, in its shape, shown by the
+            // button's own states with nothing running (androidx's ripple, `RippleDefaults.RippleAlpha`, in the
+            // content color).
             drawn
-                .state_layer()
+                .state_layer(outline)
                 .bg(content)
                 .opacity(0.0)
                 .group_hover(|s| s.opacity(state_tokens::HOVER_STATE_LAYER_OPACITY))
@@ -1165,9 +1166,18 @@ mod tests {
                     for (path, expected) in container.iter().zip(&expected) {
                         assert_traces(path, expected, &what);
                     }
-                    // The state layer keeps the container's corners.
+                    // The state layer keeps the container's corners, inside the outline: the outline is not tinted.
+                    let inside = if style == ButtonStyle::Outlined {
+                        OUTLINE_WIDTH.0
+                    } else {
+                        0.0
+                    };
                     assert_eq!(layer.len(), 1, "{what}: {layer:?}");
-                    assert_traces(&layer[0], &expected[0], &what);
+                    assert_traces(
+                        &layer[0],
+                        &rounded_rectangle(frame, inside, radius - inside),
+                        &what,
+                    );
                     // No view rounds itself: the drawing gives the corners.
                     let mounted = Mounted::of(&recording.items());
                     for id in [mounted.button, mounted.container, mounted.layer] {
@@ -1323,7 +1333,11 @@ mod tests {
                     &what,
                 );
                 let layer = paths(mounted.drawing(mounted.layer), &replay);
-                assert_traces(&layer[0], &rounded_rectangle(frame, 0.0, now), &what);
+                assert_traces(
+                    &layer[0],
+                    &rounded_rectangle(frame, OUTLINE_WIDTH.0, now - OUTLINE_WIDTH.0),
+                    &what,
+                );
                 // The whole curve is the closed-form spring from the corners at rest, within 0.1 % of its travel.
                 samples.extend(replay.run(spring.node, 171));
                 let gap = worst_gap(&samples, f64::from(rest), &spring);

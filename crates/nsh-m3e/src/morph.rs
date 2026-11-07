@@ -167,23 +167,9 @@ impl DrawnShape {
         self,
         outline: impl Fn() -> Option<Points> + Copy + 'static,
     ) -> CanvasView {
-        self.layer(outline)
-            .on_layout(move |bounds: &Bounds<Points>| self.resize(bounds.size))
-    }
-
-    /// The state layer: a canvas over the container, which fills the container's path with the canvas view's
-    /// background. It does not give the container's size: a hidden state layer is laid out at no size at all.
-    pub(crate) fn state_layer(self) -> CanvasView {
-        self.layer(|| None)
-    }
-
-    /// A canvas filling the component (`absolute`, inset by 0) that draws the path as [`Self::container`] says.
-    fn layer(self, outline: impl Fn() -> Option<Points> + Copy + 'static) -> CanvasView {
-        canvas(move || {
+        layer(canvas(move || {
             let size = self.size.get();
-            let area = Bounds::new(point(px(0.0), px(0.0)), size);
-            let filled = trace(Painter::new().begin_path(), &self.radius, size, 0.0)
-                .fill_background_from_view(area);
+            let filled = self.fill(Painter::new(), size, 0.0);
             match outline() {
                 Some(width) => trace(filled.begin_path(), &self.radius, size, width.0 / 2.0)
                     .stroke_style_from_view(SvgPaint::None)
@@ -191,11 +177,40 @@ impl DrawnShape {
                     .stroke(),
                 None => filled,
             }
-        })
-        .absolute()
-        .inset(px(0.0))
+        }))
         .stroke_width(move || outline().unwrap_or(Points(0.0)))
+        .on_layout(move |bounds: &Bounds<Points>| self.resize(bounds.size))
     }
+
+    /// The state layer: a canvas over the container, which fills the inside of the container's outline (all of the
+    /// container when `outline` gives none) with the canvas view's background, its corners concentric with the
+    /// container's. The outline stays as it is under hover, focus and press, as androidx draws a button's border
+    /// over its ripple (`Modifier.border` draws after its content). It does not give the container's size: a hidden
+    /// state layer is laid out at no size at all.
+    pub(crate) fn state_layer(
+        self,
+        outline: impl Fn() -> Option<Points> + Copy + 'static,
+    ) -> CanvasView {
+        layer(canvas(move || {
+            self.fill(
+                Painter::new(),
+                self.size.get(),
+                outline().map_or(0.0, |width| width.0),
+            )
+        }))
+    }
+
+    /// Adds to `painter` the container's path `inset` points inside its edge, filled with the canvas view's
+    /// background.
+    fn fill(self, painter: Painter, size: Size<Points>, inset: f32) -> Painter {
+        let area = Bounds::new(point(px(0.0), px(0.0)), size);
+        trace(painter.begin_path(), &self.radius, size, inset).fill_background_from_view(area)
+    }
+}
+
+/// `canvas` filling the component: `absolute`, inset by 0.
+fn layer(canvas: CanvasView) -> CanvasView {
+    canvas.absolute().inset(px(0.0))
 }
 
 /// Adds to `painter` the outline of a rounded rectangle `inset` points inside a container of `size`, its corners
