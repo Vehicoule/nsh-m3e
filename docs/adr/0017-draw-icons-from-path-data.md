@@ -14,9 +14,11 @@ first of them ships.
 - **What M3 asks of an icon.** An icon is one shape in one color: the component's content color in each state, from
   the tokens. For example, `SmallIconButtonTokens.IconSize` is the size, and `FilledIconButtonTokens.Color` /
   `DisabledColor` / `DisabledOpacity` are the colors (androidx `a8b393d51f9b`). The icons M3 itself uses are
-  Material Symbols. Each one is a single filled path in a 960 × 960 view box (`viewBox="0 -960 960 960"`), published as
-  SVG files by Google under Apache-2.0 (https://github.com/google/material-design-icons, commit
-  `10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7`).
+  Material Symbols. Each one is a single filled path, published as SVG files by Google under Apache-2.0
+  (https://github.com/google/material-design-icons, commit `10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7`). Of the 24,942
+  files the library ships (4,157 icons, 3 styles, filled and not, at 24 px), 24,348 draw in a 960 × 960 view box
+  (`viewBox="0 -960 960 960"`), 192 in `"0 96 960 960"`, and 402 have no view box and draw in their 24-point square.
+  (Corrected when the icons were vendored: the first version said every file had the first view box.)
 - **What NSH offers** (pinned revision `a78c6190fcf8`):
   - **`svg(src)`** (`crates/nsh-core/src/element/host.rs`) draws an SVG file "as authored, in its own colors".
     - Its `currentColor` follows the view's text color on the native backends, where it is a canvas.
