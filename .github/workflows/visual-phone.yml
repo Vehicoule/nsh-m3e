@@ -245,10 +245,9 @@ jobs:
           echo "WITH_NDK_BINDGEN=$wrapper" >> "$GITHUB_ENV"
       # NSH's Android runtime (`classes.dex` and a `libnsh.so` per ABI, `cargo xtask android --dev` in NSH) changes with
       # the NSH revision and its build tools, not with this repository, but in a checkout the CLI rebuilds it on every
-      # run: rust-cache does not keep the build of
-      # a workspace's own crates, and a fresh checkout's sources are newer than any build anyway. It took 8 min 47 s
-      # of each run. It is built once per revision and build tools, and kept; `NSH_RUNTIME` points the CLI at it
-      # (`prebuilt_android` in `crates/nsh-cli/src/runtime.rs` in NSH). The catalog's own `libnsh.so` is still built
+      # run: rust-cache does not keep the build of a workspace's own crates, and a fresh checkout's sources are newer
+      # than any build anyway. It took 8 min 47 s of each run. It is built once per revision and build tools, and
+      # kept; `NSH_RUNTIME` points the CLI at it (`prebuilt_android` in `crates/nsh-cli/src/runtime.rs` in NSH). The catalog's own `libnsh.so` is still built
       # for each ABI the runtime has, on every run (`RustApp::test_android` in `crates/nsh-cli/src/rust_app.rs`).
       #
       # The key names everything the runtime is built from besides NSH's sources: the compiler, which is NSH's own
