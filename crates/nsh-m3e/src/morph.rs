@@ -112,18 +112,19 @@ impl DrawnShape {
         }
     }
 
-    /// The corners change (another size or shape of the component): the radius goes to the new ones at once, as
-    /// androidx restarts its shape animation when the shapes change (`key(shapes)` in `Button.kt`'s
-    /// `shapeByInteraction`). Nothing is sent when the radius it is at stays the same.
+    /// The corners change (another size or shape of the component): the radius goes to the new target at once,
+    /// stopping any spring still moving it, as androidx starts its shape animation again when the shapes change
+    /// (`key(shapes)` in `Button.kt`'s `shapeByInteraction`). This holds even when the radius it goes to is the one
+    /// it was going to, as when a press is down and both shapes press into the same corners. Nothing is sent when
+    /// the corners stay the same.
     pub(crate) fn set_corners(self, rest: Corners, pressed: Corners) {
         untracked(|| {
-            let before = self.target().radius(self.size.get());
+            if self.rest.get() == rest && self.pressed_corners.get() == pressed {
+                return;
+            }
             self.rest.set(rest);
             self.pressed_corners.set(pressed);
-            let after = self.target().radius(self.size.get());
-            if after.to_bits() != before.to_bits() {
-                self.radius.set(after);
-            }
+            self.radius.set(self.target().radius(self.size.get()));
         });
     }
 

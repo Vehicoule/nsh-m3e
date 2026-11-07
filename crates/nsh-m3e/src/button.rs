@@ -1469,6 +1469,31 @@ mod tests {
     }
 
     #[test]
+    fn a_new_shape_during_a_press_stops_the_morph_on_the_pressed_corners() {
+        // Both shapes press into the same corners (8 at the small size), and the new shapes still start the
+        // animation again (`key(shapes)`): the spring stops and the corners are the pressed ones at once.
+        let (mut app, recording) = start(Config::default());
+        let (_, _, frame) = drawn(&recording);
+        let step = press_down(&mut app);
+        let spring = morph_in(&recording, &step, 8.0);
+        app.press("Reshape").unwrap();
+        let items = recording.in_step("press(Reshape)");
+        assert_eq!(started_springs(&items), Vec::new());
+        assert_eq!(set_values(&items), 1, "{items:?}");
+        let mut replay = replay(&recording);
+        let after = replay.run(spring.node, 2);
+        assert!(!replay.is_animating());
+        assert_eq!(
+            after.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+            [8.0_f32.to_bits(); 2]
+        );
+        let (container, layer, _) = drawn(&recording);
+        let pressed = rounded_rectangle(frame, 0.0, 8.0);
+        assert_traces(&container[0], &pressed, "container");
+        assert_traces(&layer[0], &pressed, "layer");
+    }
+
+    #[test]
     fn a_button_disabled_while_pressed_goes_back_to_its_shape_at_rest() {
         let (mut app, recording) = start(Config::default());
         let step = press_down(&mut app);
