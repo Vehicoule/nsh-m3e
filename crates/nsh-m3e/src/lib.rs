@@ -11,5 +11,6 @@
 mod animation_probe;
 pub mod button;
 pub mod color;
+mod morph;
 pub mod motion;
 pub mod tokens;

@@ -147,6 +147,12 @@ impl Replay {
         samples
     }
 
+    /// The value of `node` now, whether a value or a node computed from values (an interpolation, a sum): what a
+    /// canvas slot bound to it draws with.
+    pub(crate) fn value(&self, node: NodeId) -> f32 {
+        self.graph.eval(node).number()
+    }
+
     /// True while an animation runs in the graph.
     pub(crate) fn is_animating(&self) -> bool {
         self.graph.is_animating()
