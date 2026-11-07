@@ -625,8 +625,18 @@ fn key(expression: &str) -> Option<Value> {
 }
 
 /// `4.0.dp`, as a number of points; `None` when the expression is not a length in dp.
+///
+/// `Double.dp` is `Dp(this.toFloat() + 0f)` (androidx `Dp.kt` at the pinned commit, `compose/ui/ui-unit/`): the nearest
+/// `Float`, as `Double.sp` is. A decimal with no exact `f32` (`1.6.dp`, the circular progress indicator's wave
+/// amplitude) is therefore the one androidx holds, and is read as [`sp`] reads it, which still refuses a decimal
+/// halfway between two `f32`s.
 fn dp(expression: &str) -> Option<Result<f32, ParseErrorKind>> {
-    expression.strip_suffix(".dp").map(number)
+    expression
+        .strip_suffix(".dp")
+        .map(|literal| match number(literal) {
+            Err(ParseErrorKind::Inexact(_)) => sp(literal),
+            other => other,
+        })
 }
 
 /// The value of `inline val <name>: <ty>`, from its `get() = ...` line, in the object named `object`.
@@ -1022,6 +1032,47 @@ mod tests {
     }
 
     #[test]
+    fn reads_a_length_with_no_exact_f32_as_the_float_androidx_makes() {
+        let length = |expression: &str| match only_value(&format!(
+            "    inline val L: androidx.compose.ui.unit.Dp\n        get() = {expression}\n"
+        )) {
+            Value::Dp(points) => points.to_bits(),
+            other => panic!("{expression}: {other:?}"),
+        };
+        // `CircularProgressIndicatorTokens.ActiveWaveAmplitude`, `0.1.dp` and a negative one: `Double.dp` keeps the
+        // `f32` nearest the decimal.
+        assert_eq!(length("1.6.dp"), 1.6_f32.to_bits());
+        assert_eq!(length("0.1.dp"), 0.1_f32.to_bits());
+        assert_eq!(length("-0.1.dp"), (-0.1_f32).to_bits());
+        // A decimal with an exact `f32` stays as it was.
+        assert_eq!(length("3.0.dp"), 3.0_f32.to_bits());
+        // The corners of a shape are lengths too.
+        let corner = parse(&file("    val CornerValueSmall = CornerSize(1.6.dp)\n"))
+            .unwrap()
+            .tokens
+            .into_iter()
+            .map(|token| token.value)
+            .collect::<Vec<_>>();
+        assert_eq!(corner, [Value::Dp(1.6)]);
+    }
+
+    #[test]
+    fn refuses_a_length_halfway_between_two_floats_and_one_that_is_not_a_decimal() {
+        let error = |literal: &str| {
+            error_kind(&format!(
+                "    inline val L: androidx.compose.ui.unit.Dp\n        get() = {literal}.dp\n"
+            ))
+        };
+        // 1 + 2^-24 lies exactly halfway between 1.0 and the next `f32`: which one `toFloat()` gives would depend on
+        // the rounding of the `Double`, so the generator stops, as it does for a text unit.
+        let halfway = "1.000000059604644775390625";
+        assert_eq!(error(halfway), ParseErrorKind::Inexact(halfway.into()));
+        // The other errors of a number are not turned into rounding.
+        assert_eq!(error("1e5"), ParseErrorKind::BadNumber("1e5".into()));
+        assert_eq!(error("3"), ParseErrorKind::BadNumber("3".into()));
+    }
+
+    #[test]
     fn rejects_a_length_of_another_shape() {
         let error = |expression: &str| {
             error_kind(&format!(
@@ -1041,7 +1092,6 @@ mod tests {
             ParseErrorKind::Unsupported("get() = ElevationTokens.Level0.copy()".into())
         );
         assert_eq!(error("3.dp"), ParseErrorKind::BadNumber("3".into()));
-        assert_eq!(error("0.1.dp"), ParseErrorKind::Inexact("0.1".into()));
         // A `Dp` named by its short type is not a form these files use.
         assert_eq!(
             error_kind("    inline val L: Dp\n        get() = 3.0.dp\n"),
@@ -1128,8 +1178,8 @@ mod tests {
             ParseErrorKind::BadNumber("4".into())
         );
         assert_eq!(
-            error_kind("    val S = CornerSize(0.1.dp)\n"),
-            ParseErrorKind::Inexact("0.1".into())
+            error_kind("    val S = CornerSize(1.000000059604644775390625.dp)\n"),
+            ParseErrorKind::Inexact("1.000000059604644775390625".into())
         );
         assert_eq!(
             error_kind(
