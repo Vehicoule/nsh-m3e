@@ -252,7 +252,8 @@ jobs:
       #
       # The key names everything the runtime is built from besides NSH's sources: the compiler, which is NSH's own
       # (its `rust-toolchain.toml` pins `stable`, which moves; this repository's pin does not apply in `.nsh-src`), and
-      # the runner image, which holds the NDK, the SDK's build tools and the JDK.
+      # the runner image, which holds the NDK, the SDK's build tools and the JDK, and the apt packages, whose libclang
+      # bindgen runs on (the hash of the files apt downloads, from the step that restores them).
       - name: Read what NSH's Android runtime is built with
         id: android-build
         if: steps.changes.outputs.visual == 'true'
@@ -269,7 +270,7 @@ jobs:
           path: ${{ runner.temp }}/nsh-runtime/android/dev
           key: >-
             nsh-android-runtime-dev-${{ steps.nsh.outputs.rev }}-rustc-${{ steps.android-build.outputs.rustc }}-${{
-            steps.android-build.outputs.image }}
+            steps.android-build.outputs.image }}-apt-${{ steps.apt.outputs.hash }}
       - name: Build NSH's Android runtime at the pinned revision
         if: steps.changes.outputs.visual == 'true' && steps.android-runtime.outputs.cache-hit != 'true'
         working-directory: .nsh-src
