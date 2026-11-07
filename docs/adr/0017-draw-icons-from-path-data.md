@@ -12,8 +12,8 @@ How an icon is given and drawn is public API that every one of them shares. It h
 first of them ships.
 
 - **What M3 asks of an icon.** An icon is one shape in one color: the component's content color in each state, from
-  the tokens. For example, `SmallIconButtonTokens.IconSize` is the size, and `FilledIconButtonTokens.IconColor` /
-  `DisabledIconColor` / `DisabledIconOpacity` are the colors (androidx `a8b393d51f9b`). The icons M3 itself uses are
+  the tokens. For example, `SmallIconButtonTokens.IconSize` is the size, and `FilledIconButtonTokens.Color` /
+  `DisabledColor` / `DisabledOpacity` are the colors (androidx `a8b393d51f9b`). The icons M3 itself uses are
   Material Symbols. Each one is a single filled path in a 960 × 960 view box (`viewBox="0 -960 960 960"`), published as
   SVG files by Google under Apache-2.0 (https://github.com/google/material-design-icons, commit
   `10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7`).
