@@ -28,6 +28,7 @@ pub mod motion_tokens;
 pub mod outlined_button_tokens;
 pub mod outlined_icon_button_tokens;
 pub mod palette_tokens;
+pub mod radio_button_tokens;
 pub mod shape_tokens;
 pub mod small_icon_button_tokens;
 pub mod standard_icon_button_tokens;
