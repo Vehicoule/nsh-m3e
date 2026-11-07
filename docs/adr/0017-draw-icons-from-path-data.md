@@ -1,4 +1,4 @@
-# 0017. Draw icons from SVG path data on a canvas, filled with a token color; the library ships no icon set
+# 0017. Draw icons from SVG path data on a canvas, filled with a token color, and ship Material Symbols' outlined icons
 
 - Status: Proposed
 - Date: 2026-11-07
@@ -49,19 +49,31 @@ first of them ships.
    - Cost: the icon button waits on an upstream pull request whose design is NSH's to choose. Option 2's pop-in after
      the first frame stays.
 
-And for where the icons come from:
+And for where the icons come from. Material Symbols, at the pinned commit, has 4,157 icons, each in three styles
+(outlined, rounded, sharp) and 168 variants per style (optical size, weight, grade, fill). A 24-point outlined SVG file
+is 484 bytes on average (40 icons drawn at random). Measured in this repository's development container (4 cores, not a
+CI runner), 3 builds from scratch each: a crate of 4,000 path constants of 700 bytes (3 MB of source, more than the real
+icons) builds in 0.3 s, debug or release, and documents in 1 s. An app that depends on it and shows one of those paths
+grows by 936 bytes in release (445,688 bytes against 444,752 with none), and its binary holds the path it uses and none
+of the others, debug or release: a Rust constant is copied where it is used and nowhere else.
 
-- **a. The library ships no icon set.** The app gives each icon's path data, from Material Symbols or anywhere else.
-  The catalog and the tests use a few Material Symbols, copied from the pinned commit into
-  `reference/material-symbols/` with their license, in the same way as the androidx files.
-- **b. The library ships Material Symbols**, all of them or a chosen subset.
-  - It makes a few thousand icons part of the library's API and size.
-  - It adds a second license (Apache-2.0) to what ships under MPL-2.0 ([ADR 0007](0007-license.md)).
+- **a. The library ships no icon set.** The app copies each icon's path data itself. The catalog and the tests copy a
+  few Material Symbols with their license.
+- **b. The library ships every Material Symbol in the outlined style, filled and not.** The SVG files are copied from
+  the pinned commit into `reference/material-symbols/` (about 4 MB), as the androidx files are, and `cargo xtask`
+  generates one constant per icon and fill from them, as it generates the tokens.
+  - The app has every icon of M3's default style without a pull request each time it needs one.
+  - The library's API and documentation get 8,314 more names. An app pays only for the icons it shows.
+  - The generated files carry Material Symbols' license, Apache-2.0, beside MPL-2.0, as the generated tokens carry
+    androidx's ([ADR 0007](0007-license.md), `REUSE.toml`).
+- **c. As b, in the three styles**: about 12 MB copied, and the app picks its style.
+- **d. As b, for a chosen list of icons only**, which grows with the app: the smallest copy, and a pull request for each
+  new batch of icons.
 
 ## Decision
 
-Recommended: **1 and a**. Icons are path data drawn on a canvas and filled with a token color, and the library ships no
-icon set. Only the catalog and the tests copy the few Material Symbols they show.
+Recommended: **1 and b**. Icons are path data drawn on a canvas and filled with a token color, and the library ships
+every Material Symbol in the outlined style, filled and not, generated from the files copied at the pinned commit.
 
 ## Consequences
 
@@ -70,6 +82,7 @@ icon set. Only the catalog and the tests copy the few Material Symbols they show
 - A test checks the icon's drawing: its path data, its scale to the token size and its fill from the token color, in
   every state.
 - The visual checks read the icon's pixels against its token color on every host, the web included.
-- The app picks its icons and ships them itself. The Material Symbols the catalog uses are vendored at a pinned commit
-  and declared in `REUSE.toml`.
+- A script keeps `reference/material-symbols/` on the pinned commit and CI checks it, as `scripts/sync-androidx.sh`
+  does; `cargo xtask` generates the icons from it and `--check` fails when they drift. The generated icons come in a pull
+  request of their own, after the icon button.
 - Multicolor images stay with NSH's `image` and `svg`. They are not icons in this library.
