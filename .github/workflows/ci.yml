@@ -62,6 +62,8 @@ jobs:
         run: scripts/sync-material-symbols.sh check
       - name: Generated icons match the vendored Material Symbols
         run: cargo xtask gen-icons --check
+      - name: Vendored Material Web elevation matches the pinned commit
+        run: scripts/sync-material-web.sh check
       - name: NSH skills match the pinned NSH commit
         run: scripts/sync-nsh.sh check
 

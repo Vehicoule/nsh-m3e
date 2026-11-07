@@ -22,6 +22,7 @@ site may describe a newer version than the one this repository builds against.
 | Official implementation (behavior, layout, how tokens are used) | https://github.com/androidx/androidx/tree/androidx-main/compose/material3/material3 | read at the same revision |
 | Official implementation, where it overrides a token (ADR 0012) | [`reference/androidx-material3-components/`](../reference/androidx-material3-components/) (`Button.kt`, `IconButton.kt`, `IconButtonDefaults.kt`) | the same commit, moved with the tokens by `scripts/sync-androidx.sh` |
 | Icons (ADR 0017) | [`reference/material-symbols/`](../reference/material-symbols/) (from `google/material-design-icons`, `symbols/web/`) | `10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7`, moved by `scripts/sync-material-symbols.sh` |
+| Elevation shadows (ADR 0018) | [`reference/material-web/`](../reference/material-web/) (from `material-components/material-web`, `elevation/internal/_elevation.scss`) | `d872455c4be56022da2095349b30ef46e0b55bc3`, moved by `scripts/sync-material-web.sh` |
 | Guidelines (anatomy, states, usage, motion) | https://m3.material.io, sections Foundations, Styles, Components | not pinned (web) |
 | Dynamic color algorithm (HCT, schemes) | https://github.com/material-foundation/material-color-utilities | to pin when used (ADR to come) |
 | Figma | The Material 3 Design Kit on Figma Community, read through the Figma MCP when available | to pin when used |
