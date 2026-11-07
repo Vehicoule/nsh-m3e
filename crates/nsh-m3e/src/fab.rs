@@ -35,7 +35,7 @@
 //! The FAB's shape does not change when it is pressed: androidx's FAB has no pressed shape (the button's
 //! `shapes.pressedShape` has no counterpart in `FloatingActionButton.kt`). So its container is a plain view with a
 //! corner radius, and not the drawn container of [ADR 0011], which exists to move a radius with a spring. The shadow
-//! of the elevation will follow that radius with no extra work.
+//! of the elevation follows that radius with no extra work.
 //!
 //! # Touch target
 //!
@@ -56,12 +56,26 @@
 //!
 //! # Elevation
 //!
-//! The tokens give the level of the container in each state ([`FabStyle::elevation`]). **No shadow is drawn yet**:
-//! how elevation is drawn is ADR 0018's, and its shadow is built in a change of its own that this one does not wait
-//! for; the tokens give levels in points, not shadows, so this module invents no shadow value. [`Fab`] marks the one
-//! place where the shadow will be applied.
+//! The container casts the shadow of its elevation ([ADR 0018]): the tokens give its length in each state
+//! ([`FabStyle::elevation`]), [`FabStyle::level`] finds the level of the elevation scale that length is, and the
+//! container carries that level's two shadow layers ([`Elevation::shadows`]). No shadow value is written here. The
+//! levels are level 3 at rest, focused and pressed, and level 4 under the pointer, for both styles.
+//!
+//! - **A token that is not a level cannot be built.** [`FabStyle::level`] reads constants that are worked out when the
+//!   crate is compiled: an elevation token that is none of the six levels' lengths fails the build, so there is no
+//!   FAB with a made-up level and no arm of the code that guesses one. (`Elevation::from_points` is what a test ties
+//!   them to; it cannot run in a constant.)
+//! - **A change of level snaps.** The container's shadow changes at once when the state does. androidx animates the
+//!   elevation between its states (`FloatingActionButtonElevationAnimatable`, line 1373, with `animateElevation`);
+//!   whether this library follows that animation or the rule that every motion is a spring of the motion scheme is
+//!   not decided, so none is invented.
+//! - **The states are NSH's variants of the container**, `hover`, `focus_within` and `active`, resolved by the platform
+//!   with nothing running. When several apply, NSH's order of the variants decides: the pressed level over the hovered
+//!   one over the focused one. androidx takes the interaction that came last (`interactions.lastOrNull()`, line
+//!   1346), which the variants do not record.
 //!
 //! [ADR 0004]: https://github.com/Vehicoule/nsh-m3e/blob/main/docs/adr/0004-spring-damping-conversion.md
+//! [ADR 0018]: https://github.com/Vehicoule/nsh-m3e/blob/main/docs/adr/0018-draw-elevation-as-two-box-shadows-per-level.md
 //! [ADR 0011]: https://github.com/Vehicoule/nsh-m3e/blob/main/docs/adr/0011-morph-shapes-with-a-drawn-container.md
 //! [ADR 0012]: https://github.com/Vehicoule/nsh-m3e/blob/main/docs/adr/0012-follow-androidx-components-where-tokens-are-wrong.md
 
@@ -69,6 +83,7 @@ use nsh_core::geometry::{Points, Size};
 use nsh_core::prelude::*;
 
 use crate::color::ColorRole;
+use crate::elevation::Elevation;
 use crate::icon::Icon;
 use crate::morph::{Corners, corners};
 use crate::motion::{SPRING_MASS, SpringToken};
@@ -163,7 +178,8 @@ impl FabStyle {
     /// `PressedContainerElevation`): the level 3 of the elevation tokens at rest, focused and pressed, and level 4
     /// hovered, for both styles.
     ///
-    /// This is data: the FAB draws no shadow yet (this module's documentation says why).
+    /// This is the token's length; [`FabStyle::level`] is the level of the elevation scale it is, which the
+    /// container casts the shadow of.
     ///
     /// ```
     /// use nsh_m3e::fab::{FabState, FabStyle};
@@ -200,6 +216,86 @@ impl FabStyle {
                 fab_secondary_container_tokens::PRESSED_CONTAINER_ELEVATION
             }
         }
+    }
+
+    /// The level of the elevation scale the container sits at in `state`: [`FabStyle::elevation`]'s length as a
+    /// level, whose [two shadow layers](Elevation::shadows) the container casts.
+    ///
+    /// The levels are worked out when the crate is compiled, from the same tokens: a token that is none of the six
+    /// levels' lengths fails the build, so a FAB never has a level that is not its token's.
+    ///
+    /// ```
+    /// use nsh_m3e::elevation::Elevation;
+    /// use nsh_m3e::fab::{FabState, FabStyle};
+    ///
+    /// let style = FabStyle::SecondaryContainer;
+    /// assert_eq!(style.level(FabState::Rest), Elevation::Level3);
+    /// assert_eq!(style.level(FabState::Hovered), Elevation::Level4);
+    /// ```
+    #[must_use]
+    pub const fn level(self, state: FabState) -> Elevation {
+        let levels = match self {
+            FabStyle::PrimaryContainer => PRIMARY_LEVELS,
+            FabStyle::SecondaryContainer => SECONDARY_LEVELS,
+        };
+        match state {
+            FabState::Rest => levels.rest,
+            FabState::Hovered => levels.hovered,
+            FabState::Focused => levels.focused,
+            FabState::Pressed => levels.pressed,
+        }
+    }
+}
+
+/// The level of each state of one style.
+#[derive(Debug, Clone, Copy)]
+struct Levels {
+    rest: Elevation,
+    hovered: Elevation,
+    focused: Elevation,
+    pressed: Elevation,
+}
+
+/// The levels of `style`, worked out from its tokens.
+const fn levels(style: FabStyle) -> Levels {
+    Levels {
+        rest: level_of(style.elevation(FabState::Rest)),
+        hovered: level_of(style.elevation(FabState::Hovered)),
+        focused: level_of(style.elevation(FabState::Focused)),
+        pressed: level_of(style.elevation(FabState::Pressed)),
+    }
+}
+
+/// The levels of the primary container style, worked out when the crate is compiled.
+const PRIMARY_LEVELS: Levels = levels(FabStyle::PrimaryContainer);
+
+/// The levels of the secondary container style, worked out when the crate is compiled.
+const SECONDARY_LEVELS: Levels = levels(FabStyle::SecondaryContainer);
+
+/// The level whose length is `points`, exactly: the levels' own lengths are compared bit for bit, as
+/// `Elevation::from_points` compares them, so no length is taken for its neighbor.
+///
+/// Only the constants above call it, so that it runs while the crate is compiled and a length that is none of the
+/// six levels' fails the build (the assertion). Called with such a length at run time it would panic: it is private
+/// for that reason.
+const fn level_of(points: Points) -> Elevation {
+    let bits = points.0.to_bits();
+    if bits == Elevation::Level0.points().0.to_bits() {
+        Elevation::Level0
+    } else if bits == Elevation::Level1.points().0.to_bits() {
+        Elevation::Level1
+    } else if bits == Elevation::Level2.points().0.to_bits() {
+        Elevation::Level2
+    } else if bits == Elevation::Level3.points().0.to_bits() {
+        Elevation::Level3
+    } else if bits == Elevation::Level4.points().0.to_bits() {
+        Elevation::Level4
+    } else {
+        assert!(
+            bits == Elevation::Level5.points().0.to_bits(),
+            "an elevation token of a FAB is not a level of the elevation scale"
+        );
+        Elevation::Level5
     }
 }
 
@@ -481,8 +577,8 @@ pub fn Fab(props: FabProps, cx: Scope<FabEvent>) -> impl IntoElement {
     let visibility = computed(move || props.visibility.get());
     let reveal = Reveal::new(untracked(|| visibility.get()));
     effect(move || reveal.go(visibility.get()));
-    // ELEVATION (ADR 0018): the shadow of `props.style.get().elevation(state)` goes on this view, in each state, and
-    // nowhere else. The shadow is built in a change of its own: until it lands nothing is drawn here.
+    // The two shadow layers of the container's level in `state` (ADR 0018), read from the style as it is now.
+    let shadows = move |state| props.style.get().level(state).shadows();
     nsh_base::button()
         .accessibility_label(move || Some(props.label.get()))
         .on_press(move || cx.emit(FabEvent::Press))
@@ -494,12 +590,18 @@ pub fn Fab(props: FabProps, cx: Scope<FabEvent>) -> impl IntoElement {
         .h(move || frame().height)
         .bg(move || role_color(colors().container))
         .style_with(move |s| {
-            let s = rounded(s, size().shape);
+            let s = rounded(s, size().shape).shadow(shadows(FabState::Rest));
             match reveal.presence.get() {
                 Presence::InLayout => s,
                 Presence::OutOfLayout => s.hidden(),
             }
         })
+        // The shadow of each state the container is in: NSH resolves them natively, with nothing running, and a
+        // change of level snaps (this module's documentation says why). Each is bound to the style prop, which
+        // `hover` and the others would read once if they took the shadows themselves.
+        .hover(move |s| s.style_with(move |s| s.shadow(shadows(FabState::Hovered))))
+        .focus_within(move |s| s.style_with(move |s| s.shadow(shadows(FabState::Focused))))
+        .active(move |s| s.style_with(move |s| s.shadow(shadows(FabState::Pressed))))
         .bind_opacity(&reveal.alpha)
         .bind_scale(&reveal.scale())
         .child(
@@ -534,7 +636,7 @@ mod tests {
     use nsh_core::canvas::{self, CanvasOp, Drawing, Num};
     use nsh_core::geometry::Bounds;
     use nsh_core::platform::{ColorScheme as Appearance, Environment, Os};
-    use nsh_core::{AccessibilityRole, Color, MountItem, NodeId, ViewKind, ViewStyle};
+    use nsh_core::{AccessibilityRole, BoxShadow, Color, MountItem, NodeId, ViewKind, ViewStyle};
     use nsh_engine::{Clock, EngineConfig, Root};
     use nsh_testing::Headless;
     use proptest::prelude::*;
@@ -883,9 +985,7 @@ mod tests {
     }
 
     #[test]
-    fn no_view_has_a_border_a_shadow_or_an_effect_yet() {
-        // The elevation's shadow is ADR 0018's and is built in a change of its own: until it lands, nothing draws one,
-        // and this test changes with it.
+    fn only_the_container_casts_a_shadow_and_no_view_has_a_border_or_another_effect() {
         for (size, ..) in EXPECTED {
             for style in STYLES {
                 let mounted = mount(Config {
@@ -896,10 +996,21 @@ mod tests {
                 for id in [mounted.button, mounted.layer, mounted.icon] {
                     let view = mounted.style(id);
                     let what = format!("{size:?} {style:?}");
+                    // Android's own material shadow is not used: the shadow is ADR 0018's layers.
                     assert_eq!(view.elevation, Points(0.0), "{what}");
-                    assert!(view.effects.is_none(), "{what}: {:?}", view.effects);
                     assert_eq!(view.borders.widths.top, px(0.0), "{what}");
                     assert_eq!(view.outline, nsh_core::Outline::default(), "{what}");
+                    if id == mounted.button {
+                        // The shadow is the only effect: no gradient, filter or mask.
+                        let effects = view.effects.as_deref().expect("the container's shadow");
+                        assert!(effects.background_images.is_empty(), "{what}");
+                        assert!(effects.filters.is_empty(), "{what}");
+                        assert!(effects.backdrop_filters.is_empty(), "{what}");
+                        assert!(effects.mask_images.is_empty(), "{what}");
+                    } else {
+                        // Neither the state layer nor the icon casts one: the container's is the FAB's only.
+                        assert!(view.effects.is_none(), "{what}: {:?}", view.effects);
+                    }
                 }
             }
         }
@@ -1017,9 +1128,10 @@ mod tests {
             .collect()
     }
 
-    /// Nothing of the FAB but its state layer's style changed in `items`: none of its frames, no drawing, and none of
-    /// its other views styled again. What else is on screen (the probe's counter) may change.
-    fn assert_only_the_layer_changes_in_the_fab(
+    /// Nothing of the FAB but the styles of its container (its shadow) and of its state layer changed in `items`:
+    /// none of its frames, no drawing, and its icon not styled again. What else is on screen (the probe's counter)
+    /// may change.
+    fn assert_only_the_styles_change_in_the_fab(
         mounted: &Mounted,
         items: &[MountItem],
         what: &str,
@@ -1027,19 +1139,19 @@ mod tests {
         assert_eq!(mounted.layout_items(items), 0, "{what}");
         assert!(
             items.iter().all(|item| match item {
-                MountItem::ViewStyle { id, .. } | MountItem::Canvas { id, .. } =>
-                    *id == mounted.layer,
+                MountItem::ViewStyle { id, .. } => *id == mounted.layer || *id == mounted.button,
+                MountItem::Canvas { id, .. } => *id == mounted.layer,
                 _ => true,
             }),
             "{what}: {items:?}"
         );
     }
 
-    /// Nothing but the state layer's style changed in `items`, anywhere on screen: no frame, no text, no drawing, and
-    /// no other view styled again.
-    fn assert_only_the_layer_changes(mounted: &Mounted, items: &[MountItem], what: &str) {
+    /// Nothing but the styles of the FAB's container and state layer changed in `items`, anywhere on screen: no
+    /// frame, no text, no drawing, and no other view styled again.
+    fn assert_only_the_styles_change(mounted: &Mounted, items: &[MountItem], what: &str) {
         assert_eq!(layout_items(items), 0, "{what}");
-        assert_only_the_layer_changes_in_the_fab(mounted, items, what);
+        assert_only_the_styles_change_in_the_fab(mounted, items, what);
     }
 
     #[test]
@@ -1051,7 +1163,7 @@ mod tests {
         let hover = recording.in_step("hover(label:Add)");
         // The state layer at `StateTokens.HoverStateLayerOpacity`, once.
         assert_eq!(layer_opacities(&mounted, &hover), [0.08]);
-        assert_only_the_layer_changes(&mounted, &hover, "hover");
+        assert_only_the_styles_change(&mounted, &hover, "hover");
         // It is the icon's color, which the layer already had at rest.
         assert_eq!(
             mounted.style(mounted.layer).background_color,
@@ -1085,13 +1197,13 @@ mod tests {
         // out or drawn again. The state layer's pressed opacity is the platform's to apply: the headless runner
         // sends the press to the FAB's handlers, not to its styles.
         assert_eq!(started_springs(&down), Vec::new());
-        assert_only_the_layer_changes(&mounted, &down, "down");
+        assert_only_the_styles_change(&mounted, &down, "down");
         assert!(app.shows("presses: 0"));
         app.drop_held()?;
         let up = recording.in_step("drop()");
         // The release reports the press, so the probe's counter text is laid out again: only the FAB itself is held
         // to nothing.
-        assert_only_the_layer_changes_in_the_fab(&mounted, &up, "up");
+        assert_only_the_styles_change_in_the_fab(&mounted, &up, "up");
         assert_eq!(started_springs(&up), Vec::new());
         assert!(app.shows("presses: 1"));
         assert_eq!(Mounted::of(&recording.items()).size(), mounted.size());
@@ -1130,7 +1242,7 @@ mod tests {
         let focus = recording.in_step("keyboard.press(Tab)");
         // `StateTokens.FocusStateLayerOpacity`.
         assert_eq!(layer_opacities(&mounted, &focus), [0.1]);
-        assert_only_the_layer_changes(&mounted, &focus, "focus");
+        assert_only_the_styles_change(&mounted, &focus, "focus");
         Ok(())
     }
 
@@ -1193,6 +1305,219 @@ mod tests {
                 assert!(style.elevation(FabState::Hovered) > style.elevation(state));
             }
         }
+    }
+
+    #[test]
+    fn each_style_has_the_level_of_each_state_which_is_its_token() {
+        for style in STYLES {
+            for (state, points) in ELEVATIONS {
+                let what = format!("{style:?} {state:?}");
+                // The elevation module's own lookup of a length, which a constant cannot call, finds the same level.
+                assert_eq!(
+                    Elevation::from_points(style.elevation(state)),
+                    Some(style.level(state)),
+                    "{what}"
+                );
+                assert_eq!(
+                    Elevation::from_points(Points(points)),
+                    Some(style.level(state)),
+                    "{what}"
+                );
+            }
+            // Level 3 at rest, focused and pressed; level 4 under the pointer.
+            assert_eq!(style.level(FabState::Rest), Elevation::Level3);
+            assert_eq!(style.level(FabState::Focused), Elevation::Level3);
+            assert_eq!(style.level(FabState::Pressed), Elevation::Level3);
+            assert_eq!(style.level(FabState::Hovered), Elevation::Level4);
+        }
+    }
+
+    #[test]
+    fn a_length_that_is_no_level_is_refused_and_not_taken_for_a_neighbor() {
+        // Each level's own length gives the level.
+        for level in Elevation::ALL {
+            assert_eq!(level_of(level.points()), level);
+        }
+        // Anything else would fail the build when a constant got it: called at run time it panics. Between two
+        // levels, a hair off one, negative, and not a number: none is rounded to a level.
+        for points in [7.0, 6.001, 5.999, 13.0, -1.0, f32::NAN, f32::INFINITY] {
+            assert!(
+                std::panic::catch_unwind(|| level_of(Points(points))).is_err(),
+                "{points}"
+            );
+        }
+    }
+
+    /// The shadow layers of every `ViewStyle` that was sent for the container in `items`, in order.
+    fn container_shadows(mounted: &Mounted, items: &[MountItem]) -> Vec<Vec<BoxShadow>> {
+        items
+            .iter()
+            .filter_map(|item| match item {
+                MountItem::ViewStyle { id, style } if *id == mounted.button => {
+                    Some(shadows_of(style))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The box shadows `style` has, top layer first.
+    fn shadows_of(style: &ViewStyle) -> Vec<BoxShadow> {
+        style
+            .effects
+            .as_deref()
+            .map(|effects| effects.box_shadows.clone())
+            .unwrap_or_default()
+    }
+
+    /// The two layers of `level`, as a list.
+    fn layers(level: Elevation) -> Vec<BoxShadow> {
+        level.shadows().to_vec()
+    }
+
+    #[test]
+    fn the_container_rests_at_level_3_with_its_two_shadow_layers() {
+        for (size, ..) in EXPECTED {
+            for style in STYLES {
+                for dark in [false, true] {
+                    let mounted = mount(Config {
+                        size,
+                        style,
+                        dark,
+                        ..Config::default()
+                    });
+                    let found = shadows_of(&mounted.style(mounted.button));
+                    let what = format!("{size:?} {style:?} dark: {dark}");
+                    // Exactly the two layers of level 3, key layer first: ADR 0018's, nothing else.
+                    assert_eq!(found.len(), 2, "{what}");
+                    assert_eq!(found, layers(Elevation::Level3), "{what}");
+                    assert!(found.iter().all(|layer| !layer.inset), "{what}");
+                }
+            }
+        }
+        // The levels differ: a test of level 3 is not a test of level 4.
+        assert_ne!(layers(Elevation::Level3), layers(Elevation::Level4));
+    }
+
+    #[test]
+    fn hovering_raises_the_shadow_to_level_4_at_once_and_leaving_lowers_it() -> Result<(), String> {
+        let (mut app, recording) = start(Config::default());
+        let mounted = Mounted::of(&recording.items());
+        app.hover("label:Add")?;
+        let hover = recording.in_step("hover(label:Add)");
+        // One style for the container, with level 4's two layers; the state layer's opacity is what else changed.
+        assert_eq!(
+            container_shadows(&mounted, &hover),
+            [layers(Elevation::Level4)]
+        );
+        assert_eq!(
+            shadows_of(&Mounted::of(&recording.items()).style(mounted.button)),
+            layers(Elevation::Level4)
+        );
+        // It snaps: nothing animates the shadow, no spring starts and no value is set, the container has no
+        // transition, and nothing is laid out again.
+        assert_eq!(started_springs(&hover), Vec::new());
+        assert_eq!(set_values(&hover), 0);
+        assert!(
+            hover.iter().all(|item| match item {
+                MountItem::ViewStyle { style, .. } => style.transition.is_none(),
+                _ => true,
+            }),
+            "{hover:?}"
+        );
+        assert_only_the_styles_change(&mounted, &hover, "hover");
+        // A pointer that leaves puts it back.
+        app.step("leave");
+        app.hover("text:presses: 0")?;
+        let leave = recording.in_step("hover(text:presses: 0)");
+        assert_eq!(
+            container_shadows(&mounted, &leave),
+            [layers(Elevation::Level3)]
+        );
+        assert_eq!(started_springs(&leave), Vec::new());
+        Ok(())
+    }
+
+    #[test]
+    fn focus_keeps_level_3() -> Result<(), String> {
+        let (mut app, recording) = start(Config::default());
+        let mounted = Mounted::of(&recording.items());
+        app.press_key("Tab")?;
+        let focus = recording.in_step("keyboard.press(Tab)");
+        // `FocusedContainerElevation` is level 3, the same as at rest: whatever is sent for the container is level 3.
+        for found in container_shadows(&mounted, &focus) {
+            assert_eq!(found, layers(Elevation::Level3));
+        }
+        assert_eq!(started_springs(&focus), Vec::new());
+        assert_eq!(
+            shadows_of(&Mounted::of(&recording.items()).style(mounted.button)),
+            layers(Elevation::Level3)
+        );
+        Ok(())
+    }
+
+    /// The shadow the container has once the platform reports `states` for it (bits of
+    /// `nsh_core::tailwind::state`), as it does a hover, a focus or a press.
+    fn shadows_in(app: &mut Headless, recording: &Recording, states: u16) -> Vec<BoxShadow> {
+        let button = Mounted::of(&recording.items()).button;
+        app.engine().control().set_states(button, states);
+        assert!(app.settle());
+        shadows_of(&Mounted::of(&recording.items()).style(button))
+    }
+
+    #[test]
+    fn the_state_the_platform_reports_decides_the_level() {
+        use nsh_core::tailwind::state::{FOCUSED, HOVERED, PRESSED};
+        let (mut app, recording) = start(Config::default());
+        let level_3 = layers(Elevation::Level3);
+        let level_4 = layers(Elevation::Level4);
+        // The headless runner does not apply a press to the styles, so the platform's report is sent to the engine
+        // as a platform does it.
+        assert_eq!(shadows_in(&mut app, &recording, HOVERED), level_4);
+        // A press that goes down on a hovered FAB lowers it to the pressed level, which is level 3; the platform
+        // keeps reporting the hover while the pointer is down.
+        assert_eq!(shadows_in(&mut app, &recording, HOVERED | PRESSED), level_3);
+        assert_eq!(shadows_in(&mut app, &recording, PRESSED), level_3);
+        assert_eq!(shadows_in(&mut app, &recording, HOVERED), level_4);
+        assert_eq!(shadows_in(&mut app, &recording, 0), level_3);
+        // Focused alone is level 3. Focused under the pointer: NSH orders the hover's variant after the focus's, so
+        // the hovered level wins, where androidx takes whichever interaction came last (`interactions.lastOrNull()`,
+        // line 1346): a FAB focused first and then entered by the pointer is level 4 there too, one the pointer was
+        // already over when it took the focus is level 3. NSH's variants record no history.
+        assert_eq!(shadows_in(&mut app, &recording, FOCUSED), level_3);
+        assert_eq!(shadows_in(&mut app, &recording, HOVERED | FOCUSED), level_4);
+        assert_eq!(shadows_in(&mut app, &recording, FOCUSED | PRESSED), level_3);
+        assert_eq!(
+            shadows_in(&mut app, &recording, HOVERED | FOCUSED | PRESSED),
+            level_3
+        );
+    }
+
+    #[test]
+    fn a_hidden_fab_keeps_its_two_layers_and_hiding_animates_nothing_else() {
+        let hidden = mount(Config {
+            visibility: FabVisibility::Hidden,
+            ..Config::default()
+        });
+        // It is not laid out, and its container still has exactly the two layers of level 3.
+        assert_eq!(hidden.size(), Size::new(px(0.0), px(0.0)));
+        assert_eq!(
+            shadows_of(&hidden.style(hidden.button)),
+            layers(Elevation::Level3)
+        );
+        // Showing it is two springs, the scale's and the opacity's, as before: the shadow adds none.
+        let (mut app, recording) = start(Config {
+            visibility: FabVisibility::Hidden,
+            ..Config::default()
+        });
+        let mounted = Mounted::of(&recording.items());
+        app.press("text:Flip").unwrap();
+        let shown = recording.in_step("press(text:Flip)");
+        assert_eq!(started_springs(&shown).len(), 2);
+        assert_eq!(
+            shadows_of(&Mounted::of(&recording.items()).style(mounted.button)),
+            layers(Elevation::Level3)
+        );
     }
 
     #[test]
