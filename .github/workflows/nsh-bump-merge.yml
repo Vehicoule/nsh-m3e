@@ -10,6 +10,8 @@ on:
   workflow_run:
     workflows: [CI, Visual checks, Visual checks on phones]
     types: [completed]
+    # Only the bump's branch starts a run: without this, every push and pull request added a skipped run per workflow.
+    branches: [nsh-bump]
 
 permissions:
   contents: read
