@@ -8,6 +8,8 @@
 //! memory. The rules for working on this crate are in `AGENTS.md` at the root of the repository.
 
 #[cfg(test)]
+mod androidx_probe;
+#[cfg(test)]
 mod animation_probe;
 pub mod button;
 pub mod checkbox;
@@ -15,10 +17,12 @@ pub mod color;
 pub mod elevation;
 pub mod icon;
 pub mod icon_button;
+pub mod linear_progress_indicator;
 pub mod material_symbols;
 mod morph;
 #[cfg(test)]
 mod morph_probe;
 pub mod motion;
+pub mod progress;
 mod tint;
 pub mod tokens;
