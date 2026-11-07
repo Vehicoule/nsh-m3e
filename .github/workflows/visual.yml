@@ -132,7 +132,7 @@ jobs:
         run: |
           mkdir -p target/visual
           if [ "${{ matrix.host }}" = linux ]; then
-            # The screen holds the catalog's window (2608 x 2688 points, `catalog::grid::viewport`); xvfb-run's
+            # The screen holds the catalog's window (2608 x 2800 points, `catalog::grid::viewport`); xvfb-run's
             # default screen is smaller, and a window larger than its screen shows only part of the catalog.
             dbus-run-session -- xvfb-run -a -s "-screen 0 2800x2900x24" nsh test examples/catalog/button.test.tsx --target linux
           else

@@ -5,13 +5,18 @@
 //!
 //! The icon buttons sit on a second grid below the first: one column per style and width, one row per size, in four
 //! blocks of rows, enabled then disabled, round then square in each.
+//!
+//! The floating action buttons sit in one row below the second: one column per style and size, a style's four sizes
+//! side by side, their tops aligned.
 
 use nsh_core::geometry::Points;
 use nsh_m3e::button::{ButtonShape, ButtonSize, ButtonStyle};
+use nsh_m3e::fab::{FabSize, FabStyle};
 use nsh_m3e::icon_button::{IconButtonShape, IconButtonSize, IconButtonStyle, IconButtonWidth};
 use nsh_m3e::tokens::androidx::{
     button_large_tokens, button_medium_tokens, button_small_tokens, button_xlarge_tokens,
-    button_xsmall_tokens, large_icon_button_tokens, medium_icon_button_tokens,
+    button_xsmall_tokens, fab_baseline_tokens, fab_large_tokens, fab_medium_tokens,
+    fab_small_tokens, large_icon_button_tokens, medium_icon_button_tokens,
     small_icon_button_tokens, xlarge_icon_button_tokens, xsmall_icon_button_tokens,
 };
 
@@ -90,8 +95,24 @@ pub const ICON_SIZES: [IconButtonSize; 5] = [
 /// side of a 40-point icon). A layout value of the catalog, not of Material.
 pub const ICON_COLUMN_WIDTH: Points = Points(200.0);
 
-/// The size of the viewport the catalog is opened in, width and height: the two grids and their margins. The
-/// buttons' grid is the wider: 8 columns of 320 points, where the icon buttons' grid has 12 of 200.
+/// Every FAB style, in the order of the columns.
+pub const FAB_STYLES: [FabStyle; 2] = [FabStyle::PrimaryContainer, FabStyle::SecondaryContainer];
+
+/// Every FAB size, in the order of the columns within a style.
+pub const FAB_SIZES: [FabSize; 4] = [
+    FabSize::Small,
+    FabSize::Baseline,
+    FabSize::Medium,
+    FabSize::Large,
+];
+
+/// The width of a FAB column: more than the largest FAB (96 points), so that two FABs have surface between them. A
+/// layout value of the catalog, not of Material.
+pub const FAB_COLUMN_WIDTH: Points = Points(128.0);
+
+/// The size of the viewport the catalog is opened in, width and height: the three grids and their margins. The
+/// buttons' grid is the wider: 8 columns of 320 points, where the icon buttons' grid has 12 of 200 and the FABs' 8 of
+/// 128.
 #[must_use]
 pub fn viewport() -> (Points, Points) {
     let mut width = MARGIN.0 * 2.0;
@@ -106,6 +127,12 @@ pub fn viewport() -> (Points, Points) {
             }
         }
     }
+    // The FABs' row: its tallest FAB, and its gap.
+    let mut row = 0.0_f32;
+    for size in FAB_SIZES {
+        row = row.max(fab_frame(size).1.0);
+    }
+    height += row + ROW_GAP.0;
     (Points(width), Points(height))
 }
 
@@ -119,6 +146,44 @@ pub fn icon_top() -> Points {
         }
     }
     Points(top)
+}
+
+/// The top of the FABs' row: below the icon buttons' rows, each followed by its gap.
+#[must_use]
+pub fn fab_top() -> Points {
+    let mut top = icon_top().0;
+    for _ in AVAILABILITIES {
+        for _ in ICON_SHAPES {
+            for size in ICON_SIZES {
+                top += icon_height(size).0 + ROW_GAP.0;
+            }
+        }
+    }
+    Points(top)
+}
+
+/// The width and height of a FAB of `size`: its `ContainerWidth` and `ContainerHeight` tokens, as the FAB takes them.
+#[must_use]
+pub fn fab_frame(size: FabSize) -> (Points, Points) {
+    match size {
+        FabSize::Small => (
+            fab_small_tokens::CONTAINER_WIDTH,
+            fab_small_tokens::CONTAINER_HEIGHT,
+        ),
+        FabSize::Medium => (
+            fab_medium_tokens::CONTAINER_WIDTH,
+            fab_medium_tokens::CONTAINER_HEIGHT,
+        ),
+        FabSize::Large => (
+            fab_large_tokens::CONTAINER_WIDTH,
+            fab_large_tokens::CONTAINER_HEIGHT,
+        ),
+        // `FabSize` is non-exhaustive: a size added later falls back to the default one until the catalog shows it.
+        _ => (
+            fab_baseline_tokens::CONTAINER_WIDTH,
+            fab_baseline_tokens::CONTAINER_HEIGHT,
+        ),
+    }
 }
 
 /// The height of an icon button of `size`: its `ContainerHeight` token, as the icon button takes it.
@@ -458,6 +523,82 @@ impl IconCell {
     }
 }
 
+/// One FAB of the catalog.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub struct FabCell {
+    /// Its color style.
+    pub style: FabStyle,
+    /// Its size.
+    pub size: FabSize,
+}
+
+impl FabCell {
+    /// The FAB of this style and size.
+    #[must_use]
+    pub const fn new(style: FabStyle, size: FabSize) -> Self {
+        Self { style, size }
+    }
+
+    /// Every FAB of the catalog, column by column.
+    pub fn all() -> impl Iterator<Item = Self> {
+        FAB_STYLES.into_iter().flat_map(|style| {
+            FAB_SIZES
+                .into_iter()
+                .map(move |size| Self::new(style, size))
+        })
+    }
+
+    /// Its label, which screen readers say: the name of its style.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self.style {
+            FabStyle::SecondaryContainer => "Secondary container",
+            // `FabStyle` is non-exhaustive; the default style is the primary container one.
+            _ => "Primary container",
+        }
+    }
+
+    /// The name of its style in a test id and a screenshot's file name.
+    #[must_use]
+    pub fn style_name(self) -> &'static str {
+        match self.style {
+            FabStyle::SecondaryContainer => "secondary-container",
+            _ => "primary-container",
+        }
+    }
+
+    /// The test id of the view around it, which the test scripts name (`id:fab-primary-container-baseline`).
+    #[must_use]
+    pub fn test_id(self) -> String {
+        let size = match self.size {
+            FabSize::Small => "small",
+            FabSize::Medium => "medium",
+            FabSize::Large => "large",
+            _ => "baseline",
+        };
+        format!("fab-{}-{size}", self.style_name())
+    }
+
+    /// Its width and height, in points.
+    #[must_use]
+    pub fn frame(self) -> (Points, Points) {
+        fab_frame(self.size)
+    }
+
+    /// The top left corner of its container in the viewport, in points.
+    #[must_use]
+    pub fn origin(self) -> (Points, Points) {
+        let column =
+            position(&FAB_STYLES, self.style) * FAB_SIZES.len() + position(&FAB_SIZES, self.size);
+        let mut x = MARGIN.0;
+        for _ in 0..column {
+            x += FAB_COLUMN_WIDTH.0;
+        }
+        (Points(x), fab_top())
+    }
+}
+
 /// Where `item` is in `items`, or 0 for an item the catalog does not show.
 fn position<T: PartialEq + Copy>(items: &[T], item: T) -> usize {
     items.iter().position(|i| *i == item).unwrap_or(0)
@@ -539,9 +680,9 @@ mod tests {
     #[test]
     fn the_viewport_holds_the_grids_and_their_margins() {
         let (width, height) = viewport();
-        // The buttons' 8 columns of 320 points are wider than the icon buttons' 12 of 200; below the buttons' 880
-        // points of rows, the icon buttons' 1,760.
-        assert_eq!((width, height), (Points(2608.0), Points(2688.0)));
+        // The buttons' 8 columns of 320 points are wider than the icon buttons' 12 of 200 and the FABs' 8 of 128; below
+        // the buttons' 880 points of rows, the icon buttons' 1,760, and the FABs' 96 with their gap.
+        assert_eq!((width, height), (Points(2608.0), Points(2800.0)));
         for cell in Cell::all() {
             let (x, y) = cell.origin();
             assert!(x.0 + COLUMN_WIDTH.0 <= width.0 - MARGIN.0);
@@ -555,6 +696,17 @@ mod tests {
             assert!(x.0 + ICON_COLUMN_WIDTH.0 <= width.0 - MARGIN.0);
             assert!(y.0 >= icon_top().0);
             assert!(y.0 + cell_height.0 <= height.0 - MARGIN.0);
+            bottom = Points(bottom.0.max(y.0 + cell_height.0));
+        }
+        // The icon buttons' last row and its gap end where the FABs' row starts.
+        assert_eq!(bottom.0 + ROW_GAP.0, fab_top().0);
+        let mut bottom = Points(0.0);
+        for cell in FabCell::all() {
+            let (x, y) = cell.origin();
+            let (cell_width, cell_height) = cell.frame();
+            assert!(cell_width.0 < FAB_COLUMN_WIDTH.0, "{cell:?}");
+            assert!(x.0 + FAB_COLUMN_WIDTH.0 <= width.0 - MARGIN.0);
+            assert!(y.0 >= fab_top().0);
             bottom = Points(bottom.0.max(y.0 + cell_height.0));
         }
         // The last row and its gap end at the margin.
@@ -777,6 +929,101 @@ mod tests {
             }
             .test_id(),
             "outlined-extra-large-round-enabled"
+        );
+    }
+
+    #[test]
+    fn every_fab_is_once_in_the_catalog() {
+        let cells: Vec<FabCell> = FabCell::all().collect();
+        assert_eq!(cells.len(), FAB_STYLES.len() * FAB_SIZES.len());
+        assert_eq!(cells.iter().collect::<HashSet<_>>().len(), cells.len());
+        assert_eq!(
+            cells
+                .iter()
+                .map(|c| c.test_id())
+                .collect::<HashSet<_>>()
+                .len(),
+            cells.len()
+        );
+        assert_eq!(
+            cells
+                .iter()
+                .map(|c| c.origin())
+                .collect::<HashSet<_>>()
+                .len(),
+            cells.len()
+        );
+    }
+
+    #[test]
+    fn the_fabs_are_in_one_row_below_the_icon_buttons() {
+        // Below the icon buttons: their top, and 24 points of margin and 1,760 of rows and gaps.
+        assert_eq!(fab_top(), Points(2664.0));
+        let first = FabCell::new(FabStyle::PrimaryContainer, FabSize::Small);
+        assert_eq!(first.origin(), (Points(24.0), Points(2664.0)));
+        // The sizes are the columns of a style, 128 points apart; the second style starts after the fourth size.
+        let baseline = FabCell {
+            size: FabSize::Baseline,
+            ..first
+        };
+        assert_eq!(baseline.origin(), (Points(152.0), Points(2664.0)));
+        let secondary = FabCell {
+            style: FabStyle::SecondaryContainer,
+            ..first
+        };
+        assert_eq!(secondary.origin(), (Points(536.0), Points(2664.0)));
+        let last = FabCell::new(FabStyle::SecondaryContainer, FabSize::Large);
+        assert_eq!(last.origin(), (Points(920.0), Points(2664.0)));
+    }
+
+    #[test]
+    fn fab_sizes_are_their_tokens() {
+        let frames: Vec<(f32, f32)> = FAB_SIZES
+            .into_iter()
+            .map(|size| {
+                let (width, height) = fab_frame(size);
+                (width.0, height.0)
+            })
+            .collect();
+        assert_eq!(
+            frames,
+            [(40.0, 40.0), (56.0, 56.0), (80.0, 80.0), (96.0, 96.0)]
+        );
+        let cell = FabCell::new(FabStyle::SecondaryContainer, FabSize::Medium);
+        assert_eq!(cell.frame(), (Points(80.0), Points(80.0)));
+    }
+
+    #[test]
+    fn labels_and_ids_name_the_fab() {
+        let cell = FabCell::new(FabStyle::SecondaryContainer, FabSize::Large);
+        assert_eq!(cell.label(), "Secondary container");
+        assert_eq!(cell.style_name(), "secondary-container");
+        assert_eq!(cell.test_id(), "fab-secondary-container-large");
+        let labels: Vec<&str> = FAB_STYLES
+            .into_iter()
+            .map(|style| FabCell { style, ..cell }.label())
+            .collect();
+        assert_eq!(labels, ["Primary container", "Secondary container"]);
+        let sizes: Vec<String> = FAB_SIZES
+            .into_iter()
+            .map(|size| FabCell { size, ..cell }.test_id())
+            .collect();
+        assert_eq!(
+            sizes,
+            [
+                "fab-secondary-container-small",
+                "fab-secondary-container-baseline",
+                "fab-secondary-container-medium",
+                "fab-secondary-container-large",
+            ]
+        );
+        assert_eq!(
+            FabCell {
+                style: FabStyle::PrimaryContainer,
+                ..cell
+            }
+            .test_id(),
+            "fab-primary-container-large"
         );
     }
 }
