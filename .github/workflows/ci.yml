@@ -58,7 +58,9 @@ jobs:
   # The mutants are split into four shards that run side by side, each on its own runner: one runner took 19 to 22
   # minutes for the whole set. `--in-place` mutates this checkout instead of a copy, so the build reuses the `target/`
   # that rust-cache restored (a copy starts from an empty `target/`). Every shard runs the same command with the same
-  # denominator, so together they test every mutant exactly once (cargo-mutants' `--shard k/n`).
+  # denominator, so together they test every mutant exactly once (cargo-mutants' `--shard k/n`). `round-robin` deals
+  # the mutants out one by one: the default gives each shard a contiguous slice, so the costly mutants, which sit
+  # together in the list, landed in one or two shards (6 and 10 minutes against 1.5 for the others).
   mutants-shard:
     name: mutants shard ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
@@ -75,7 +77,7 @@ jobs:
       - name: Install cargo-mutants
         run: cargo install cargo-mutants --version 27.1.0 --locked
       - name: Mutation testing
-        run: cargo mutants --workspace --cargo-arg=--locked --in-place --shard ${{ matrix.shard }}/4
+        run: cargo mutants --workspace --cargo-arg=--locked --in-place --shard ${{ matrix.shard }}/4 --sharding round-robin
 
   # The required check: green only when every shard is. `always()` makes it run, and fail, when a shard fails or is
   # cancelled; without it, it would be skipped, and a skipped required check counts as passed.
