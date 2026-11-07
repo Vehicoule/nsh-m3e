@@ -80,8 +80,8 @@ without a pull request to the library.
 
 ## Consequences
 
-- `nsh_m3e::Icon` holds path data and a view box. Every component that shows an icon takes an `Icon`. The icon button
-  is the first.
+- `nsh_m3e::icon::Icon` holds path data and a view box. Every component that shows an icon takes an `Icon`. The icon
+  button is the first.
 - A test checks the icon's drawing: its path data, its scale to the token size and its fill from the token color, in
   every state.
 - The visual checks read the icon's pixels against its token color on every host, the web included.

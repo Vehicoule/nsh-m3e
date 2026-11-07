@@ -10,12 +10,12 @@
 //! [ADR 0012]: https://github.com/Vehicoule/nsh-m3e/blob/main/docs/adr/0012-follow-androidx-components-where-tokens-are-wrong.md
 
 use nsh_core::LineHeight;
-use nsh_core::element::AdaptiveColor;
 use nsh_core::geometry::{Points, Size};
 use nsh_core::prelude::*;
 
-use crate::color::{ColorRole, ColorScheme};
-use crate::morph::{Corners, DrawnShape};
+use crate::color::ColorRole;
+use crate::morph::{DrawnShape, corners};
+use crate::tint::{MIN_TOUCH_TARGET, StyleSpec, Tint, tint_color};
 use crate::tokens::androidx::{
     button_large_tokens, button_medium_tokens, button_small_tokens, button_xlarge_tokens,
     button_xsmall_tokens, filled_button_tokens, filled_tonal_button_tokens, outlined_button_tokens,
@@ -149,34 +149,6 @@ fn size_spec(size: ButtonSize) -> SizeSpec {
     }
 }
 
-/// A color role, made more transparent by `opacity` (1 for the role as it is).
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct Tint {
-    role: ColorRole,
-    opacity: f32,
-}
-
-impl Tint {
-    const fn solid(role: ColorRole) -> Self {
-        Self { role, opacity: 1.0 }
-    }
-
-    const fn faded(role: ColorRole, opacity: f32) -> Self {
-        Self { role, opacity }
-    }
-}
-
-/// What a color style gives the button, enabled and disabled. No container is a transparent one.
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct StyleSpec {
-    container: Option<Tint>,
-    content: Tint,
-    disabled_container: Option<Tint>,
-    disabled_content: Tint,
-    outline: Option<Tint>,
-    disabled_outline: Option<Tint>,
-}
-
 /// androidx `Button.kt`, `ButtonDefaults.defaultTextButtonColors` (line 1423): the text button's label is the primary
 /// color, under "TODO replace with the token value once it's corrected"; `TextButtonTokens.LabelColor` says on
 /// surface variant (ADR 0012).
@@ -249,10 +221,6 @@ fn style_spec(style: ButtonStyle) -> StyleSpec {
 /// whatever the height (ADR 0012).
 const OUTLINE_WIDTH: Points = button_small_tokens::OUTLINED_OUTLINE_WIDTH;
 
-/// The smallest touch target, 48 points on each side: `docs/app-requirements.md` (Accessibility), from Material 3's
-/// touch target guidance. No androidx token holds it.
-const MIN_TOUCH_TARGET: Points = Points(48.0);
-
 /// How far presses also count around a container of `height`, so that a button shorter than [`MIN_TOUCH_TARGET`]
 /// still has a 48-point target, without changing its M3 size or the layout (NSH's accessibility guide: extend the touch
 /// area with the hit slop, not the size). The same on every side: a label wider than 8 points makes the extra small and
@@ -260,31 +228,6 @@ const MIN_TOUCH_TARGET: Points = Points(48.0);
 fn touch_slop(height: Points) -> EdgeInsets {
     // Half of the missing height above, half below.
     EdgeInsets::all(px(((MIN_TOUCH_TARGET.0 - height.0) / 2.0).max(0.0)))
-}
-
-/// The color of `role` in the app's NSH design tokens (ADR 0008), or else in the baseline schemes, so that a button
-/// shows Material's colors before the app sets its own.
-fn role_color(role: ColorRole) -> AdaptiveColor {
-    tokens().color(role.token_name()).unwrap_or_else(|| {
-        AdaptiveColor::rgb(
-            ColorScheme::BASELINE_LIGHT.get(role).to_hex(),
-            ColorScheme::BASELINE_DARK.get(role).to_hex(),
-        )
-    })
-}
-
-/// The color of a tint, or transparent for none.
-fn tint_color(tint: Option<Tint>) -> AdaptiveColor {
-    tint.map_or(AdaptiveColor::TRANSPARENT, |tint| {
-        role_color(tint.role).opacity(tint.opacity)
-    })
-}
-
-/// The corners the drawn container gives `shape`. Every shape of the button tokens has the same four corners
-/// (`each_button_shape_can_morph` tests it), so the fully rounded fallback is never taken; it is there so that a
-/// token with uneven corners, which no drawn container can draw, still gives a button, not a panic.
-fn corners(shape: Shape) -> Corners {
-    Corners::of(shape).unwrap_or(Corners::Full)
 }
 
 /// The props of a [`Button`].
@@ -430,12 +373,10 @@ pub fn Button(props: ButtonProps, cx: Scope<ButtonEvent>) -> impl IntoElement {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use std::f32::consts::{FRAC_PI_2, PI};
     use std::sync::Arc;
     use std::time::{Duration, SystemTime};
 
-    use nsh_core::animation::AnimationOp;
-    use nsh_core::canvas::{self, CanvasOp, Drawing, Num, PathOp};
+    use nsh_core::canvas::{self, CanvasOp, Drawing, Num};
     use nsh_core::geometry::{Bounds, Size};
     use nsh_core::platform::{ColorScheme as Appearance, Environment, Os};
     use nsh_core::{AccessibilityRole, Color, MountItem, NodeId, ViewKind, ViewStyle};
@@ -444,10 +385,15 @@ mod tests {
 
     use super::*;
     use crate::animation_probe::{
-        REPLAY_HZ, Recording, Replay, StartedSpring, layout_items, spring_position,
-        started_springs, worst_gap,
+        REPLAY_HZ, Recording, StartedSpring, layout_items, spring_position, started_springs,
+        worst_gap,
     };
-    use crate::motion::{SPRING_MASS, SpringToken};
+    use crate::color::ColorScheme;
+    use crate::morph::Corners;
+    use crate::morph_probe::{
+        Step, assert_traces, parameters, paths, replay, rounded_rectangle, set_values, spring_in,
+        tolerance,
+    };
 
     /// What the probe places: one button with these props, a line counting its presses, and two lines that change
     /// its shape and disable it when pressed.
@@ -981,128 +927,6 @@ mod tests {
         .map(|corner| corner.unwrap_or(style.border_radius).0)
     }
 
-    /// One step of a path, its numbers read.
-    #[derive(Debug, Clone, Copy, PartialEq)]
-    enum Step {
-        Move(f32, f32),
-        Line(f32, f32),
-        Arc {
-            x: f32,
-            y: f32,
-            radius: f32,
-            start: f32,
-            end: f32,
-            ccw: bool,
-        },
-        Close,
-    }
-
-    /// The paths `drawing` traces, each begun by `beginPath`, the animated values among their numbers read in
-    /// `replay` as they are now.
-    fn paths(drawing: &Drawing, replay: &Replay) -> Vec<Vec<Step>> {
-        let slot = |slot: u16| replay.value(drawing.slots[usize::from(slot)]);
-        let mut paths: Vec<Vec<Step>> = Vec::new();
-        for op in &drawing.ops {
-            let step = match op {
-                CanvasOp::BeginPath => {
-                    paths.push(Vec::new());
-                    continue;
-                }
-                CanvasOp::Path(PathOp::MoveTo(x, y)) => Step::Move(x.get(slot), y.get(slot)),
-                CanvasOp::Path(PathOp::LineTo(x, y)) => Step::Line(x.get(slot), y.get(slot)),
-                CanvasOp::Path(PathOp::Arc {
-                    x,
-                    y,
-                    radius,
-                    start,
-                    end,
-                    ccw,
-                }) => Step::Arc {
-                    x: x.get(slot),
-                    y: y.get(slot),
-                    radius: radius.get(slot),
-                    start: start.get(slot),
-                    end: end.get(slot),
-                    ccw: *ccw,
-                },
-                CanvasOp::Path(PathOp::Close) => Step::Close,
-                CanvasOp::Path(other) => panic!("not a step of a rounded rectangle: {other:?}"),
-                _ => continue,
-            };
-            paths.last_mut().expect("a path begun").push(step);
-        }
-        paths
-    }
-
-    /// A rectangle `inset` points inside a container of `size`, its corners rounded by `radius`, as ADR 0011 traces
-    /// it: clockwise from the end of the top left corner, a line and a quarter circle for each side.
-    fn rounded_rectangle(size: Size<Points>, inset: f32, radius: f32) -> Vec<Step> {
-        let (left, top) = (inset, inset);
-        let (right, bottom) = (size.width.0 - inset, size.height.0 - inset);
-        let quarter = |x, y, start: f32| Step::Arc {
-            x,
-            y,
-            radius,
-            start,
-            end: start + FRAC_PI_2,
-            ccw: false,
-        };
-        vec![
-            Step::Move(left + radius, top),
-            Step::Line(right - radius, top),
-            quarter(right - radius, top + radius, -FRAC_PI_2),
-            Step::Line(right, bottom - radius),
-            quarter(right - radius, bottom - radius, 0.0),
-            Step::Line(left + radius, bottom),
-            quarter(left + radius, bottom - radius, FRAC_PI_2),
-            Step::Line(left, top + radius),
-            quarter(left + radius, top + radius, PI),
-            Step::Close,
-        ]
-    }
-
-    /// The kind of `step`, and its numbers.
-    fn numbers(step: &Step) -> (&'static str, Vec<f32>) {
-        match *step {
-            Step::Move(x, y) => ("move", vec![x, y]),
-            Step::Line(x, y) => ("line", vec![x, y]),
-            Step::Arc {
-                x,
-                y,
-                radius,
-                start,
-                end,
-                ccw,
-            } => (
-                if ccw { "counterclockwise arc" } else { "arc" },
-                vec![x, y, radius, start, end],
-            ),
-            Step::Close => ("close", Vec::new()),
-        }
-    }
-
-    /// `path` is `expected`, each number within a thousandth of a point (the `f32` sums a slot goes through).
-    fn assert_traces(path: &[Step], expected: &[Step], what: &str) {
-        let same = path.len() == expected.len()
-            && path.iter().zip(expected).all(|(step, wanted)| {
-                let (kind, found) = numbers(step);
-                let (wanted_kind, wanted_numbers) = numbers(wanted);
-                kind == wanted_kind
-                    && found
-                        .iter()
-                        .zip(&wanted_numbers)
-                        .all(|(a, b)| (a - b).abs() < 1e-3)
-            });
-        assert!(same, "{what}:\n{path:?}\nis not\n{expected:?}");
-    }
-
-    /// The animation graph with every operation `recording` holds so far.
-    fn replay(recording: &Recording) -> Replay {
-        let mut replay = Replay::default();
-        replay.apply(&recording.items());
-        replay
-    }
-
     /// The paths the container's canvas and the state layer's draw now.
     fn drawn(recording: &Recording) -> (Vec<Vec<Step>>, Vec<Vec<Step>>, Size<Points>) {
         let mounted = Mounted::of(&recording.items());
@@ -1234,28 +1058,6 @@ mod tests {
         format!("dragAndHold(Save, {}, {})", still.x, still.y)
     }
 
-    /// Step `step` springs the corners once, with the morph's spring (`DefaultEffects`, androidx `Button.kt`'s
-    /// `shapeByInteraction`, converted as ADR 0004 says), to `to`, from where they are and as fast as they move, at
-    /// the screen's rate; and nothing else in the step starts or sets a value.
-    fn spring_in(items: &[MountItem], step: &str, to: f32) -> StartedSpring {
-        let springs = started_springs(items);
-        let [spring] = springs[..] else {
-            panic!("{step}: one spring, not {springs:?}");
-        };
-        let spec = SpringToken::DefaultEffects.spec();
-        assert_eq!(spring.to.to_bits(), to.to_bits(), "{step}: {spring:?}");
-        assert_eq!(spring.stiffness.to_bits(), spec.stiffness.to_bits());
-        assert_eq!(
-            spring.damping.to_bits(),
-            spec.damping_coefficient().to_bits()
-        );
-        assert_eq!(spring.mass.to_bits(), SPRING_MASS.to_bits());
-        assert_eq!(spring.velocity, None, "{step}");
-        assert_eq!(spring.frame_rate, None, "{step}");
-        assert_eq!(set_values(items), 0, "{step}: {items:?}");
-        spring
-    }
-
     /// The press of `step` springs the corners as [`spring_in`] says, and changes nothing else but the state
     /// layer's opacity.
     fn morph_in(recording: &Recording, step: &str, to: f32) -> StartedSpring {
@@ -1274,28 +1076,6 @@ mod tests {
             "{step}: {items:?}"
         );
         spring
-    }
-
-    /// How many values `items` set at once.
-    fn set_values(items: &[MountItem]) -> usize {
-        items
-            .iter()
-            .filter(|item| matches!(item, MountItem::Animation(AnimationOp::Set { .. })))
-            .count()
-    }
-
-    /// The spring's `k`, `c` and `m`, as the closed form takes them.
-    fn parameters(spring: &StartedSpring) -> (f64, f64, f64) {
-        (
-            f64::from(spring.stiffness),
-            f64::from(spring.damping),
-            f64::from(spring.mass),
-        )
-    }
-
-    /// Tolerance on a replayed curve: 0.1 % of its travel (ADR 0010).
-    fn tolerance(from: f64, to: f64) -> f64 {
-        (to - from).abs() / 1000.0
     }
 
     #[test]

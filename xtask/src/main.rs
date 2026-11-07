@@ -17,8 +17,11 @@ use std::process::ExitCode;
 ///
 /// The list grows with the components that need the tokens; a file not listed here is not generated.
 struct Source {
-    /// The file in `reference/androidx-material3-tokens/`. Its object has the same name.
+    /// The file in `reference/androidx-material3-tokens/`.
     file: &'static str,
+    /// The object the file defines, where it is not named after the file: androidx's `IconButtonTokens.kt` defines
+    /// `StandardIconButtonTokens`. `None` is the file's name. The module is named after the object.
+    object: Option<&'static str>,
     /// The module's documentation after its title, one paragraph per element.
     doc: &'static [&'static str],
 }
@@ -26,6 +29,7 @@ struct Source {
 const SOURCES: &[Source] = &[
     Source {
         file: "ButtonLargeTokens.kt",
+        object: None,
         doc: &[
             "The large button's size: its container's height and shapes (round, square, pressed and selected), its \
              leading and trailing space, its icon's size and the space between icon and label.",
@@ -33,6 +37,7 @@ const SOURCES: &[Source] = &[
     },
     Source {
         file: "ButtonMediumTokens.kt",
+        object: None,
         doc: &[
             "The medium button's size: its container's height and shapes (round, square, pressed and selected), its \
              leading and trailing space, its icon's size and the space between icon and label.",
@@ -40,6 +45,7 @@ const SOURCES: &[Source] = &[
     },
     Source {
         file: "ButtonSmallTokens.kt",
+        object: None,
         doc: &[
             "The small button's size: its container's height and shapes (round, square, pressed and selected), its \
              leading and trailing space, its icon's size and the space between icon and label.",
@@ -47,6 +53,7 @@ const SOURCES: &[Source] = &[
     },
     Source {
         file: "ButtonXLargeTokens.kt",
+        object: None,
         doc: &[
             "The extra large button's size: its container's height and shapes (round, square, pressed and selected), its \
              leading and trailing space, its icon's size and the space between icon and label.",
@@ -54,6 +61,7 @@ const SOURCES: &[Source] = &[
     },
     Source {
         file: "ButtonXSmallTokens.kt",
+        object: None,
         doc: &[
             "The extra small button's size: its container's height and shapes (round, square, pressed and selected), its \
              leading and trailing space, its icon's size and the space between icon and label.",
@@ -61,18 +69,21 @@ const SOURCES: &[Source] = &[
     },
     Source {
         file: "ColorDarkTokens.kt",
+        object: None,
         doc: &[
             "The baseline dark color scheme: each color role as a tone of [`super::palette_tokens`].",
         ],
     },
     Source {
         file: "ColorLightTokens.kt",
+        object: None,
         doc: &[
             "The baseline light color scheme: each color role as a tone of [`super::palette_tokens`].",
         ],
     },
     Source {
         file: "ElevatedButtonTokens.kt",
+        object: None,
         doc: &[
             "The elevated button's colors and elevation in each state. Colors are roles of the scheme \
              ([`crate::color::ColorRole`]), resolved against the light or dark [`crate::color::ColorScheme`].",
@@ -80,6 +91,7 @@ const SOURCES: &[Source] = &[
     },
     Source {
         file: "ElevationTokens.kt",
+        object: None,
         doc: &[
             "The elevation levels 0 to 5: how far a surface sits above the one under it. androidx gives them in dp, \
              the density-independent pixel, which is NSH's point.",
@@ -87,6 +99,7 @@ const SOURCES: &[Source] = &[
     },
     Source {
         file: "ExpressiveMotionTokens.kt",
+        object: None,
         doc: &[
             "The springs of the Expressive motion scheme: a stiffness and a damping *ratio* each, at unit mass. NSH's \
              `Spring` takes a damping *coefficient*: use these through [`crate::motion::SpringToken`], which \
@@ -95,13 +108,24 @@ const SOURCES: &[Source] = &[
     },
     Source {
         file: "FilledButtonTokens.kt",
+        object: None,
         doc: &[
             "The filled button's colors and elevation in each state. Colors are roles of the scheme \
              ([`crate::color::ColorRole`]), resolved against the light or dark [`crate::color::ColorScheme`].",
         ],
     },
     Source {
+        file: "FilledIconButtonTokens.kt",
+        object: None,
+        doc: &[
+            "The filled icon button's container and icon colors in each state, and those of the filled icon toggle button selected and \
+             unselected. Colors are roles of the scheme ([`crate::color::ColorRole`]), resolved against the light or \
+             dark [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
         file: "FilledTonalButtonTokens.kt",
+        object: None,
         doc: &[
             "The tonal button's colors, elevation and label style in each state. androidx's `Button.kt` reads this \
              file for the tonal button, not [`super::tonal_button_tokens`] (ADR 0012).",
@@ -110,20 +134,68 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
+        file: "FilledTonalIconButtonTokens.kt",
+        object: None,
+        doc: &[
+            "The tonal icon button's container and icon colors in each state, and those of the tonal icon toggle button selected and \
+             unselected. Colors are roles of the scheme ([`crate::color::ColorRole`]), resolved against the light or \
+             dark [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
+        file: "IconButtonTokens.kt",
+        object: Some("StandardIconButtonTokens"),
+        doc: &[
+            "The standard icon button's icon colors (it has no container) in each state, and those of the standard icon toggle button selected and \
+             unselected. Colors are roles of the scheme ([`crate::color::ColorRole`]), resolved against the light or \
+             dark [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
+        file: "LargeIconButtonTokens.kt",
+        object: None,
+        doc: &[
+            "The large icon button's size: its container's height, its icon's size, its leading and trailing \
+             space for each width (narrow, default and wide), its shapes (round, square, pressed and selected) and \
+             its outline's width.",
+        ],
+    },
+    Source {
+        file: "MediumIconButtonTokens.kt",
+        object: None,
+        doc: &[
+            "The medium icon button's size: its container's height, its icon's size, its leading and trailing \
+             space for each width (narrow, default and wide), its shapes (round, square, pressed and selected) and \
+             its outline's width.",
+        ],
+    },
+    Source {
         file: "MotionTokens.kt",
+        object: None,
         doc: &[
             "Durations, in milliseconds (the unit of NSH's `Timing::duration_ms`), and easing curves.",
         ],
     },
     Source {
         file: "OutlinedButtonTokens.kt",
+        object: None,
         doc: &[
             "The outlined button's colors and elevation in each state. Colors are roles of the scheme \
              ([`crate::color::ColorRole`]), resolved against the light or dark [`crate::color::ColorScheme`].",
         ],
     },
     Source {
+        file: "OutlinedIconButtonTokens.kt",
+        object: None,
+        doc: &[
+            "The outlined icon button's icon and outline colors in each state, and those of the outlined icon toggle button selected and \
+             unselected. Colors are roles of the scheme ([`crate::color::ColorRole`]), resolved against the light or \
+             dark [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
         file: "PaletteTokens.kt",
+        object: None,
         doc: &[
             "The baseline tonal palettes: each key color (primary, secondary, tertiary, neutral, neutral variant, \
              error) at a range of tones from 0 (black) to 100 (white), in 8-bit sRGB.",
@@ -133,6 +205,7 @@ const SOURCES: &[Source] = &[
     },
     Source {
         file: "ShapeTokens.kt",
+        object: None,
         doc: &[
             "The corner shapes, from square (`CORNER_NONE`) to fully round (`CORNER_FULL`), and the corner sizes \
              alone (`CORNER_VALUE_*`), in dp, which is NSH's point.",
@@ -141,7 +214,17 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
+        file: "SmallIconButtonTokens.kt",
+        object: None,
+        doc: &[
+            "The small icon button's size: its container's height, its icon's size, its leading and trailing \
+             space for each width (narrow, default and wide), its shapes (round, square, pressed and selected) and \
+             its outline's width.",
+        ],
+    },
+    Source {
         file: "StateTokens.kt",
+        object: None,
         doc: &[
             "The opacities of the state layer: a layer of the content's color drawn over a component while it is \
              hovered, focused, pressed or dragged.",
@@ -149,6 +232,7 @@ const SOURCES: &[Source] = &[
     },
     Source {
         file: "TextButtonTokens.kt",
+        object: None,
         doc: &[
             "The text button's colors and elevation in each state. Colors are roles of the scheme \
              ([`crate::color::ColorRole`]), resolved against the light or dark [`crate::color::ColorScheme`].",
@@ -156,6 +240,7 @@ const SOURCES: &[Source] = &[
     },
     Source {
         file: "TonalButtonTokens.kt",
+        object: None,
         doc: &[
             "The tonal toggle button's colors and elevation in each state: androidx reads this file only in \
              `ToggleButton.kt`. The tonal button reads [`super::filled_tonal_button_tokens`] (ADR 0012).",
@@ -165,6 +250,7 @@ const SOURCES: &[Source] = &[
     },
     Source {
         file: "TypeScaleTokens.kt",
+        object: None,
         doc: &[
             "The type scale: for each style (display, headline, title, body and label, each large, medium and \
              small, and each also emphasized), its font, weight, size, line height and tracking.",
@@ -174,18 +260,38 @@ const SOURCES: &[Source] = &[
     },
     Source {
         file: "TypefaceTokens.kt",
+        object: None,
         doc: &[
             "The typefaces of the type scale (brand and plain) and its three weights (regular, medium and bold).",
         ],
     },
     Source {
         file: "TypographyTokens.kt",
+        object: None,
         doc: &[
             "The type styles: each style of the type scale as one value, with its font, weight, size, line height and \
              tracking from [`super::type_scale_tokens`].",
             "androidx's styles also center each line's text in its line height and trim nothing \
              (`DefaultLineHeightStyle`), and let an app give `Typography` a font family of its own; the library \
              keeps the token's family.",
+        ],
+    },
+    Source {
+        file: "XLargeIconButtonTokens.kt",
+        object: None,
+        doc: &[
+            "The extra large icon button's size: its container's height, its icon's size, its leading and trailing \
+             space for each width (narrow, default and wide), its shapes (round, square, pressed and selected) and \
+             its outline's width.",
+        ],
+    },
+    Source {
+        file: "XSmallIconButtonTokens.kt",
+        object: None,
+        doc: &[
+            "The extra small icon button's size: its container's height, its icon's size, its leading and trailing \
+             space for each width (narrow, default and wide), its shapes (round, square, pressed and selected) and \
+             its outline's width.",
         ],
     },
 ];
@@ -226,6 +332,7 @@ enum Error {
     WrongObject {
         path: PathBuf,
         found: String,
+        expected: String,
     },
     BadReference {
         path: PathBuf,
@@ -243,9 +350,13 @@ impl fmt::Display for Error {
             Error::NoWorkspaceRoot => write!(f, "cannot find the workspace root"),
             Error::Io { path, source } => write!(f, "{}: {source}", path.display()),
             Error::Parse { path, source } => write!(f, "{}: {source}", path.display()),
-            Error::WrongObject { path, found } => write!(
+            Error::WrongObject {
+                path,
+                found,
+                expected,
+            } => write!(
                 f,
-                "{}: the file defines `{found}`, not the object its name says",
+                "{}: the file defines `{found}`, not `{expected}`",
                 path.display()
             ),
             Error::BadReference {
@@ -310,20 +421,27 @@ fn mode(args: &[String]) -> Result<Mode, Error> {
 }
 
 /// Reads and parses one vendored file, whose object must have the file's name.
-fn read_object(root: &Path, file: &str) -> Result<(PathBuf, kotlin::TokenObject), Error> {
+/// Reads the object of `file`, which must be named `object`, or after the file when `object` is `None`.
+fn read_object(
+    root: &Path,
+    file: &str,
+    object: Option<&str>,
+) -> Result<(PathBuf, kotlin::TokenObject), Error> {
     let path = root.join(REFERENCE_DIR).join(file);
     let text = read(&path)?;
-    let object = kotlin::parse(&text).map_err(|source| Error::Parse {
+    let parsed = kotlin::parse(&text).map_err(|source| Error::Parse {
         path: path.clone(),
         source,
     })?;
-    if Some(object.name.as_str()) != file.strip_suffix(".kt") {
+    let expected = object.unwrap_or_else(|| file.strip_suffix(".kt").unwrap_or(file));
+    if parsed.name != expected {
         return Err(Error::WrongObject {
             path,
-            found: object.name,
+            found: parsed.name,
+            expected: expected.to_owned(),
         });
     }
-    Ok((path, object))
+    Ok((path, parsed))
 }
 
 /// Generates every module in memory, then writes or compares them all, so a failure leaves no half-written state.
@@ -331,12 +449,12 @@ fn gen_tokens(root: &Path, mode: Mode) -> Result<(), Error> {
     let output_dir = root.join(OUTPUT_DIR);
     let mut objects = Vec::with_capacity(SOURCES.len() + KEY_SOURCES.len());
     for source in SOURCES {
-        objects.push(read_object(root, source.file)?);
+        objects.push(read_object(root, source.file, source.object)?);
     }
     // The key files come last: references are checked against them, and the zip below, which stops with
     // `SOURCES`, never makes a module of them.
     for file in KEY_SOURCES {
-        objects.push(read_object(root, file)?);
+        objects.push(read_object(root, file, None)?);
     }
     check_references(&objects)?;
     let mut files = Vec::with_capacity(SOURCES.len() + 1);
@@ -1078,6 +1196,37 @@ mod tests {
     }
 
     #[test]
+    fn a_source_named_for_another_object_must_define_that_object() {
+        let scratch = Scratch::new("object");
+        let root = scratch.0.as_path();
+
+        // `IconButtonTokens.kt` defines `StandardIconButtonTokens`: read as named, it is accepted, and only then.
+        let (_, object) = read_object(
+            root,
+            "IconButtonTokens.kt",
+            Some("StandardIconButtonTokens"),
+        )
+        .unwrap();
+        assert_eq!(object.name, "StandardIconButtonTokens");
+        assert!(matches!(
+            read_object(root, "IconButtonTokens.kt", None),
+            Err(Error::WrongObject { found, expected, .. })
+                if found == "StandardIconButtonTokens" && expected == "IconButtonTokens"
+        ));
+        assert!(matches!(
+            read_object(root, "IconButtonTokens.kt", Some("FilledIconButtonTokens")),
+            Err(Error::WrongObject { found, expected, .. })
+                if found == "StandardIconButtonTokens" && expected == "FilledIconButtonTokens"
+        ));
+
+        // Its module is named after the object, not the file.
+        gen_tokens(root, Mode::Write).unwrap();
+        let output = root.join(OUTPUT_DIR);
+        assert!(output.join("standard_icon_button_tokens.rs").exists());
+        assert!(!output.join("icon_button_tokens.rs").exists());
+    }
+
+    #[test]
     fn a_bad_reference_fails_the_generation_before_anything_is_written() {
         let scratch = Scratch::new("reference");
         let root = scratch.0.as_path();
@@ -1126,11 +1275,9 @@ mod tests {
         let wrong = Error::WrongObject {
             path: PathBuf::from("A.kt"),
             found: "B".into(),
+            expected: "A".into(),
         };
-        assert_eq!(
-            wrong.to_string(),
-            "A.kt: the file defines `B`, not the object its name says"
-        );
+        assert_eq!(wrong.to_string(), "A.kt: the file defines `B`, not `A`");
         assert_eq!(
             Error::Usage("unknown arguments []".into()).to_string(),
             format!("unknown arguments []\n{USAGE}")
@@ -1143,7 +1290,15 @@ mod tests {
         for source in SOURCES {
             let text = read(&root.join(REFERENCE_DIR).join(source.file)).unwrap();
             let object = kotlin::parse(&text).unwrap();
-            assert_eq!(Some(object.name.as_str()), source.file.strip_suffix(".kt"));
+            let named_for_file = source.file.strip_suffix(".kt");
+            assert_eq!(
+                Some(object.name.as_str()),
+                source.object.or(named_for_file),
+                "{}",
+                source.file
+            );
+            // An object is named only where the file's name does not say it.
+            assert_ne!(source.object, named_for_file, "{}", source.file);
             assert!(!object.tokens.is_empty(), "{}", source.file);
         }
         for file in KEY_SOURCES {

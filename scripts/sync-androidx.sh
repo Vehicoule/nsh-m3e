@@ -19,7 +19,7 @@ copy="reference/androidx-material3-tokens"
 components_path="compose/material3/material3/src/commonMain/kotlin/androidx/compose/material3"
 components_copy="reference/androidx-material3-components"
 # The component files a component of this library follows (ADR 0012), each named for the androidx file.
-components=(Button.kt)
+components=(Button.kt IconButton.kt IconButtonDefaults.kt)
 
 root="$(git rev-parse --show-toplevel)"
 cd "$root"
