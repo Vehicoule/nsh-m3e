@@ -43,6 +43,7 @@ jobs:
           fetch-depth: 2
       # The job runs on every pull request, so that its check can be required, but it does its work only when the
       # pull request changes what the screenshots show; otherwise it passes at once. On `main` and by hand, always.
+      # `--no-renames` lists a moved file by its old path too, so moving one out of these paths still counts.
       - name: See whether the pull request changes what the screenshots show
         id: changes
         env:
@@ -50,7 +51,7 @@ jobs:
         run: |
           if [ "$EVENT" != pull_request ]; then
             echo "visual=true" >> "$GITHUB_OUTPUT"
-          elif git diff --name-only HEAD^1 HEAD | grep -E \
+          elif git diff --no-renames --name-only HEAD^1 HEAD | grep -E \
               '^(crates/|examples/|tests/visual/|Cargo\.toml$|Cargo\.lock$|rust-toolchain\.toml$|\.github/workflows/visual-phone\.yml$)'; then
             echo "visual=true" >> "$GITHUB_OUTPUT"
           else
@@ -109,6 +110,7 @@ jobs:
           fetch-depth: 2
       # The job runs on every pull request, so that its check can be required, but it does its work only when the
       # pull request changes what the screenshots show; otherwise it passes at once. On `main` and by hand, always.
+      # `--no-renames` lists a moved file by its old path too, so moving one out of these paths still counts.
       - name: See whether the pull request changes what the screenshots show
         id: changes
         env:
@@ -116,7 +118,7 @@ jobs:
         run: |
           if [ "$EVENT" != pull_request ]; then
             echo "visual=true" >> "$GITHUB_OUTPUT"
-          elif git diff --name-only HEAD^1 HEAD | grep -E \
+          elif git diff --no-renames --name-only HEAD^1 HEAD | grep -E \
               '^(crates/|examples/|tests/visual/|Cargo\.toml$|Cargo\.lock$|rust-toolchain\.toml$|\.github/workflows/visual-phone\.yml$)'; then
             echo "visual=true" >> "$GITHUB_OUTPUT"
           else
