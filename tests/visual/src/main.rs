@@ -5,10 +5,13 @@
 //! icon button of the catalog, the pixels whose color the tokens give: the container's color inside it, the
 //! outline's on its edge, the surface outside its top left corner, where a rounded corner leaves the background, and
 //! an icon button's icon color in its middle. Where the antialiasing of an edge, of the label or of the icon's edge
-//! makes a color unknown, nothing is checked.
+//! makes a color unknown, nothing is checked. The badges' pixels are read in the same screenshots ([`badge`]): the
+//! error color inside each badge and the surface just outside it.
 //!
 //! It is not a `cargo xtask` task: `xtask` must build when the library does not (it regenerates the library's
 //! tokens), so it cannot depend on it, and these checks take every expected color from the library's tokens.
+
+mod badge;
 
 use std::fmt;
 use std::fs;
@@ -708,16 +711,25 @@ fn run(directory: &Path, out: &mut impl io::Write) -> Result<(), Error> {
             path: path.clone(),
             message,
         })?;
+        // The badges do not move with the mouse: every screenshot shows them as its appearance does.
+        let badges = badge::check(&image, shot.appearance).map_err(|message| Error::Image {
+            path: path.clone(),
+            message,
+        })?;
+        let failed = found.len() + badges.len();
         let _ = writeln!(
             out,
             "{}: {}",
             path.display(),
-            if found.is_empty() { "ok" } else { "FAILED" }
+            if failed == 0 { "ok" } else { "FAILED" }
         );
         for mismatch in &found {
             let _ = writeln!(out, "  {mismatch}");
         }
-        mismatches += found.len();
+        for mismatch in &badges {
+            let _ = writeln!(out, "  {mismatch}");
+        }
+        mismatches += failed;
     }
     if mismatches == 0 {
         Ok(())
@@ -773,6 +785,11 @@ mod tests {
         let mut rgba = [1, 2, 3, 255].repeat((width * height) as usize);
         for probe in shot_probes(shot) {
             let (x, y) = pixel_of(&probe, scale);
+            let start = ((y * width + x) * 4) as usize;
+            rgba[start..start + 3].copy_from_slice(&probe.expected.0);
+        }
+        for probe in badge::probes(shot.appearance) {
+            let (x, y) = probe.pixel(scale);
             let start = ((y * width + x) * 4) as usize;
             rgba[start..start + 3].copy_from_slice(&probe.expected.0);
         }
@@ -1518,6 +1535,30 @@ mod tests {
                 .unwrap()
                 .contains("dark-rest.png: FAILED")
         );
+        // A wrong badge pixel alone, in a screenshot whose buttons are right: counted, named and the file failed.
+        let shot = Shot::all()[9];
+        let mut image = painted(shot, 1);
+        let probe = badge::probes(shot.appearance)[0];
+        let (x, y) = probe.pixel(1);
+        let start = ((y * image.width + x) * 4) as usize;
+        image.rgba[start..start + 3]
+            .copy_from_slice(&Rgb::of(&shot.appearance.scheme(), ColorRole::Surface).0);
+        fs::write(
+            directory.join(shot.file_name()),
+            encode_uncompressed(&image),
+        )
+        .unwrap();
+        let mut out = Vec::new();
+        assert!(matches!(
+            run(&directory, &mut out),
+            Err(Error::Mismatches(1))
+        ));
+        let out = String::from_utf8(out).unwrap();
+        assert!(out.contains("dark-rest.png: FAILED"));
+        assert!(
+            out.contains("  badge-dot dot at (61, 2667) points: expected #f2b8b5, found #141218")
+        );
+        assert!(out.contains("light-rest.png: ok"));
         fs::remove_dir_all(&directory).unwrap();
     }
 }
