@@ -5,6 +5,8 @@
 //!
 //! The icon buttons sit on a second grid below the first: one column per style and width, one row per size, in four
 //! blocks of rows, enabled then disabled, round then square in each.
+//!
+//! The navigation bars sit on a third grid below the second ([`crate::navigation`]).
 
 use nsh_core::geometry::Points;
 use nsh_m3e::button::{ButtonShape, ButtonSize, ButtonStyle};
@@ -14,6 +16,8 @@ use nsh_m3e::tokens::androidx::{
     button_xsmall_tokens, large_icon_button_tokens, medium_icon_button_tokens,
     small_icon_button_tokens, xlarge_icon_button_tokens, xsmall_icon_button_tokens,
 };
+
+use crate::navigation;
 
 /// Every style, in the order of the columns.
 pub const STYLES: [ButtonStyle; 4] = [
@@ -90,23 +94,16 @@ pub const ICON_SIZES: [IconButtonSize; 5] = [
 /// side of a 40-point icon). A layout value of the catalog, not of Material.
 pub const ICON_COLUMN_WIDTH: Points = Points(200.0);
 
-/// The size of the viewport the catalog is opened in, width and height: the two grids and their margins. The
-/// buttons' grid is the wider: 8 columns of 320 points, where the icon buttons' grid has 12 of 200.
+/// The size of the viewport the catalog is opened in, width and height: the three grids and their margins. The
+/// buttons' grid is the widest: 8 columns of 320 points, where the icon buttons' grid has 12 of 200 and the navigation
+/// bars' 4 of 640.
 #[must_use]
 pub fn viewport() -> (Points, Points) {
     let mut width = MARGIN.0 * 2.0;
     for _ in 0..STYLES.len() * SHAPES.len() {
         width += COLUMN_WIDTH.0;
     }
-    let mut height = icon_top().0 + MARGIN.0;
-    for _ in AVAILABILITIES {
-        for _ in ICON_SHAPES {
-            for size in ICON_SIZES {
-                height += icon_height(size).0 + ROW_GAP.0;
-            }
-        }
-    }
-    (Points(width), Points(height))
+    (Points(width), Points(navigation::bottom().0 + MARGIN.0))
 }
 
 /// The top of the icon buttons' grid: below the buttons' rows, each followed by its gap.
@@ -119,6 +116,21 @@ pub fn icon_top() -> Points {
         }
     }
     Points(top)
+}
+
+/// The bottom of the icon buttons' grid: below their rows, each followed by its gap. The navigation bars' grid starts
+/// there.
+#[must_use]
+pub fn icon_bottom() -> Points {
+    let mut bottom = icon_top().0;
+    for _ in AVAILABILITIES {
+        for _ in ICON_SHAPES {
+            for size in ICON_SIZES {
+                bottom += icon_height(size).0 + ROW_GAP.0;
+            }
+        }
+    }
+    Points(bottom)
 }
 
 /// The height of an icon button of `size`: its `ContainerHeight` token, as the icon button takes it.
@@ -539,9 +551,9 @@ mod tests {
     #[test]
     fn the_viewport_holds_the_grids_and_their_margins() {
         let (width, height) = viewport();
-        // The buttons' 8 columns of 320 points are wider than the icon buttons' 12 of 200; below the buttons' 880
-        // points of rows, the icon buttons' 1,760.
-        assert_eq!((width, height), (Points(2608.0), Points(2688.0)));
+        // The buttons' 8 columns of 320 points are wider than the icon buttons' 12 of 200 and the navigation bars' 4 of
+        // 640; below the buttons' 880 points of rows, the icon buttons' 1,760, and the navigation bars' 160.
+        assert_eq!((width, height), (Points(2608.0), Points(2848.0)));
         for cell in Cell::all() {
             let (x, y) = cell.origin();
             assert!(x.0 + COLUMN_WIDTH.0 <= width.0 - MARGIN.0);
@@ -557,8 +569,9 @@ mod tests {
             assert!(y.0 + cell_height.0 <= height.0 - MARGIN.0);
             bottom = Points(bottom.0.max(y.0 + cell_height.0));
         }
-        // The last row and its gap end at the margin.
-        assert_eq!(bottom.0 + ROW_GAP.0, height.0 - MARGIN.0);
+        // The last icon button row and its gap end where the navigation bars begin.
+        assert_eq!(bottom.0 + ROW_GAP.0, icon_bottom().0);
+        assert_eq!(icon_bottom(), navigation::top());
     }
 
     #[test]
