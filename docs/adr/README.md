@@ -25,3 +25,4 @@ Only the user moves an ADR from Proposed to Accepted.
 | [0015](0015-declare-every-file-license-with-reuse.md) | Every file's license declared with REUSE, checked in CI | Accepted |
 | [0016](0016-adopt-the-contributor-covenant.md) | The Contributor Covenant 3.0 is the code of conduct, under its own CC BY-SA 4.0 license | Accepted |
 | [0017](0017-draw-icons-from-path-data.md) | Icons are SVG path data drawn on a canvas in a token color; the library ships every Material Symbol in its three styles | Accepted |
+| [0019](0019-compare-the-catalog-with-compose.md) | Compare the catalog with androidx's own Compose components, on the same Android emulator | Proposed |
