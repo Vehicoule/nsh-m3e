@@ -208,7 +208,9 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: steps.changes.outputs.visual == 'true'
         with:
-          key: visual-android
+          # With the apt packages' hash: QuickJS's bindings, built by bindgen on apt's libclang, are among the
+          # dependencies' outputs this keeps.
+          key: visual-android-${{ steps.apt.outputs.hash }}
           workspaces: |
             . -> target
             .nsh-src -> target
@@ -243,6 +245,42 @@ jobs:
           chmod +x "$wrapper"
           cat "$wrapper"
           echo "WITH_NDK_BINDGEN=$wrapper" >> "$GITHUB_ENV"
+      # NSH's Android runtime (`classes.dex` and a `libnsh.so` per ABI, `cargo xtask android --dev` in NSH) changes with
+      # the NSH revision and its build tools, not with this repository, but in a checkout the CLI rebuilds it on every
+      # run: rust-cache does not keep the build of a workspace's own crates, and a fresh checkout's sources are newer
+      # than any build anyway. It took 8 min 47 s of each run. It is built once per revision and build tools, and
+      # kept; `NSH_RUNTIME` points the CLI at it (`prebuilt_android` in `crates/nsh-cli/src/runtime.rs` in NSH). The catalog's own `libnsh.so` is still built
+      # for each ABI the runtime has, on every run (`RustApp::test_android` in `crates/nsh-cli/src/rust_app.rs`).
+      #
+      # The key names everything the runtime is built from besides NSH's sources: the compiler, which is NSH's own
+      # (its `rust-toolchain.toml` pins `stable`, which moves; this repository's pin does not apply in `.nsh-src`), and
+      # the runner image, which holds the NDK, the SDK's build tools and the JDK, and the apt packages, whose libclang
+      # bindgen runs on (the hash of the files apt downloads, from the step that restores them).
+      - name: Read what NSH's Android runtime is built with
+        id: android-build
+        if: steps.changes.outputs.visual == 'true'
+        working-directory: .nsh-src
+        run: |
+          rustc --version
+          echo "rustc=$(rustc --version | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
+          echo "image=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
+      - name: Restore NSH's Android runtime for the pinned revision
+        id: android-runtime
+        if: steps.changes.outputs.visual == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/nsh-runtime/android/dev
+          key: >-
+            nsh-android-runtime-dev-${{ steps.nsh.outputs.rev }}-rustc-${{ steps.android-build.outputs.rustc }}-${{
+            steps.android-build.outputs.image }}-apt-${{ steps.apt.outputs.hash }}
+      - name: Build NSH's Android runtime at the pinned revision
+        if: steps.changes.outputs.visual == 'true' && steps.android-runtime.outputs.cache-hit != 'true'
+        working-directory: .nsh-src
+        run: |
+          "$WITH_NDK_BINDGEN" cargo xtask android --dev
+          mkdir -p "$RUNNER_TEMP/nsh-runtime/android"
+          cp -R target/android/debug-dev "$RUNNER_TEMP/nsh-runtime/android/dev"
+          ls -lR "$RUNNER_TEMP/nsh-runtime/android/dev"
       - name: Take the screenshots
         if: steps.changes.outputs.visual == 'true'
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
@@ -252,6 +290,8 @@ jobs:
           target: google_apis
           disable-animations: true
           script: mkdir -p target/visual && "$WITH_NDK_BINDGEN" .nsh-src/target/debug/nsh test examples/catalog/phone.test.tsx --target android
+        env:
+          NSH_RUNTIME: ${{ runner.temp }}/nsh-runtime
       - name: Keep the screenshots
         if: always() && steps.changes.outputs.visual == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
