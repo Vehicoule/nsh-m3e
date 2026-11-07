@@ -135,8 +135,10 @@ jobs:
             # The screen holds the catalog's window (2608 x 2688 points, `catalog::grid::viewport`); xvfb-run's
             # default screen is smaller, and a window larger than its screen shows only part of the catalog.
             dbus-run-session -- xvfb-run -a -s "-screen 0 2800x2900x24" nsh test examples/catalog/button.test.tsx --target linux
+            dbus-run-session -- xvfb-run -a -s "-screen 0 2800x2900x24" nsh test examples/catalog/switch.test.tsx --target linux
           else
             nsh test examples/catalog/button.test.tsx --target web
+            nsh test examples/catalog/switch.test.tsx --target web
           fi
         env:
           RUSTFLAGS: ""
