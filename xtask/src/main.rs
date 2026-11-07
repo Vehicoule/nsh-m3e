@@ -31,6 +31,15 @@ struct Source {
 
 const SOURCES: &[Source] = &[
     Source {
+        file: "AssistChipTokens.kt",
+        object: None,
+        doc: &[
+            "The assist chip's container height and shape, its label's style and colors, its icon's size and colors, and its \
+             outline and elevation, flat and elevated, in each state. Colors are roles of the scheme \
+             ([`crate::color::ColorRole`]), resolved against the light or dark [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
         file: "ButtonLargeTokens.kt",
         object: None,
         doc: &[
@@ -68,6 +77,15 @@ const SOURCES: &[Source] = &[
         doc: &[
             "The extra small button's size: its container's height and shapes (round, square, pressed and selected), its \
              leading and trailing space, its icon's size and the space between icon and label.",
+        ],
+    },
+    Source {
+        file: "ChipsTokens.kt",
+        object: None,
+        doc: &[
+            "What the filter and input chips share in M3 Expressive: the shapes they morph between (unselected, selected and \
+             pressed), the avatar's size and shape, and the colors of the tonal chips. Colors are roles of the scheme \
+             ([`crate::color::ColorRole`]), resolved against the light or dark [`crate::color::ColorScheme`].",
         ],
     },
     Source {
@@ -154,12 +172,30 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
+        file: "FilterChipTokens.kt",
+        object: None,
+        doc: &[
+            "The filter chip's container height and shape, its label's style and colors, its icons' size and colors, and its \
+             outline and elevation, flat and elevated, selected and unselected, in each state. Colors are roles of the \
+             scheme ([`crate::color::ColorRole`]), resolved against the light or dark [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
         file: "IconButtonTokens.kt",
         object: Some("StandardIconButtonTokens"),
         doc: &[
             "The standard icon button's icon colors (it has no container) in each state, and those of the standard icon toggle button selected and \
              unselected. Colors are roles of the scheme ([`crate::color::ColorRole`]), resolved against the light or \
              dark [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
+        file: "InputChipTokens.kt",
+        object: None,
+        doc: &[
+            "The input chip's container height and shape, its label's style and colors, its icons' and avatar's size and \
+             colors, and its outline and elevation, selected and unselected, in each state. Colors are roles of the \
+             scheme ([`crate::color::ColorRole`]), resolved against the light or dark [`crate::color::ColorScheme`].",
         ],
     },
     Source {
@@ -255,6 +291,15 @@ const SOURCES: &[Source] = &[
         doc: &[
             "The opacities of the state layer: a layer of the content's color drawn over a component while it is \
              hovered, focused, pressed or dragged.",
+        ],
+    },
+    Source {
+        file: "SuggestionChipTokens.kt",
+        object: None,
+        doc: &[
+            "The suggestion chip's container height and shape, its label's style and colors, its icon's size and colors, and \
+             its outline and elevation, flat and elevated, in each state. Colors are roles of the scheme \
+             ([`crate::color::ColorRole`]), resolved against the light or dark [`crate::color::ColorScheme`].",
         ],
     },
     Source {
