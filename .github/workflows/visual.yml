@@ -113,6 +113,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: steps.changes.outputs.visual == 'true'
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           key: visual-${{ matrix.host }}
       # The CLI at the NSH revision the library is pinned to (root `Cargo.toml`), so the hosts are built from the
       # same NSH as the library. `cargo install` rebuilds it when the revision changes.

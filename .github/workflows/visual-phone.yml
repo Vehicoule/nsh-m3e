@@ -79,6 +79,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: steps.changes.outputs.visual == 'true'
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           key: visual-ios
           workspaces: |
             . -> target
@@ -208,6 +209,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: steps.changes.outputs.visual == 'true'
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           # With the apt packages' hash: QuickJS's bindings, built by bindgen on apt's libclang, are among the
           # dependencies' outputs this keeps.
           key: visual-android-${{ steps.apt.outputs.hash }}

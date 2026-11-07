@@ -40,6 +40,10 @@ jobs:
       - name: Install the pinned toolchain
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          # Only `main` saves: pull requests read its entries and cannot share theirs, so their saves only took
+          # space from `main`'s under the repository's cache limit.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Format
         run: cargo fmt --all --check
       - name: Clippy
@@ -75,6 +79,8 @@ jobs:
       - name: Install the pinned toolchain
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Install cargo-mutants
         run: cargo install cargo-mutants --version 27.1.0 --locked
       - name: Mutation testing
