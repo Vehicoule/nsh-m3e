@@ -1,9 +1,8 @@
 //! Icons: one shape of SVG path data, drawn in one color ([ADR 0017]).
 //!
 //! An [`Icon`] is the path data and the view box it is drawn in. The components that show one draw it on a canvas at
-//! their token size and fill it with their token color, the same on every host. The library ships no icon set: the
-//! app gives its own, for example Material Symbols, whose SVG files each hold one path in a 960-point view box
-//! ([`Icon::material_symbol`]).
+//! their token size and fill it with their token color, the same on every host. Material Symbols' SVG files each hold
+//! one path, most of them in a 960-point view box ([`Icon::material_symbol`]); any other is given with [`Icon::new`].
 //!
 //! [ADR 0017]: https://github.com/Vehicoule/nsh-m3e/blob/main/docs/adr/0017-draw-icons-from-path-data.md
 
@@ -11,8 +10,8 @@ use nsh_core::SvgPaint;
 use nsh_core::geometry::{Bounds, Point, Points, Size};
 use nsh_core::prelude::*;
 
-/// The view box of every Material Symbols SVG file, `viewBox="0 -960 960 960"`: its paths are drawn in the 960 points
-/// above the baseline. It comes from those files (google/material-design-icons), not from a token.
+/// The view box of most Material Symbols SVG files, `viewBox="0 -960 960 960"`: their paths are drawn in the 960
+/// points above the baseline. It comes from those files (google/material-design-icons), not from a token.
 const MATERIAL_SYMBOL_VIEW_BOX: Bounds<Points> = Bounds {
     origin: Point {
         x: Points(0.0),
@@ -62,7 +61,11 @@ impl Icon {
         }
     }
 
-    /// A Material Symbols icon: the `d` of the one `<path>` in its SVG file, in the view box all those files share.
+    /// A Material Symbols icon: the `d` of the one `<path>` in its SVG file, in `viewBox="0 -960 960 960"`.
+    ///
+    /// That is the view box of 24,348 of the 24,942 SVG files of Material Symbols at 24 px, outlined, rounded and
+    /// sharp, filled and not (google/material-design-icons `10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7`). The others
+    /// have `viewBox="0 96 960 960"`, or none in a 24-point square, and are given with [`Icon::new`].
     pub fn material_symbol(path: impl Into<SharedString>) -> Self {
         Self::new(path, MATERIAL_SYMBOL_VIEW_BOX)
     }
