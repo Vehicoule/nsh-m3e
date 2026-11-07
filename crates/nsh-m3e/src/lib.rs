@@ -11,6 +11,7 @@
 mod animation_probe;
 pub mod button;
 pub mod color;
+pub mod fab;
 pub mod icon;
 pub mod icon_button;
 pub mod material_symbols;
