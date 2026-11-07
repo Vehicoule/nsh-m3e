@@ -6,6 +6,7 @@
 //! root, [`Catalog`]); nothing in it runs JavaScript.
 
 pub mod grid;
+pub mod radio;
 
 use nsh_core::element::AdaptiveColor;
 use nsh_core::prelude::*;
@@ -51,6 +52,7 @@ pub fn Catalog() -> impl IntoElement {
                 ),
         )
     });
+    let page = page.child(radio::block());
     IconCell::all().fold(page, |page, cell| {
         let (x, y) = cell.origin();
         page.child(
