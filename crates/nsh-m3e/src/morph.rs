@@ -61,14 +61,16 @@ fn half_shorter_side(size: Size<Points>) -> f32 {
 
 /// The spring of the morph: androidx `Button.kt` animates the button's shape with
 /// `MotionSchemeKeyTokens.DefaultEffects`, "intentional here to prevent any bounce in this component" (ADR 0011),
-/// converted as ADR 0004 says.
+/// converted as ADR 0004 says. Every field is written out, none taken from NSH's defaults: it starts from the speed
+/// the corners already have, at the screen's own rate (ADR 0010).
 fn morph_spring() -> Spring {
     let spec = SpringToken::DefaultEffects.spec();
     Spring {
         stiffness: spec.stiffness,
         damping: spec.damping_coefficient(),
         mass: SPRING_MASS,
-        ..Spring::default()
+        velocity: None,
+        frame_rate: None,
     }
 }
 
