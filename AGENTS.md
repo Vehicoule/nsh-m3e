@@ -67,7 +67,7 @@ The same commands run in CI ([`.github/workflows/ci.yml`](.github/workflows/ci.y
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked   # CI sets PROPTEST_CASES and PROPTEST_RNG_SEED (ci.yml): the same cases each run
-RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --document-private-items --locked
 cargo deny check
 scripts/sync-androidx.sh check
 cargo xtask gen-tokens --check
