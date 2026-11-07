@@ -31,6 +31,15 @@ struct Source {
 
 const SOURCES: &[Source] = &[
     Source {
+        file: "BadgeTokens.kt",
+        object: None,
+        doc: &[
+            "The badge's container size, shape and color, with and without content: a badge with no content is a \
+             dot (`SIZE`), one with content a label of at least `LARGE_SIZE`. Colors are roles of the scheme \
+             ([`crate::color::ColorRole`]), resolved against the light or dark [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
         file: "ButtonLargeTokens.kt",
         object: None,
         doc: &[
