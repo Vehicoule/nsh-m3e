@@ -24,6 +24,7 @@ components=(
     Button.kt
     IconButton.kt
     IconButtonDefaults.kt
+    Switch.kt
     ProgressIndicator.kt
     WavyProgressIndicator.kt
     internal/LinearWavyProgressModifiers.kt
