@@ -11,7 +11,7 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
 use nsh_core::MountItem;
-use nsh_core::animation::{AnimationOp, Driver, Finished, Graph, NodeId};
+use nsh_core::animation::{AnimationOp, AnimationValue, Driver, Finished, Graph, NodeId};
 use nsh_testing::Headless;
 
 /// The rate the replay samples at: the reference devices' display, 120 Hz (`docs/app-requirements.md`, Motion).
@@ -151,6 +151,15 @@ impl Replay {
     /// canvas slot bound to it draws with.
     pub(crate) fn value(&self, node: NodeId) -> f32 {
         self.graph.eval(node).number()
+    }
+
+    /// The color of `node` now, `0xRRGGBBAA`: what a canvas paint bound to an animated value of colors draws with.
+    /// `None` when the node holds a number.
+    pub(crate) fn color(&self, node: NodeId) -> Option<u32> {
+        match self.graph.eval(node) {
+            AnimationValue::Color(color) => Some(color),
+            AnimationValue::Number(_) => None,
+        }
     }
 
     /// True while an animation runs in the graph.
