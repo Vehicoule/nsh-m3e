@@ -70,6 +70,25 @@ impl Icon {
         Self::new(path, MATERIAL_SYMBOL_VIEW_BOX)
     }
 
+    /// The icon `path` draws in the view box `[x, y, width, height]`, built at compile time: the generated
+    /// [Material Symbols](crate::material_symbols) are constants made with it.
+    pub(crate) const fn from_static(path: &'static str, view_box: [f32; 4]) -> Self {
+        let [x, y, width, height] = view_box;
+        Self {
+            path: SharedString::new_static(path),
+            view_box: Bounds {
+                origin: Point {
+                    x: Points(x),
+                    y: Points(y),
+                },
+                size: Size {
+                    width: Points(width),
+                    height: Points(height),
+                },
+            },
+        }
+    }
+
     /// Its SVG path data.
     #[must_use]
     pub fn path(&self) -> &str {
@@ -130,6 +149,71 @@ mod tests {
         assert_eq!(icon.view_box(), points(0.0, -960.0, 960.0, 960.0));
         assert_eq!(icon.path(), "M0 0");
         assert_eq!(Icon::default(), Icon::material_symbol(""));
+    }
+
+    #[test]
+    fn every_generated_material_symbol_keeps_its_files_view_box() {
+        use crate::material_symbols::{outlined, rounded, sharp};
+
+        // `home` is in `viewBox="0 -960 960 960"`, `auto_label` in `"0 96 960 960"` and `smart_button` has none, so
+        // it is drawn in its 24-point square: in each style, filled and not, as the vendored files say.
+        let modules = [
+            (
+                "outlined",
+                outlined::HOME,
+                outlined::AUTO_LABEL,
+                outlined::SMART_BUTTON,
+            ),
+            (
+                "outlined filled",
+                outlined::filled::HOME,
+                outlined::filled::AUTO_LABEL,
+                outlined::filled::SMART_BUTTON,
+            ),
+            (
+                "rounded",
+                rounded::HOME,
+                rounded::AUTO_LABEL,
+                rounded::SMART_BUTTON,
+            ),
+            (
+                "rounded filled",
+                rounded::filled::HOME,
+                rounded::filled::AUTO_LABEL,
+                rounded::filled::SMART_BUTTON,
+            ),
+            ("sharp", sharp::HOME, sharp::AUTO_LABEL, sharp::SMART_BUTTON),
+            (
+                "sharp filled",
+                sharp::filled::HOME,
+                sharp::filled::AUTO_LABEL,
+                sharp::filled::SMART_BUTTON,
+            ),
+        ];
+        for (module, home, auto_label, smart_button) in modules {
+            assert_eq!(
+                home.view_box(),
+                points(0.0, -960.0, 960.0, 960.0),
+                "{module}"
+            );
+            assert_eq!(
+                auto_label.view_box(),
+                points(0.0, 96.0, 960.0, 960.0),
+                "{module}"
+            );
+            assert_eq!(
+                smart_button.view_box(),
+                points(0.0, 0.0, 24.0, 24.0),
+                "{module}"
+            );
+        }
+        // The path is the file's: outlined `home`, from `reference/material-symbols/outlined/home_24px.svg`.
+        assert_eq!(
+            outlined::HOME.path(),
+            "M240-200h120v-240h240v240h120v-360L480-740 240-560v360Zm-80 80v-480l320-240 320 240v480H520v-240h-80v240H160Zm320-350Z"
+        );
+        assert_ne!(outlined::HOME, outlined::filled::HOME);
+        assert_ne!(outlined::HOME, rounded::HOME);
     }
 
     #[test]

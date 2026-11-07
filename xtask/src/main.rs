@@ -2,7 +2,10 @@
 //!
 //! - `gen-tokens`: generate `crates/nsh-m3e/src/tokens/androidx/` from the vendored androidx token files (ADR 0003).
 //! - `gen-tokens --check`: fail if the generated files differ from what is checked in. CI runs this.
+//! - `gen-icons`: generate `crates/nsh-m3e/src/material_symbols/` from the vendored Material Symbols (ADR 0017).
+//! - `gen-icons --check`: fail if the generated icons differ from what is checked in. CI runs this.
 
+mod icons;
 mod kotlin;
 mod rust;
 
@@ -315,7 +318,12 @@ const INDEX_DOC: &[&str] = &[
 const REFERENCE_DIR: &str = "reference/androidx-material3-tokens";
 const OUTPUT_DIR: &str = "crates/nsh-m3e/src/tokens/androidx";
 
-const USAGE: &str = "usage: cargo xtask gen-tokens [--check]";
+const ICONS_REFERENCE_DIR: &str = "reference/material-symbols";
+const ICONS_OUTPUT_DIR: &str = "crates/nsh-m3e/src/material_symbols";
+/// The table that pins each vendored source, where the `material-symbols/` row names the icons' commit.
+const REFERENCE_README: &str = "reference/README.md";
+
+const USAGE: &str = "usage: cargo xtask gen-tokens [--check] | cargo xtask gen-icons [--check]";
 
 #[derive(Debug)]
 enum Error {
@@ -340,7 +348,19 @@ enum Error {
         kind: kotlin::Kind,
         reference: kotlin::Reference,
     },
-    Outdated(Vec<PathBuf>),
+    Svg {
+        path: PathBuf,
+        source: icons::SvgError,
+    },
+    IconSet {
+        path: PathBuf,
+        source: icons::SetError,
+    },
+    NoPin(PathBuf),
+    Outdated {
+        task: Task,
+        paths: Vec<PathBuf>,
+    },
 }
 
 impl fmt::Display for Error {
@@ -371,10 +391,21 @@ impl fmt::Display for Error {
                 reference.object,
                 reference.token
             ),
-            Error::Outdated(paths) => {
+            Error::Svg { path, source } => write!(f, "{}: {source}", path.display()),
+            Error::IconSet { path, source } => write!(f, "{}: {source}", path.display()),
+            Error::NoPin(path) => write!(
+                f,
+                "{}: no commit in the `material-symbols/` row",
+                path.display()
+            ),
+            Error::Outdated { task, paths } => {
+                let (what, command) = match task {
+                    Task::Tokens => ("tokens", "gen-tokens"),
+                    Task::Icons => ("icons", "gen-icons"),
+                };
                 writeln!(
                     f,
-                    "the generated tokens are out of date; run `cargo xtask gen-tokens`:"
+                    "the generated {what} are out of date; run `cargo xtask {command}`:"
                 )?;
                 for path in paths {
                     writeln!(f, "  {}", path.display())?;
@@ -393,6 +424,13 @@ enum Mode {
     Check,
 }
 
+/// What a run generates.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Task {
+    Tokens,
+    Icons,
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match run(&args) {
@@ -405,19 +443,28 @@ fn main() -> ExitCode {
 }
 
 fn run(args: &[String]) -> Result<(), Error> {
-    let mode = mode(args)?;
+    let (task, mode) = mode(args)?;
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .ok_or(Error::NoWorkspaceRoot)?;
-    gen_tokens(root, mode)
+    match task {
+        Task::Tokens => gen_tokens(root, mode),
+        Task::Icons => gen_icons(root, mode),
+    }
 }
 
-fn mode(args: &[String]) -> Result<Mode, Error> {
+fn mode(args: &[String]) -> Result<(Task, Mode), Error> {
+    let task = |name: &str| match name {
+        "gen-tokens" => Some(Task::Tokens),
+        "gen-icons" => Some(Task::Icons),
+        _ => None,
+    };
     match args {
-        [task] if task == "gen-tokens" => Ok(Mode::Write),
-        [task, flag] if task == "gen-tokens" && flag == "--check" => Ok(Mode::Check),
-        _ => Err(Error::Usage(format!("unknown arguments {args:?}"))),
+        [name] => task(name).map(|task| (task, Mode::Write)),
+        [name, flag] if flag == "--check" => task(name).map(|task| (task, Mode::Check)),
+        _ => None,
     }
+    .ok_or_else(|| Error::Usage(format!("unknown arguments {args:?}")))
 }
 
 /// Reads and parses one vendored file, whose object must have the file's name.
@@ -469,10 +516,79 @@ fn gen_tokens(root: &Path, mode: Mode) -> Result<(), Error> {
     }
     files.push((output_dir.join("mod.rs"), rust::index(&modules, INDEX_DOC)));
 
+    let existing = existing_files(&output_dir)?;
+    sync(files, existing, Task::Tokens, mode)
+}
+
+/// Generates every icon module in memory from the vendored SVG files, then writes or compares them all.
+fn gen_icons(root: &Path, mode: Mode) -> Result<(), Error> {
+    let readme = root.join(REFERENCE_README);
+    let revision = pinned_icons_revision(&read(&readme)?).ok_or(Error::NoPin(readme))?;
+    let output_dir = root.join(ICONS_OUTPUT_DIR);
+    let mut files = vec![(output_dir.join("mod.rs"), icons::index(&revision))];
+    for style_name in icons::STYLES {
+        let dir = root.join(ICONS_REFERENCE_DIR).join(style_name);
+        let mut svgs = Vec::new();
+        for path in existing_files(&dir)? {
+            let file = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default()
+                .to_owned();
+            let svg = icons::parse(&read(&path)?).map_err(|source| Error::Svg {
+                path: path.clone(),
+                source,
+            })?;
+            svgs.push((file, svg));
+        }
+        let style = icons::pair(svgs).map_err(|source| Error::IconSet {
+            path: dir.clone(),
+            source,
+        })?;
+        let module_dir = output_dir.join(style_name);
+        files.push((
+            module_dir.join("mod.rs"),
+            icons::module(style_name, &style, false),
+        ));
+        files.push((
+            module_dir.join("filled.rs"),
+            icons::module(style_name, &style, true),
+        ));
+    }
+    let mut existing = Vec::new();
+    for path in existing_files(&output_dir)? {
+        if path.is_dir() {
+            existing.extend(existing_files(&path)?);
+        } else {
+            existing.push(path);
+        }
+    }
+    sync(files, existing, Task::Icons, mode)
+}
+
+/// The commit of the `material-symbols/` row of `reference/README.md`, the one `scripts/sync-material-symbols.sh`
+/// pins.
+fn pinned_icons_revision(readme: &str) -> Option<String> {
+    let row = readme
+        .lines()
+        .find(|line| line.starts_with("| `material-symbols/` |"))?;
+    row.split('|')
+        .map(str::trim)
+        .filter_map(|cell| cell.strip_prefix('`')?.strip_suffix('`'))
+        .find(|cell| cell.len() == 40 && cell.bytes().all(|b| b.is_ascii_hexdigit()))
+        .map(str::to_owned)
+}
+
+/// Writes `files`, removing the `existing` ones it does not hold, or, to check, fails unless they are all as written
+/// and nothing else is there.
+fn sync(
+    files: Vec<(PathBuf, String)>,
+    existing: Vec<PathBuf>,
+    task: Task,
+    mode: Mode,
+) -> Result<(), Error> {
     let expected: BTreeSet<PathBuf> = files.iter().map(|(path, _)| path.clone()).collect();
-    let stale = existing_files(&output_dir)?
-        .into_iter()
-        .filter(|path| !expected.contains(path));
+    let stale = existing.into_iter().filter(|path| !expected.contains(path));
     match mode {
         Mode::Check => {
             let mut outdated: Vec<PathBuf> = stale.collect();
@@ -495,18 +611,23 @@ fn gen_tokens(root: &Path, mode: Mode) -> Result<(), Error> {
                 Ok(())
             } else {
                 outdated.sort();
-                Err(Error::Outdated(outdated))
+                Err(Error::Outdated {
+                    task,
+                    paths: outdated,
+                })
             }
         }
         Mode::Write => {
             for path in stale {
                 fs::remove_file(&path).map_err(|source| Error::Io { path, source })?;
             }
-            fs::create_dir_all(&output_dir).map_err(|source| Error::Io {
-                path: output_dir.clone(),
-                source,
-            })?;
             for (path, content) in files {
+                if let Some(dir) = path.parent() {
+                    fs::create_dir_all(dir).map_err(|source| Error::Io {
+                        path: dir.to_owned(),
+                        source,
+                    })?;
+                }
                 fs::write(&path, content).map_err(|source| Error::Io { path, source })?;
             }
             Ok(())
@@ -613,14 +734,27 @@ mod tests {
             &["gen"],
             &["gen-tokens", "--force"],
             &["gen-tokens", "--check", "x"],
+            &["gen-icons", "--force"],
+            &["--check", "gen-icons"],
         ] {
             assert!(matches!(mode(&args(bad)), Err(Error::Usage(_))), "{bad:?}");
         }
         assert!(matches!(run(&args(&["gen"])), Err(Error::Usage(_))));
-        assert_eq!(mode(&args(&["gen-tokens"])).unwrap(), Mode::Write);
+        assert_eq!(
+            mode(&args(&["gen-tokens"])).unwrap(),
+            (Task::Tokens, Mode::Write)
+        );
         assert_eq!(
             mode(&args(&["gen-tokens", "--check"])).unwrap(),
-            Mode::Check
+            (Task::Tokens, Mode::Check)
+        );
+        assert_eq!(
+            mode(&args(&["gen-icons"])).unwrap(),
+            (Task::Icons, Mode::Write)
+        );
+        assert_eq!(
+            mode(&args(&["gen-icons", "--check"])).unwrap(),
+            (Task::Icons, Mode::Check)
         );
     }
 
@@ -657,7 +791,10 @@ mod tests {
 
     fn outdated(result: Result<(), Error>) -> Vec<PathBuf> {
         match result {
-            Err(Error::Outdated(paths)) => paths,
+            Err(Error::Outdated {
+                task: Task::Tokens,
+                paths,
+            }) => paths,
             other => panic!("expected Outdated, got {other:?}"),
         }
     }
@@ -1267,10 +1404,38 @@ mod tests {
             },
         };
         assert_eq!(parse.to_string(), "A.kt: line 7: `B` is defined twice");
-        let outdated = Error::Outdated(vec![PathBuf::from("a.rs"), PathBuf::from("b.rs")]);
+        let outdated = Error::Outdated {
+            task: Task::Tokens,
+            paths: vec![PathBuf::from("a.rs"), PathBuf::from("b.rs")],
+        };
         assert_eq!(
             outdated.to_string(),
             "the generated tokens are out of date; run `cargo xtask gen-tokens`:\n  a.rs\n  b.rs\n"
+        );
+        let outdated_icons = Error::Outdated {
+            task: Task::Icons,
+            paths: vec![PathBuf::from("mod.rs")],
+        };
+        assert_eq!(
+            outdated_icons.to_string(),
+            "the generated icons are out of date; run `cargo xtask gen-icons`:\n  mod.rs\n"
+        );
+        let svg = Error::Svg {
+            path: PathBuf::from("a_24px.svg"),
+            source: icons::SvgError::EmptyPath,
+        };
+        assert_eq!(svg.to_string(), "a_24px.svg: the path data is empty");
+        let set = Error::IconSet {
+            path: PathBuf::from("outlined"),
+            source: icons::SetError::Unpaired("a".into()),
+        };
+        assert_eq!(
+            set.to_string(),
+            "outlined: `a` needs both `a_24px.svg` and `a_fill1_24px.svg`"
+        );
+        assert_eq!(
+            Error::NoPin(PathBuf::from("README.md")).to_string(),
+            "README.md: no commit in the `material-symbols/` row"
         );
         let wrong = Error::WrongObject {
             path: PathBuf::from("A.kt"),
@@ -1313,6 +1478,150 @@ mod tests {
                     .all(|token| matches!(token.value, kotlin::Value::Key(_))),
                 "{file}"
             );
+        }
+    }
+
+    const PINNED_ROW: &str = "| `material-symbols/` | https://github.com/google/material-design-icons | \
+                              `10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7` | Apache-2.0 |";
+
+    #[test]
+    fn the_icons_revision_is_the_commit_of_their_row() {
+        let readme = format!("| Folder | Source | Revision |\n|---|---|---|\n{PINNED_ROW}\n");
+        assert_eq!(
+            pinned_icons_revision(&readme).as_deref(),
+            Some("10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7")
+        );
+        // Another row's commit, or a cell that is not a full commit, is not the pin.
+        let other = PINNED_ROW.replace("material-symbols/", "androidx-material3-tokens/");
+        assert_eq!(pinned_icons_revision(&other), None);
+        let short = PINNED_ROW.replace("10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7", "10ecc147");
+        assert_eq!(pinned_icons_revision(&short), None);
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        assert!(pinned_icons_revision(&read(&root.join(REFERENCE_README)).unwrap()).is_some());
+    }
+
+    fn outdated_icons(result: Result<(), Error>) -> Vec<PathBuf> {
+        match result {
+            Err(Error::Outdated {
+                task: Task::Icons,
+                paths,
+            }) => paths,
+            other => panic!("expected Outdated icons, got {other:?}"),
+        }
+    }
+
+    /// A throwaway workspace with two icons in each style.
+    fn icon_scratch(name: &str) -> Scratch {
+        let dir =
+            std::env::temp_dir().join(format!("nsh-m3e-xtask-icons-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join(REFERENCE_README), format!("{PINNED_ROW}\n")).ok();
+        fs::create_dir_all(dir.join("reference")).unwrap();
+        fs::write(dir.join(REFERENCE_README), format!("{PINNED_ROW}\n")).unwrap();
+        for style in icons::STYLES {
+            let style_dir = dir.join(ICONS_REFERENCE_DIR).join(style);
+            fs::create_dir_all(&style_dir).unwrap();
+            for (file, path) in [
+                ("add_24px.svg", "M1 1Z"),
+                ("add_fill1_24px.svg", "M2 2Z"),
+                ("10k_24px.svg", "M3 3Z"),
+                ("10k_fill1_24px.svg", "M4 4Z"),
+            ] {
+                fs::write(
+                    style_dir.join(file),
+                    format!(
+                        "<svg xmlns=\"http://www.w3.org/2000/svg\" height=\"24\" viewBox=\"0 -960 960 960\" \
+                         width=\"24\"><path d=\"{path}\"/></svg>"
+                    ),
+                )
+                .unwrap();
+            }
+        }
+        Scratch(dir)
+    }
+
+    #[test]
+    fn the_icons_check_passes_after_generating_and_fails_on_any_drift() {
+        let scratch = icon_scratch("drift");
+        let root = scratch.0.as_path();
+        let output = root.join(ICONS_OUTPUT_DIR);
+
+        // Nothing generated yet: the index and two modules per style are missing.
+        assert_eq!(
+            outdated_icons(gen_icons(root, Mode::Check)).len(),
+            1 + 2 * icons::STYLES.len()
+        );
+        gen_icons(root, Mode::Write).unwrap();
+        gen_icons(root, Mode::Check).unwrap();
+        let filled = fs::read_to_string(output.join("sharp").join("filled.rs")).unwrap();
+        assert!(filled.contains("pub const _10K: Icon = Icon::from_static(\"M4 4Z\""));
+
+        // A hand edit and a stray file are caught; writing again restores the one and removes the other.
+        let edited = output.join("rounded").join("mod.rs");
+        let text = fs::read_to_string(&edited).unwrap();
+        fs::write(&edited, text.replace("M1 1Z", "M9 9Z")).unwrap();
+        let stray = output.join("outlined").join("stray.rs");
+        fs::write(&stray, "").unwrap();
+        let mut drift = outdated_icons(gen_icons(root, Mode::Check));
+        drift.sort();
+        assert_eq!(drift, vec![stray.clone(), edited]);
+        gen_icons(root, Mode::Write).unwrap();
+        assert!(!stray.exists());
+        gen_icons(root, Mode::Check).unwrap();
+
+        // A change to a vendored file is caught too.
+        let svg = root
+            .join(ICONS_REFERENCE_DIR)
+            .join("outlined")
+            .join("add_24px.svg");
+        let text = fs::read_to_string(&svg).unwrap();
+        fs::write(&svg, text.replace("M1 1Z", "M5 5Z")).unwrap();
+        assert_eq!(
+            outdated_icons(gen_icons(root, Mode::Check)),
+            vec![output.join("outlined").join("mod.rs")]
+        );
+    }
+
+    #[test]
+    fn a_vendored_icon_that_is_unpaired_or_unknown_stops_the_generation() {
+        let scratch = icon_scratch("bad");
+        let root = scratch.0.as_path();
+        let style_dir = root.join(ICONS_REFERENCE_DIR).join("rounded");
+        fs::remove_file(style_dir.join("add_fill1_24px.svg")).unwrap();
+        assert!(matches!(
+            gen_icons(root, Mode::Write),
+            Err(Error::IconSet { source: icons::SetError::Unpaired(name), .. }) if name == "add"
+        ));
+        fs::write(style_dir.join("add_fill1_24px.svg"), "<svg/>").unwrap();
+        assert!(matches!(
+            gen_icons(root, Mode::Write),
+            Err(Error::Svg {
+                source: icons::SvgError::Form,
+                ..
+            })
+        ));
+        // Nothing was written.
+        assert!(!root.join(ICONS_OUTPUT_DIR).exists());
+        fs::write(root.join(REFERENCE_README), "").unwrap();
+        assert!(matches!(gen_icons(root, Mode::Write), Err(Error::NoPin(_))));
+    }
+
+    #[test]
+    fn every_vendored_material_symbol_parses_in_pairs() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        for style in icons::STYLES {
+            let dir = root.join(ICONS_REFERENCE_DIR).join(style);
+            let files = existing_files(&dir)
+                .unwrap()
+                .into_iter()
+                .map(|path| {
+                    let file = path.file_name().unwrap().to_str().unwrap().to_owned();
+                    (file, icons::parse(&read(&path).unwrap()).unwrap())
+                })
+                .collect();
+            // google/material-design-icons at the pinned commit has 4,157 icons in each style.
+            assert_eq!(icons::pair(files).unwrap().len(), 4157, "{style}");
         }
     }
 }

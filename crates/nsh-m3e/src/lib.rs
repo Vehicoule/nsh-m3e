@@ -13,6 +13,7 @@ pub mod button;
 pub mod color;
 pub mod icon;
 pub mod icon_button;
+pub mod material_symbols;
 mod morph;
 #[cfg(test)]
 mod morph_probe;

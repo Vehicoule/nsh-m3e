@@ -58,6 +58,10 @@ jobs:
         run: scripts/sync-androidx.sh check
       - name: Generated tokens match the vendored androidx files
         run: cargo xtask gen-tokens --check
+      - name: Vendored Material Symbols match the pinned commit
+        run: scripts/sync-material-symbols.sh check
+      - name: Generated icons match the vendored Material Symbols
+        run: cargo xtask gen-icons --check
       - name: NSH skills match the pinned NSH commit
         run: scripts/sync-nsh.sh check
 
