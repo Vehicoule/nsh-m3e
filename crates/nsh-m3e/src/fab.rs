@@ -11,8 +11,7 @@
 //! module's tests pin each one to the line it cites.
 //!
 //! - **The large icon is 36 points**, not the 32 of `FabLargeTokens.IconSize`: `LargeIconSize` is written
-//!   `36.dp // TODO: FabLargeTokens.IconSize is incorrect` (line 1010). It is the only literal of this module that
-//!   comes from the component, and `LARGE_ICON_SIZE` holds it.
+//!   `36.dp // TODO: FabLargeTokens.IconSize is incorrect` (line 1010). `LARGE_ICON_SIZE` holds it.
 //! - **The medium shape is `CornerLargeIncreased`** (20 points): `FabMediumTokens` has no container shape (its
 //!   `ContainerShape` is commented out), and `mediumShape` is `ShapeDefaults.LargeIncreased` under "TODO: update to
 //!   use token" (line 1022). `ShapeDefaults.LargeIncreased` is `ShapeTokens.CornerLargeIncreased` in androidx's
@@ -44,6 +43,17 @@
 //! `minimumInteractiveComponentSize` does for the components that are smaller; its layout and look do not change
 //! (NSH's accessibility guide: extend the touch area with the hit slop, not the size).
 //!
+//! # Showing and hiding
+//!
+//! [`FabVisibility`] shows or hides the FAB with an animation, as androidx's `Modifier.animateFloatingActionButton`
+//! does (`FabVisibleNode`, lines 1185 to 1274): the scale springs with the fast spatial spring of the motion scheme
+//! and the opacity with the fast effects spring, both converted as [ADR 0004] says. The scale is
+//! `lerp(ShowHideTargetScale, 1, progress)` with no clamp, so the spatial spring's overshoot makes the FAB larger than
+//! its size for a moment when it appears. `ShowHideTargetScale` is 0.2 (`SHOW_HIDE_TARGET_SCALE`, line 1004: the one
+//! literal besides the large icon's that comes from the component). Once it has faded out, a hidden FAB is not laid out,
+//! as androidx lays it out at 0 by 0 when its alpha is 0. With reduce motion on, it appears and disappears at once.
+//! Not ported: `alignment`, the corner the scale goes toward; the FAB scales around its center.
+//!
 //! # Elevation
 //!
 //! The tokens give the level of the container in each state ([`FabStyle::elevation`]). **No shadow is drawn yet**:
@@ -51,6 +61,7 @@
 //! for; the tokens give levels in points, not shadows, so this module invents no shadow value. [`Fab`] marks the one
 //! place where the shadow will be applied.
 //!
+//! [ADR 0004]: https://github.com/Vehicoule/nsh-m3e/blob/main/docs/adr/0004-spring-damping-conversion.md
 //! [ADR 0011]: https://github.com/Vehicoule/nsh-m3e/blob/main/docs/adr/0011-morph-shapes-with-a-drawn-container.md
 //! [ADR 0012]: https://github.com/Vehicoule/nsh-m3e/blob/main/docs/adr/0012-follow-androidx-components-where-tokens-are-wrong.md
 
@@ -60,6 +71,7 @@ use nsh_core::prelude::*;
 use crate::color::ColorRole;
 use crate::icon::Icon;
 use crate::morph::{Corners, corners};
+use crate::motion::{SPRING_MASS, SpringToken};
 use crate::tint::{MIN_TOUCH_TARGET, role_color};
 use crate::tokens::Shape;
 use crate::tokens::androidx::{
@@ -97,6 +109,36 @@ pub enum FabStyle {
     /// A container in the secondary container color, its icon in the color on it
     /// (`FabSecondaryContainerTokens`).
     SecondaryContainer,
+}
+
+/// Whether a [`Fab`] is shown: androidx's `visible` of `Modifier.animateFloatingActionButton`.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PropEnum)]
+pub enum FabVisibility {
+    /// At its size, in its place.
+    #[default]
+    Shown,
+    /// Scaled down and faded out; once it has faded out it takes no place in the layout.
+    Hidden,
+}
+
+impl FabVisibility {
+    /// How far in the FAB is when it settles: 1 shown, 0 hidden (androidx `FabVisibleNode`'s `if (visible) 1f else
+    /// 0f`, lines 1193, 1246 and 1256).
+    const fn progress(self) -> f32 {
+        match self {
+            FabVisibility::Shown => 1.0,
+            FabVisibility::Hidden => 0.0,
+        }
+    }
+
+    /// Whether the FAB takes its place once it has settled.
+    const fn presence(self) -> Presence {
+        match self {
+            FabVisibility::Shown => Presence::InLayout,
+            FabVisibility::Hidden => Presence::OutOfLayout,
+        }
+    }
 }
 
 /// What a [`Fab`] is going through: the interactions that change its elevation (androidx's
@@ -264,6 +306,109 @@ fn rounded<S: Styled>(style: S, shape: Shape) -> S {
     }
 }
 
+/// The scale a hidden FAB has: androidx `FloatingActionButtonDefaults.ShowHideTargetScale`
+/// (`FloatingActionButton.kt` line 1004), "the initial scale value when showing the FAB and the final scale value when
+/// hiding the FAB" (line 1127).
+const SHOW_HIDE_TARGET_SCALE: f32 = 0.2;
+
+/// The spring that shows and hides the FAB, of `token`: androidx `FabVisibleNode` plays the scale with the motion
+/// scheme's `fastSpatialSpec` and the alpha with its `fastEffectsSpec` (lines 1245 to 1260), converted as ADR 0004
+/// says. Every field is written out, none taken from NSH's defaults: it keeps the speed the value already has (a show
+/// that interrupts a hide goes on from there) and asks for the screen's own rate (ADR 0010).
+fn reveal_spring(token: SpringToken) -> Spring {
+    let spec = token.spec();
+    Spring {
+        stiffness: spec.stiffness,
+        damping: spec.damping_coefficient(),
+        mass: SPRING_MASS,
+        velocity: None,
+        frame_rate: None,
+    }
+}
+
+/// Whether a FAB takes its place in the layout.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Presence {
+    /// Laid out at its size.
+    InLayout,
+    /// Not laid out: androidx lays a FAB out at 0 by 0 once its alpha is 0 (`FabVisibleNode.measure`, line 1268).
+    OutOfLayout,
+}
+
+/// What shows and hides a FAB: the two animated values androidx's `FabVisibleNode` has, where the FAB is going and
+/// whether it is laid out. A `Copy` handle, like the signals it holds.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Reveal {
+    /// From 0 (hidden) to 1 (shown), on the fast spatial spring: what the scale is made from
+    /// (`scaleAnimatable`).
+    progress: AnimatedValue,
+    /// From 0 to 1, on the fast effects spring: the opacity (`alphaAnimatable`).
+    alpha: AnimatedValue,
+    /// What the FAB was last asked to be.
+    target: Signal<FabVisibility>,
+    presence: Signal<Presence>,
+}
+
+impl Reveal {
+    /// A FAB that is `visibility` already: nothing animates at first (`Animatable(if (visible) 1f else 0f)`).
+    fn new(visibility: FabVisibility) -> Self {
+        Self {
+            progress: animated_value(visibility.progress()),
+            alpha: animated_value(visibility.progress()),
+            target: signal(visibility),
+            presence: signal(visibility.presence()),
+        }
+    }
+
+    /// The scale, `lerp(targetScale, 1f, progress)` (line 1218). Nothing clamps it, as in androidx: the spatial
+    /// spring's overshoot makes it larger than 1.
+    fn scale(self) -> AnimatedNode {
+        self.progress
+            .mul(1.0 - SHOW_HIDE_TARGET_SCALE)
+            .add(SHOW_HIDE_TARGET_SCALE)
+    }
+
+    /// The FAB is asked to be `to`. Nothing happens when it already is, or is going to be. Otherwise both values
+    /// spring there from where they are; a hidden FAB leaves the layout when its opacity has reached 0, and a FAB
+    /// that is shown again before that stays where it is. With reduce motion on, both values and the layout change
+    /// at once and nothing springs.
+    ///
+    /// The task that waits for the end of a hide ends with the effect that calls this, which runs again only when the
+    /// FAB is asked for the other visibility: that ask supersedes the hide.
+    fn go(self, to: FabVisibility) {
+        untracked(|| {
+            if self.target.get() == to {
+                return;
+            }
+            self.target.set(to);
+            if reduce_motion() {
+                self.progress.set(to.progress());
+                self.alpha.set(to.progress());
+                self.presence.set(to.presence());
+                return;
+            }
+            if to == FabVisibility::Shown {
+                self.presence.set(Presence::InLayout);
+            }
+            let _ = self
+                .progress
+                .spring(to.progress(), reveal_spring(SpringToken::FastSpatial));
+            let faded = self
+                .alpha
+                .spring(to.progress(), reveal_spring(SpringToken::FastEffects));
+            if to == FabVisibility::Hidden {
+                let presence = self.presence;
+                // `false` is an opacity that was stopped or replaced before it got to 0.
+                drop(spawn(async move {
+                    if faded.await {
+                        presence.set(Presence::OutOfLayout);
+                    }
+                }));
+            }
+        });
+    }
+}
+
 /// The props of a [`Fab`].
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Props)]
@@ -278,6 +423,10 @@ pub struct FabProps {
     /// Its color style.
     #[prop(default)]
     pub style: Prop<FabStyle>,
+    /// Whether it is shown. Asking for the other visibility scales and fades it out or in with M3E's springs; a FAB
+    /// that has faded out takes no place in the layout.
+    #[prop(default)]
+    pub visibility: Prop<FabVisibility>,
 }
 
 /// The events of a [`Fab`].
@@ -297,10 +446,10 @@ pub enum FabEvent {
 ///
 /// ```no_run
 /// use nsh_core::prelude::*;
-/// use nsh_m3e::fab::{FabSize, fab};
+/// use nsh_m3e::fab::{FabSize, FabVisibility, fab};
 /// use nsh_m3e::icon::Icon;
 ///
-/// fn add() -> impl IntoElement {
+/// fn add(scrolled_down: ReadSignal<bool>) -> impl IntoElement {
 ///     fab()
 ///         // Material Symbols' `add`.
 ///         .icon(Icon::material_symbol(
@@ -308,6 +457,14 @@ pub enum FabEvent {
 ///         ))
 ///         .label("Add")
 ///         .size(FabSize::Large)
+///         // Hidden with M3E's springs while the content scrolls down, shown again when it scrolls up.
+///         .visibility(move || {
+///             if scrolled_down.get() {
+///                 FabVisibility::Hidden
+///             } else {
+///                 FabVisibility::Shown
+///             }
+///         })
 ///         .on_press(|| println!("added"))
 /// }
 /// ```
@@ -320,6 +477,10 @@ pub fn Fab(props: FabProps, cx: Scope<FabEvent>) -> impl IntoElement {
         Size::new(size.width, size.height)
     };
     let icon_color = move || role_color(colors().icon);
+    // A memo, so that the effect below runs when the visibility changes and not when it is only set again.
+    let visibility = computed(move || props.visibility.get());
+    let reveal = Reveal::new(untracked(|| visibility.get()));
+    effect(move || reveal.go(visibility.get()));
     // ELEVATION (ADR 0018): the shadow of `props.style.get().elevation(state)` goes on this view, in each state, and
     // nowhere else. The shadow is built in a change of its own: until it lands nothing is drawn here.
     nsh_base::button()
@@ -332,7 +493,15 @@ pub fn Fab(props: FabProps, cx: Scope<FabEvent>) -> impl IntoElement {
         .w(move || frame().width)
         .h(move || frame().height)
         .bg(move || role_color(colors().container))
-        .style_with(move |s| rounded(s, size().shape))
+        .style_with(move |s| {
+            let s = rounded(s, size().shape);
+            match reveal.presence.get() {
+                Presence::InLayout => s,
+                Presence::OutOfLayout => s.hidden(),
+            }
+        })
+        .bind_opacity(&reveal.alpha)
+        .bind_scale(&reveal.scale())
         .child(
             // The state layer: the icon's color over the container, in its shape, shown by the button's own states
             // with nothing running (androidx's ripple, `RippleDefaults.RippleAlpha`, in the content color).
@@ -359,8 +528,9 @@ pub fn Fab(props: FabProps, cx: Scope<FabEvent>) -> impl IntoElement {
 mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
-    use std::time::SystemTime;
+    use std::time::{Duration, SystemTime};
 
+    use nsh_core::animation::{AnimationOp, AnimationProp, NodeId as AnimationNode};
     use nsh_core::canvas::{self, CanvasOp, Drawing, Num};
     use nsh_core::geometry::Bounds;
     use nsh_core::platform::{ColorScheme as Appearance, Environment, Os};
@@ -370,25 +540,44 @@ mod tests {
     use proptest::prelude::*;
 
     use super::*;
-    use crate::animation_probe::{Recording, layout_items, started_springs};
+    use crate::animation_probe::{
+        REPLAY_HZ, Recording, Replay, StartedSpring, layout_items, spring_position,
+        started_springs, worst_gap,
+    };
     use crate::color::ColorScheme;
+    use crate::morph_probe::{parameters, replay, set_values, tolerance};
 
     /// Material Symbols' `add` (google/material-design-icons at `10ecc147906`, `symbols/web/add/
     /// materialsymbolsoutlined/add_24px.svg`): test data, the `d` of its one path.
     const ADD: &str = "M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z";
 
-    /// What the probe places: one FAB with these props, and a line counting its presses.
+    /// What the probe places: one FAB with these props, a line counting its presses, and two texts that change its
+    /// visibility.
     #[derive(Debug, Clone, PartialEq, Props)]
     struct ProbeProps {
         #[prop(default)]
         size: Prop<FabSize>,
         #[prop(default)]
         style: Prop<FabStyle>,
+        #[prop(default)]
+        visibility: Prop<FabVisibility>,
     }
+
+    /// The visibility other than `visibility`.
+    fn other(visibility: FabVisibility) -> FabVisibility {
+        match visibility {
+            FabVisibility::Shown => FabVisibility::Hidden,
+            _ => FabVisibility::Shown,
+        }
+    }
+
+    /// How long `Blink` waits before it undoes what it did: 6 display frames, so that a spring is still moving.
+    const BLINK: Duration = Duration::from_millis(50);
 
     #[component]
     fn Probe(props: ProbeProps) -> impl IntoElement {
         let presses = signal(0_u32);
+        let visibility = signal(untracked(|| props.visibility.get()));
         // A row, so that the FAB keeps its own size, not stretched across a column.
         view()
             .child(
@@ -398,23 +587,37 @@ mod tests {
                         .label("Add")
                         .size(props.size)
                         .style(props.style)
+                        .visibility(move || visibility.get())
                         .on_press(move || presses.update(|n| *n += 1)),
                 ),
             )
             .child(text(move || format!("presses: {}", presses.get())))
+            // Asks for the other visibility.
+            .child(text("Flip").on_press(move |(): &()| {
+                visibility.update(|visibility| *visibility = other(*visibility));
+            }))
+            // Asks for the other visibility, and for the first again `BLINK` later.
+            .child(text("Blink").on_press(move |(): &()| {
+                let before = visibility.get_untracked();
+                visibility.set(other(before));
+                drop(set_timeout(BLINK, move || visibility.set(before)));
+            }))
     }
 
     #[derive(Debug, Clone, Copy, Default)]
     struct Config {
         size: FabSize,
         style: FabStyle,
+        visibility: FabVisibility,
         dark: bool,
+        reduce_motion: bool,
     }
 
     fn start(config: Config) -> (Headless, Recording) {
         let root = Root::new::<Probe>(move || ProbeProps {
             size: Prop::new(config.size),
             style: Prop::new(config.style),
+            visibility: Prop::new(config.visibility),
         });
         // The web has a mouse to hover with, whatever its idiom.
         let environment = Environment {
@@ -424,6 +627,7 @@ mod tests {
             } else {
                 Appearance::Light
             },
+            reduce_motion: config.reduce_motion,
             ..Environment::default()
         };
         let mut app = Headless::start(EngineConfig {
@@ -1221,6 +1425,478 @@ mod tests {
                 fab_baseline_tokens::CONTAINER_WIDTH,
                 fab_baseline_tokens::CONTAINER_HEIGHT
             )
+        );
+    }
+
+    /// The animated values the FAB's views are bound to in `items`: the opacity's, and the scale's.
+    fn bound(items: &[MountItem], button: NodeId) -> (AnimationNode, AnimationNode) {
+        let bindings = items
+            .iter()
+            .find_map(|item| match item {
+                MountItem::AnimationBindings { id, bindings } if *id == button => {
+                    Some(bindings.clone())
+                }
+                _ => None,
+            })
+            .expect("the FAB's animated bindings");
+        let nodes = |wanted: fn(&AnimationProp) -> bool| -> Vec<AnimationNode> {
+            bindings
+                .iter()
+                .filter(|(prop, _)| wanted(prop))
+                .map(|(_, node)| *node)
+                .collect()
+        };
+        let opacity = nodes(|prop| matches!(prop, AnimationProp::Opacity));
+        let scale = nodes(|prop| matches!(prop, AnimationProp::Transform(_)));
+        let ([opacity], [scale]) = (&opacity[..], &scale[..]) else {
+            panic!("one opacity and one scale: {bindings:?}");
+        };
+        (*opacity, *scale)
+    }
+
+    /// The two springs of one show or hide, the scale's progress and then the opacity.
+    fn pair(springs: [StartedSpring; 2], opacity: AnimationNode) -> (StartedSpring, StartedSpring) {
+        let [first, second] = springs;
+        if first.node == opacity {
+            (second, first)
+        } else {
+            (first, second)
+        }
+    }
+
+    /// The values of the reveal after each tick of the replay.
+    #[derive(Debug, Default)]
+    struct Curves {
+        /// The progress the scale is made from.
+        progress: Vec<f32>,
+        opacity: Vec<f32>,
+        /// What the scale transform is bound to, an interpolation of the progress.
+        scale: Vec<f32>,
+    }
+
+    /// Ticks `replay` `frames` times and reads the three values after each.
+    fn play(
+        replay: &mut Replay,
+        (progress, opacity, scale): (AnimationNode, AnimationNode, AnimationNode),
+        frames: usize,
+    ) -> Curves {
+        let mut curves = Curves::default();
+        for _ in 0..frames {
+            curves.progress.extend(replay.run(progress, 1));
+            curves.opacity.push(replay.value(opacity));
+            curves.scale.push(replay.value(scale));
+        }
+        curves
+    }
+
+    /// The scale `lerp(0.2f, 1f, progress)` of androidx's `FabVisibleNode`, as `FloatingActionButton.kt` writes it.
+    fn lerp_scale(progress: f32) -> f32 {
+        0.2 + (1.0 - 0.2) * progress
+    }
+
+    /// Where the springs of a show or a hide go, and from where: `(visibility at rest, where it goes)`.
+    const REVEALS: [(FabVisibility, f32); 2] =
+        [(FabVisibility::Shown, 0.0), (FabVisibility::Hidden, 1.0)];
+
+    #[test]
+    fn showing_and_hiding_spring_the_scale_and_the_opacity_with_the_fast_springs() {
+        for (visibility, to) in REVEALS {
+            let what = format!("{visibility:?}");
+            let (mut app, recording) = start(Config {
+                visibility,
+                ..Config::default()
+            });
+            let button = Mounted::of(&recording.items()).button;
+            let (opacity, _) = bound(&recording.items(), button);
+            app.press("Flip").unwrap();
+            let items = recording.in_step("press(Flip)");
+            let springs = started_springs(&items);
+            let [progress, faded] = springs[..] else {
+                panic!("{what}: two springs, not {springs:?}");
+            };
+            let (progress, faded) = pair([progress, faded], opacity);
+            // androidx: the scale on the fast spatial spring and the alpha on the fast effects one (ADR 0004).
+            for (spring, token) in [
+                (progress, SpringToken::FastSpatial),
+                (faded, SpringToken::FastEffects),
+            ] {
+                let spec = token.spec();
+                assert_eq!(spring.to.to_bits(), to.to_bits(), "{what} {token:?}");
+                assert_eq!(
+                    spring.stiffness.to_bits(),
+                    spec.stiffness.to_bits(),
+                    "{what} {token:?}"
+                );
+                assert_eq!(
+                    spring.damping.to_bits(),
+                    spec.damping_coefficient().to_bits(),
+                    "{what} {token:?}"
+                );
+                assert_eq!(
+                    spring.mass.to_bits(),
+                    SPRING_MASS.to_bits(),
+                    "{what} {token:?}"
+                );
+                assert_eq!(spring.velocity, None, "{what} {token:?}");
+                assert_eq!(spring.frame_rate, None, "{what} {token:?}");
+            }
+            assert_ne!(progress.node, faded.node, "{what}");
+            assert_eq!(set_values(&items), 0, "{what}: {items:?}");
+        }
+    }
+
+    #[test]
+    fn the_scale_and_the_opacity_follow_the_closed_form_spring_and_cost_the_engine_nothing() {
+        for (visibility, to) in REVEALS {
+            let what = format!("{visibility:?}");
+            let from = visibility.progress();
+            let (mut app, recording) = start(Config {
+                visibility,
+                ..Config::default()
+            });
+            let button = Mounted::of(&recording.items()).button;
+            let (opacity, scale) = bound(&recording.items(), button);
+            app.press("Flip").unwrap();
+            let springs = started_springs(&recording.in_step("press(Flip)"));
+            let [first, second] = springs[..] else {
+                panic!("{what}: {springs:?}");
+            };
+            let (progress, faded) = pair([first, second], opacity);
+            // While they play, the engine sends nothing (ADR 0010).
+            app.step("run");
+            app.run_for(Duration::from_secs(1)).unwrap();
+            assert!(recording.in_step("run").is_empty(), "{what}");
+
+            let mut replay = replay(&recording);
+            let nodes = (progress.node, opacity, scale);
+            let curves = play(&mut replay, nodes, 180);
+            // Both curves are the closed-form springs, within 0.1 % of their travel.
+            let travel = tolerance(f64::from(from), f64::from(to));
+            let gap = worst_gap(&curves.progress, f64::from(from), &progress);
+            assert!(gap < travel, "{what} progress: {gap}");
+            let gap = worst_gap(&curves.opacity, f64::from(from), &faded);
+            assert!(gap < travel, "{what} opacity: {gap}");
+            // The scale is `lerp(0.2, 1, progress)` at every frame, and moves.
+            for (i, (scale, progress)) in curves.scale.iter().zip(&curves.progress).enumerate() {
+                assert!(
+                    (scale - lerp_scale(*progress)).abs() < 1e-5,
+                    "{what} frame {i}: {scale} for {progress}"
+                );
+            }
+            let (lowest, highest) = curves
+                .scale
+                .iter()
+                .fold((f32::MAX, f32::MIN), |(low, high), v| {
+                    (low.min(*v), high.max(*v))
+                });
+            assert!(highest - lowest > 0.5, "{what}: {lowest} to {highest}");
+            // They settle on their targets exactly, and the graph stops.
+            let rest = play(&mut replay, nodes, 600);
+            assert!(!replay.is_animating(), "{what}");
+            assert_eq!(
+                rest.progress.last().map(|v| v.to_bits()),
+                Some(to.to_bits()),
+                "{what}"
+            );
+            assert_eq!(
+                rest.opacity.last().map(|v| v.to_bits()),
+                Some(to.to_bits()),
+                "{what}"
+            );
+            let scale_at_rest = rest.scale.last().copied().unwrap_or(f32::NAN);
+            assert!(
+                (scale_at_rest - lerp_scale(to)).abs() < 1e-6,
+                "{what}: {scale_at_rest}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_spatial_spring_overshoots_the_scale_and_the_effects_spring_never_the_opacity() {
+        for (visibility, to) in REVEALS {
+            let what = format!("{visibility:?}");
+            let (mut app, recording) = start(Config {
+                visibility,
+                ..Config::default()
+            });
+            let button = Mounted::of(&recording.items()).button;
+            let (opacity, scale) = bound(&recording.items(), button);
+            app.press("Flip").unwrap();
+            let springs = started_springs(&recording.in_step("press(Flip)"));
+            let [first, second] = springs[..] else {
+                panic!("{what}: {springs:?}");
+            };
+            let (progress, _) = pair([first, second], opacity);
+            let mut replay = replay(&recording);
+            let curves = play(&mut replay, (progress.node, opacity, scale), 240);
+            // The fast spatial spring has a damping ratio of 0.6: it passes its target by about a tenth of its
+            // travel, and nothing clamps the scale (androidx `lerp`, line 1218).
+            let past = |curve: &[f32]| {
+                curve
+                    .iter()
+                    .map(|v| if to > 0.5 { v - 1.0 } else { -v })
+                    .fold(f32::MIN, f32::max)
+            };
+            assert!(past(&curves.progress) > 0.05, "{what}");
+            let scale_past = curves
+                .scale
+                .iter()
+                .map(|v| if to > 0.5 { v - 1.0 } else { 0.2 - v })
+                .fold(f32::MIN, f32::max);
+            assert!(scale_past > 0.04, "{what}: {scale_past}");
+            // The opacity is critically damped: it does not pass 0 or 1 (an `f32`'s rounding apart).
+            assert!(past(&curves.opacity) < 1e-5, "{what}");
+        }
+    }
+
+    /// The size of the FAB in the last frame it was sent.
+    fn laid_out_size(recording: &Recording) -> Option<Size<Points>> {
+        let mounted = Mounted::of(&recording.items());
+        mounted.frames.get(&mounted.button).map(|frame| frame.size)
+    }
+
+    #[test]
+    fn a_hidden_fab_takes_no_place_and_a_shown_one_does() {
+        let nothing = Size::new(px(0.0), px(0.0));
+        let baseline = Size::new(px(56.0), px(56.0));
+        for (visibility, before, after) in [
+            (FabVisibility::Shown, baseline, nothing),
+            (FabVisibility::Hidden, nothing, baseline),
+        ] {
+            let what = format!("{visibility:?}");
+            let (mut app, recording) = start(Config {
+                visibility,
+                ..Config::default()
+            });
+            assert_eq!(laid_out_size(&recording), Some(before), "{what}");
+            // The hide is over within the step, and takes the place with it.
+            app.press("Flip").unwrap();
+            assert_eq!(laid_out_size(&recording), Some(after), "{what}");
+            // And back.
+            app.press("Flip").unwrap();
+            assert_eq!(laid_out_size(&recording), Some(before), "{what}");
+        }
+    }
+
+    #[test]
+    fn a_fab_is_made_where_it_is_and_starts_nothing() {
+        for (visibility, scale) in [(FabVisibility::Shown, 1.0), (FabVisibility::Hidden, 0.2)] {
+            let what = format!("{visibility:?}");
+            let (_app, recording) = start(Config {
+                visibility,
+                ..Config::default()
+            });
+            let items = recording.items();
+            assert_eq!(started_springs(&items), Vec::new(), "{what}");
+            assert_eq!(set_values(&items), 0, "{what}");
+            let button = Mounted::of(&items).button;
+            let (opacity, bound_scale) = bound(&items, button);
+            let replay = replay(&recording);
+            assert!(!replay.is_animating(), "{what}");
+            assert_eq!(
+                replay.value(opacity).to_bits(),
+                visibility.progress().to_bits(),
+                "{what}"
+            );
+            assert!(
+                (replay.value(bound_scale) - scale).abs() < 1e-6,
+                "{what}: {}",
+                replay.value(bound_scale)
+            );
+        }
+    }
+
+    #[test]
+    fn a_hide_that_is_undone_in_flight_leaves_the_fab_in_its_place() {
+        let (mut app, recording) = start(Config::default());
+        let mounted = Mounted::of(&recording.items());
+        app.press("Blink").unwrap();
+        let items = recording.in_step("press(Blink)");
+        assert_eq!(started_springs(&items).len(), 4, "{items:?}");
+        // The opacity never reached 0, so the FAB never left the layout.
+        assert_eq!(mounted.layout_items(&items), 0, "{items:?}");
+        assert_eq!(laid_out_size(&recording), Some(mounted.size()));
+    }
+
+    #[test]
+    fn a_show_that_is_undone_in_flight_ends_hidden_and_out_of_the_layout() {
+        let (mut app, recording) = start(Config {
+            visibility: FabVisibility::Hidden,
+            ..Config::default()
+        });
+        app.press("Blink").unwrap();
+        assert_eq!(started_springs(&recording.in_step("press(Blink)")).len(), 4);
+        assert_eq!(laid_out_size(&recording), Some(Size::new(px(0.0), px(0.0))));
+    }
+
+    #[test]
+    fn a_change_in_flight_goes_on_from_where_and_as_fast_as_the_values_move() {
+        for visibility in [FabVisibility::Shown, FabVisibility::Hidden] {
+            let what = format!("{visibility:?}");
+            let rest = visibility.progress();
+            let (mut app, recording) = start(Config {
+                visibility,
+                ..Config::default()
+            });
+            let button = Mounted::of(&recording.items()).button;
+            let (opacity, scale) = bound(&recording.items(), button);
+            app.press("Blink").unwrap();
+            let springs = started_springs(&recording.in_step("press(Blink)"));
+            let [away_first, away_second, back_first, back_second] = springs[..] else {
+                panic!("{what}: {springs:?}");
+            };
+            let (away_progress, away_opacity) = pair([away_first, away_second], opacity);
+            let (back_progress, back_opacity) = pair([back_first, back_second], opacity);
+            assert_eq!(back_progress.to.to_bits(), rest.to_bits(), "{what}");
+            assert_eq!(back_opacity.to.to_bits(), rest.to_bits(), "{what}");
+
+            // The graph plays the first change for 6 frames, and the second comes in.
+            let all = recording.items();
+            let cut = all
+                .iter()
+                .enumerate()
+                .filter(|(_, item)| matches!(item, MountItem::Animation(AnimationOp::Start { .. })))
+                .map(|(i, _)| i)
+                .nth(2)
+                .expect("the second change's springs");
+            let nodes = (away_progress.node, opacity, scale);
+            let mut replay = Replay::default();
+            replay.apply(&all[..cut]);
+            let _ = play(&mut replay, nodes, 6);
+            replay.apply(&all[cut..]);
+            let curves = play(&mut replay, nodes, 180);
+
+            // The graph last ticked 5 frames into the first change: the second starts there, at that value and
+            // that speed.
+            let at = 5.0 / REPLAY_HZ;
+            for (name, away, back, curve) in [
+                ("progress", away_progress, back_progress, &curves.progress),
+                ("opacity", away_opacity, back_opacity, &curves.opacity),
+            ] {
+                let position = |seconds: f64| {
+                    spring_position(
+                        f64::from(rest),
+                        f64::from(away.to),
+                        0.0,
+                        parameters(&away),
+                        seconds,
+                    )
+                };
+                let from = position(at);
+                // A central difference over 2 microseconds.
+                let step = 1e-6;
+                let speed = (position(at + step) - position(at - step)) / (2.0 * step);
+                let gap = |velocity: f64| {
+                    curve
+                        .iter()
+                        .enumerate()
+                        .map(|(i, &value)| {
+                            let seconds =
+                                f64::from(u32::try_from(i).expect("few frames")) / REPLAY_HZ;
+                            let closed = spring_position(
+                                from,
+                                f64::from(back.to),
+                                velocity,
+                                parameters(&back),
+                                seconds,
+                            );
+                            (f64::from(value) - closed).abs()
+                        })
+                        .fold(0.0, f64::max)
+                };
+                // 0.1 % of the travel of the change that was interrupted, not of the shorter travel left: the second
+                // spring starts from the position and the speed the graph integrated, so it inherits the error of
+                // the first curve, which is held to 0.1 % of its own travel.
+                let tolerance = tolerance(f64::from(rest), f64::from(away.to));
+                assert!(
+                    gap(speed) < tolerance,
+                    "{what} {name}: {} from {from} at {speed}",
+                    gap(speed)
+                );
+                // Starting again from rest, as a new animation would, is another curve.
+                assert!(gap(0.0) > 10.0 * tolerance, "{what} {name}: {}", gap(0.0));
+            }
+            let settled = play(&mut replay, nodes, 600);
+            assert!(!replay.is_animating(), "{what}");
+            assert_eq!(
+                settled.progress.last().map(|v| v.to_bits()),
+                Some(rest.to_bits()),
+                "{what}"
+            );
+        }
+    }
+
+    #[test]
+    fn with_reduce_motion_the_fab_shows_and_hides_at_once() {
+        let nothing = Size::new(px(0.0), px(0.0));
+        let baseline = Size::new(px(56.0), px(56.0));
+        for (visibility, to, size) in [
+            (FabVisibility::Shown, 0.0_f32, nothing),
+            (FabVisibility::Hidden, 1.0, baseline),
+        ] {
+            let what = format!("{visibility:?}");
+            let (mut app, recording) = start(Config {
+                visibility,
+                reduce_motion: true,
+                ..Config::default()
+            });
+            let button = Mounted::of(&recording.items()).button;
+            let (opacity, scale) = bound(&recording.items(), button);
+            app.press("Flip").unwrap();
+            let items = recording.in_step("press(Flip)");
+            assert_eq!(started_springs(&items), Vec::new(), "{what}");
+            // The scale's progress and the opacity are set where they go, and the FAB takes or leaves its place.
+            assert_eq!(set_values(&items), 2, "{what}: {items:?}");
+            let replay = replay(&recording);
+            assert!(!replay.is_animating(), "{what}");
+            assert_eq!(replay.value(opacity).to_bits(), to.to_bits(), "{what}");
+            assert!(
+                (replay.value(scale) - lerp_scale(to)).abs() < 1e-6,
+                "{what}: {}",
+                replay.value(scale)
+            );
+            assert_eq!(laid_out_size(&recording), Some(size), "{what}");
+        }
+    }
+
+    #[test]
+    fn the_choices_of_the_show_and_hide_are_androidxs() {
+        for lines in [
+            // The target scale, and how the scale is made from the progress.
+            &["internal val ShowHideTargetScale = 0.2f"][..],
+            &["scaleX = lerp(targetScale, 1f, scaleAnimatable.value)"],
+            &["scaleY = lerp(targetScale, 1f, scaleAnimatable.value)"],
+            // The scale on the fast spatial spring, the alpha on the fast effects one.
+            &[
+                "scaleAnimatable.animateTo(",
+                "targetValue = if (visible) 1f else 0f,",
+                "animationSpec =",
+                "scaleAnimationSpec",
+                "?: currentValueOf(LocalMaterialTheme).motionScheme.fastSpatialSpec<Float>(),",
+            ],
+            &[
+                "alphaAnimatable.animateTo(",
+                "targetValue = if (visible) 1f else 0f,",
+                "animationSpec =",
+                "alphaAnimationSpec",
+                "?: currentValueOf(LocalMaterialTheme).motionScheme.fastEffectsSpec<Float>(),",
+            ],
+            // Both start where the FAB is, and a FAB with no alpha is laid out at 0 by 0.
+            &["private val scaleAnimatable = Animatable(if (visible) 1f else 0f)"],
+            &["private val alphaAnimatable = Animatable(if (visible) 1f else 0f)"],
+            &[
+                "if (alphaAnimatable.value == 0f) {",
+                "return layout(0, 0) {}",
+            ],
+        ] {
+            assert!(cites(FLOATING_ACTION_BUTTON_KT, lines), "{lines:?}");
+        }
+        assert_eq!(SHOW_HIDE_TARGET_SCALE.to_bits(), 0.2_f32.to_bits());
+        assert_eq!(FabVisibility::default(), FabVisibility::Shown);
+        assert_eq!(FabVisibility::Shown.progress().to_bits(), 1.0_f32.to_bits());
+        assert_eq!(
+            FabVisibility::Hidden.progress().to_bits(),
+            0.0_f32.to_bits()
         );
     }
 }
