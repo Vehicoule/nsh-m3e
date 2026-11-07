@@ -1,11 +1,12 @@
-//! The catalog: every component of `nsh-m3e` in each of its states, for the visual checks of ADR 0013: the buttons
-//! and the icon buttons.
+//! The catalog: every component of `nsh-m3e` in each of its states, for the visual checks of ADR 0013: the buttons,
+//! the icon buttons and the switches.
 //!
-//! `nsh test` opens it on NSH's hosts (`button.test.tsx`, beside its `nsh.json`) and saves screenshots of it; `visual-checks`
-//! reads the pixels it knows in them, at the places [`grid`] gives. The catalog is a Rust app (`nsh.json` names its
-//! root, [`Catalog`]); nothing in it runs JavaScript.
+//! `nsh test` opens it on NSH's hosts (`button.test.tsx` and `switch.test.tsx`, beside its `nsh.json`) and saves
+//! screenshots of it; `visual-checks` reads the pixels it knows in them, at the places [`grid`] and [`switch`] give.
+//! The catalog is a Rust app (`nsh.json` names its root, [`Catalog`]); nothing in it runs JavaScript.
 
 pub mod grid;
+pub mod switch;
 
 use nsh_core::element::AdaptiveColor;
 use nsh_core::prelude::*;
@@ -16,6 +17,7 @@ use nsh_m3e::icon_button::icon_button;
 use nsh_m3e::material_symbols::outlined;
 
 use crate::grid::{Availability, Cell, IconCell};
+use crate::switch::SwitchCell;
 
 /// The icon every icon button of the catalog shows: Material Symbols' `favorite`, filled, whose middle is filled, so
 /// that the visual checks read the icon's color there.
@@ -26,7 +28,8 @@ fn native(registry: &mut Registry) {
     registry.register::<Catalog>();
 }
 
-/// Every button and icon button of the catalog at its place on the [`grid`], on the scheme's surface color.
+/// Every button, icon button and switch of the catalog at its place on the [`grid`] and the [`switch`] grid, on the
+/// scheme's surface color.
 #[component]
 pub fn Catalog() -> impl IntoElement {
     let surface = AdaptiveColor::rgb(
@@ -51,7 +54,7 @@ pub fn Catalog() -> impl IntoElement {
                 ),
         )
     });
-    IconCell::all().fold(page, |page, cell| {
+    let page = IconCell::all().fold(page, |page, cell| {
         let (x, y) = cell.origin();
         page.child(
             view()
@@ -70,7 +73,8 @@ pub fn Catalog() -> impl IntoElement {
                         .disabled(cell.availability == Availability::Disabled),
                 ),
         )
-    })
+    });
+    SwitchCell::all().fold(page, |page, cell| page.child(switch::element(cell)))
 }
 
 #[cfg(test)]
