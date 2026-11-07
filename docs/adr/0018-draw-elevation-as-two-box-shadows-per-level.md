@@ -1,6 +1,6 @@
 # 0018. Draw elevation as the two box shadows that Material Web gives each level
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-07
 - Deciders: the user
 
@@ -63,8 +63,8 @@ All facts below are at androidx `a8b393d51f9b` and NSH `2208136f4cdd`, unless sa
 
 ## Decision
 
-Proposed: **option 1**. It is the only one where every host shows the same elevation from one pinned source. The user
-decides.
+**Option 1**, chosen by the user on 2026-11-07. It is the only one where every host shows the same elevation from one
+pinned source.
 
 ## Consequences
 
