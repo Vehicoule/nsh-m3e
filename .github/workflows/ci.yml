@@ -51,7 +51,7 @@ jobs:
       - name: Test
         run: cargo test --workspace --locked
       - name: Docs
-        run: cargo doc --workspace --no-deps --locked
+        run: cargo doc --workspace --no-deps --document-private-items --locked
         env:
           RUSTDOCFLAGS: -D warnings
       - name: Vendored androidx tokens match the pinned androidx commit
