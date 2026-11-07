@@ -1,9 +1,10 @@
 //! Checks the known pixels of the catalog's screenshots (ADR 0013): `cargo run -p visual-checks -- <directory>`.
 //!
 //! `nsh test examples/catalog --target <host>` opens the catalog on one of NSH's hosts and saves its screenshots in
-//! `target/visual` (`examples/catalog/button.test.tsx`). This reads each of them and checks, for every button of the catalog, the pixels whose
-//! color the tokens give: the container's color inside it, the outline's on its edge, and the surface outside its
-//! top left corner, where a rounded corner leaves the background. Where the antialiasing of an edge or of the label
+//! `target/visual` (`examples/catalog/button.test.tsx`). This reads each of them and checks, for every button and
+//! icon button of the catalog, the pixels whose color the tokens give: the container's color inside it, the
+//! outline's on its edge, the surface outside its top left corner, where a rounded corner leaves the background, and
+//! an icon button's icon color in its middle. Where the antialiasing of an edge, of the label or of the icon's edge
 //! makes a color unknown, nothing is checked.
 //!
 //! It is not a `cargo xtask` task: `xtask` must build when the library does not (it regenerates the library's
@@ -15,12 +16,18 @@ use std::io::{self, Cursor, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use catalog::grid::{self, Availability, Cell};
+use catalog::grid::{self, Availability, Cell, IconCell};
 use nsh_core::geometry::Points;
 use nsh_m3e::button::{ButtonShape, ButtonSize, ButtonStyle};
 use nsh_m3e::color::{ColorRole, ColorScheme};
+use nsh_m3e::icon_button::{IconButtonShape, IconButtonSize, IconButtonStyle, IconButtonWidth};
+use nsh_m3e::tokens::Shape;
 use nsh_m3e::tokens::androidx::{
-    filled_button_tokens, filled_tonal_button_tokens, outlined_button_tokens, state_tokens,
+    filled_button_tokens, filled_icon_button_tokens, filled_tonal_button_tokens,
+    filled_tonal_icon_button_tokens, large_icon_button_tokens, medium_icon_button_tokens,
+    outlined_button_tokens, outlined_icon_button_tokens, small_icon_button_tokens,
+    standard_icon_button_tokens, state_tokens, xlarge_icon_button_tokens,
+    xsmall_icon_button_tokens,
 };
 
 const USAGE: &str = "usage: cargo run -p visual-checks -- <directory of screenshots>";
@@ -29,6 +36,11 @@ const USAGE: &str = "usage: cargo run -p visual-checks -- <directory of screensh
 /// before the label, which starts 12 points or more from the edge (the extra small button's side space, androidx
 /// `Button.kt` `ExtraSmallContentPadding`). Not a design value: where the check looks.
 const CONTAINER_INSET: Points = Points(4.0);
+
+/// How long a straight edge must be for its outline's color to be read in its middle: as far from either end as the
+/// container's color is read from the edge ([`CONTAINER_INSET`] on each side), past the antialiasing of the corners'
+/// arcs. Not a design value: where the check looks.
+const STRAIGHT_EDGE: Points = Points(8.0);
 
 /// How far a channel may be from the expected value where a color is laid over another at an opacity: hosts round
 /// the opacity and the blend to 8 bits in their own ways. A solid color must be exact. Not a design value: the
@@ -60,48 +72,85 @@ impl Appearance {
     }
 }
 
+/// A component of the catalog: a button or an icon button.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Target {
+    Button(Cell),
+    IconButton(IconCell),
+}
+
+impl Target {
+    /// The test id of the view around it.
+    fn test_id(self) -> String {
+        match self {
+            Self::Button(cell) => cell.test_id(),
+            Self::IconButton(cell) => cell.test_id(),
+        }
+    }
+}
+
 /// One screenshot the test scripts take.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Shot {
     appearance: Appearance,
-    /// The button the mouse is over, if any.
-    hovered: Option<Cell>,
+    /// The component the mouse is over, if any.
+    hovered: Option<Target>,
 }
 
 impl Shot {
-    /// Every screenshot `examples/catalog/button.test.tsx` takes: the catalog at rest, then the mouse over the small
-    /// round enabled button of each style, in each appearance.
+    /// Every screenshot `examples/catalog/button.test.tsx` takes, in each appearance: the catalog at rest, then the
+    /// mouse over the small round enabled button of each style, then over the small uniform round enabled icon
+    /// button of each style.
     fn all() -> Vec<Self> {
         Appearance::ALL
             .into_iter()
             .flat_map(|appearance| {
-                std::iter::once(Self {
+                let shot = move |hovered| Self {
                     appearance,
-                    hovered: None,
-                })
-                .chain(grid::STYLES.into_iter().map(move |style| Self {
-                    appearance,
-                    hovered: Some(Cell::new(
-                        style,
-                        ButtonShape::Round,
-                        ButtonSize::Small,
-                        Availability::Enabled,
-                    )),
-                }))
+                    hovered,
+                };
+                std::iter::once(shot(None))
+                    .chain(grid::STYLES.into_iter().map(move |style| {
+                        shot(Some(Target::Button(Cell::new(
+                            style,
+                            ButtonShape::Round,
+                            ButtonSize::Small,
+                            Availability::Enabled,
+                        ))))
+                    }))
+                    .chain(grid::ICON_STYLES.into_iter().map(move |style| {
+                        shot(Some(Target::IconButton(IconCell::new(
+                            style,
+                            IconButtonWidth::Uniform,
+                            IconButtonShape::Round,
+                            IconButtonSize::Small,
+                            Availability::Enabled,
+                        ))))
+                    }))
             })
             .collect()
     }
 
     /// Its file name, as the test script saves it.
     fn file_name(self) -> String {
+        let appearance = self.appearance.name();
         match self.hovered {
-            None => format!("{}-rest.png", self.appearance.name()),
-            Some(cell) => format!(
-                "{}-hover-{}.png",
-                self.appearance.name(),
-                cell.label().to_lowercase()
-            ),
+            None => format!("{appearance}-rest.png"),
+            Some(Target::Button(cell)) => {
+                format!("{appearance}-hover-{}.png", cell.label().to_lowercase())
+            }
+            Some(Target::IconButton(cell)) => {
+                format!(
+                    "{appearance}-hover-icon-{}.png",
+                    cell.label().to_lowercase()
+                )
+            }
         }
+    }
+
+    /// Whether the mouse is over `target` in it.
+    fn hovers(self, target: Target) -> bool {
+        self.hovered == Some(target)
     }
 }
 
@@ -144,7 +193,7 @@ impl Rgb {
 /// A pixel the checks know, in the catalog's points.
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Probe {
-    cell: Cell,
+    target: Target,
     what: &'static str,
     x: Points,
     y: Points,
@@ -212,9 +261,10 @@ fn probes(cell: Cell, scheme: &ColorScheme, hovered: bool) -> Vec<Probe> {
     let middle = Points(y.0 + grid::height(cell.size).0 / 2.0);
     let surface = Rgb::of(scheme, ColorRole::Surface);
     let (expected, tolerance) = container(cell, scheme, hovered);
+    let target = Target::Button(cell);
     let mut probes = vec![
         Probe {
-            cell,
+            target,
             what: "container",
             x: Points(x.0 + CONTAINER_INSET.0),
             y: middle,
@@ -224,7 +274,7 @@ fn probes(cell: Cell, scheme: &ColorScheme, hovered: bool) -> Vec<Probe> {
         // The top left pixel of the container's box: outside the arc of every shape's corner (12 points or more), so
         // the surface. A corner drawn square would fill it.
         Probe {
-            cell,
+            target,
             what: "outside the corner",
             x,
             y,
@@ -251,7 +301,7 @@ fn probes(cell: Cell, scheme: &ColorScheme, hovered: bool) -> Vec<Probe> {
             (Rgb::of(scheme, outlined_button_tokens::OUTLINE_COLOR), 0)
         };
         probes.push(Probe {
-            cell,
+            target,
             what: "outline",
             x: Points(x.0 + grid::height(cell.size).0 / 2.0 + CONTAINER_INSET.0),
             y,
@@ -260,6 +310,219 @@ fn probes(cell: Cell, scheme: &ColorScheme, hovered: bool) -> Vec<Probe> {
         });
     }
     probes
+}
+
+/// The icon's color of an enabled icon button of `style`, which its state layer takes too.
+fn icon_content_role(style: IconButtonStyle) -> ColorRole {
+    match style {
+        IconButtonStyle::Filled => filled_icon_button_tokens::COLOR,
+        IconButtonStyle::Tonal => filled_tonal_icon_button_tokens::COLOR,
+        IconButtonStyle::Outlined => outlined_icon_button_tokens::COLOR,
+        IconButtonStyle::Standard => standard_icon_button_tokens::COLOR,
+        // `IconButtonStyle` is non-exhaustive. A style the catalog does not show is expected in the surface color,
+        // which no icon is drawn in, so its checks fail until they know it. Not another style's color: the outlined
+        // and standard icons are both on surface variant, and falling back to one would hide the other's arm.
+        _ => ColorRole::Surface,
+    }
+}
+
+/// The container's color of the icon button `cell` and its tolerance, over `surface`, with the mouse over it or not.
+fn icon_container(cell: IconCell, scheme: &ColorScheme, hovered: bool) -> (Rgb, u8) {
+    let surface = Rgb::of(scheme, ColorRole::Surface);
+    let disabled = cell.availability == Availability::Disabled;
+    let (rest, tolerance) = match (cell.style, disabled) {
+        (IconButtonStyle::Filled, false) => (
+            Rgb::of(scheme, filled_icon_button_tokens::CONTAINER_COLOR),
+            0,
+        ),
+        (IconButtonStyle::Tonal, false) => (
+            Rgb::of(scheme, filled_tonal_icon_button_tokens::CONTAINER_COLOR),
+            0,
+        ),
+        (IconButtonStyle::Filled, true) => faded(
+            scheme,
+            filled_icon_button_tokens::DISABLED_CONTAINER_COLOR,
+            filled_icon_button_tokens::DISABLED_CONTAINER_OPACITY,
+            surface,
+        ),
+        (IconButtonStyle::Tonal, true) => faded(
+            scheme,
+            filled_tonal_icon_button_tokens::DISABLED_CONTAINER_COLOR,
+            filled_tonal_icon_button_tokens::DISABLED_CONTAINER_OPACITY,
+            surface,
+        ),
+        // The outlined and standard icon buttons have no container: the surface shows through.
+        _ => (surface, 0),
+    };
+    if hovered && !disabled {
+        faded(
+            scheme,
+            icon_content_role(cell.style),
+            state_tokens::HOVER_STATE_LAYER_OPACITY,
+            rest,
+        )
+    } else {
+        (rest, tolerance)
+    }
+}
+
+/// The icon's color of the icon button `cell` and its tolerance. The icon is drawn over the state layer, so the mouse
+/// over it changes nothing; a disabled icon is faded over the disabled container, a blend over a blend, whose two
+/// roundings add up.
+fn icon_color(cell: IconCell, scheme: &ColorScheme) -> (Rgb, u8) {
+    if cell.availability == Availability::Enabled {
+        return (Rgb::of(scheme, icon_content_role(cell.style)), 0);
+    }
+    // Every style's disabled icon is on surface at 0.38, so no style may fall back on another's: one would hide the
+    // other's arm. A style the catalog does not show has none here, and is expected as if enabled.
+    let disabled = match cell.style {
+        IconButtonStyle::Filled => Some((
+            filled_icon_button_tokens::DISABLED_COLOR,
+            filled_icon_button_tokens::DISABLED_OPACITY,
+        )),
+        IconButtonStyle::Tonal => Some((
+            filled_tonal_icon_button_tokens::DISABLED_COLOR,
+            filled_tonal_icon_button_tokens::DISABLED_OPACITY,
+        )),
+        IconButtonStyle::Outlined => Some((
+            outlined_icon_button_tokens::DISABLED_COLOR,
+            outlined_icon_button_tokens::DISABLED_OPACITY,
+        )),
+        IconButtonStyle::Standard => Some((
+            standard_icon_button_tokens::DISABLED_COLOR,
+            standard_icon_button_tokens::DISABLED_OPACITY,
+        )),
+        _ => None,
+    };
+    let Some((disabled_color, opacity)) = disabled else {
+        return (Rgb::of(scheme, icon_content_role(cell.style)), 0);
+    };
+    let (container, container_tolerance) = icon_container(cell, scheme, false);
+    let (color, tolerance) = faded(scheme, disabled_color, opacity, container);
+    (color, tolerance + container_tolerance)
+}
+
+/// The radius of the icon button `cell`'s corners at rest: its size's `ContainerShapeRound` or
+/// `ContainerShapeSquare`, at most half its shorter side, as the icon button draws it.
+fn icon_corner_radius(cell: IconCell) -> Points {
+    use IconButtonShape::{Round, Square};
+    use IconButtonSize::{ExtraLarge, ExtraSmall, Large, Medium, Small};
+    let (width, height) = cell.frame();
+    let half = width.0.min(height.0) / 2.0;
+    // Every size's round shape is the full one, and two sizes share each square one, so no size may fall back on
+    // another's: one would hide the other's arm. A size or shape the catalog does not show has none here.
+    let shape = match (cell.size, cell.shape) {
+        (ExtraSmall, Round) => Some(xsmall_icon_button_tokens::CONTAINER_SHAPE_ROUND),
+        (ExtraSmall, Square) => Some(xsmall_icon_button_tokens::CONTAINER_SHAPE_SQUARE),
+        (Small, Round) => Some(small_icon_button_tokens::CONTAINER_SHAPE_ROUND),
+        (Small, Square) => Some(small_icon_button_tokens::CONTAINER_SHAPE_SQUARE),
+        (Medium, Round) => Some(medium_icon_button_tokens::CONTAINER_SHAPE_ROUND),
+        (Medium, Square) => Some(medium_icon_button_tokens::CONTAINER_SHAPE_SQUARE),
+        (Large, Round) => Some(large_icon_button_tokens::CONTAINER_SHAPE_ROUND),
+        (Large, Square) => Some(large_icon_button_tokens::CONTAINER_SHAPE_SQUARE),
+        (ExtraLarge, Round) => Some(xlarge_icon_button_tokens::CONTAINER_SHAPE_ROUND),
+        (ExtraLarge, Square) => Some(xlarge_icon_button_tokens::CONTAINER_SHAPE_SQUARE),
+        _ => None,
+    };
+    match shape {
+        Some(Shape::Circle) => Points(half),
+        Some(Shape::Rounded(corners)) => Points(corners.top_start.0.min(half)),
+        // Square corners: a rectangle, or no shape.
+        _ => Points(0.0),
+    }
+}
+
+/// The pixels the checks know for the icon button `cell` in a screenshot in `scheme`, with the mouse over it or not.
+fn icon_probes(cell: IconCell, scheme: &ColorScheme, hovered: bool) -> Vec<Probe> {
+    let target = Target::IconButton(cell);
+    let (x, y) = cell.origin();
+    let (width, height) = cell.frame();
+    let surface = Rgb::of(scheme, ColorRole::Surface);
+    let (expected, tolerance) = icon_container(cell, scheme, hovered);
+    let (icon, icon_tolerance) = icon_color(cell, scheme);
+    let middle = (Points(x.0 + width.0 / 2.0), Points(y.0 + height.0 / 2.0));
+    let mut probes = vec![
+        // Halfway between the left edge and the icon's box, at mid height: past the antialiased edge and the
+        // outline (2 points or more from the edge, the extra small narrow icon button's half side space), and before
+        // the icon.
+        Probe {
+            target,
+            what: "container",
+            x: Points(x.0 + (width.0 - grid::icon_size(cell.size).0) / 4.0),
+            y: middle.1,
+            expected,
+            tolerance,
+        },
+        // The top left pixel of the container's box: outside the arc of every shape's corner (12 points or more).
+        Probe {
+            target,
+            what: "outside the corner",
+            x,
+            y,
+            expected: surface,
+            tolerance: 0,
+        },
+        // The middle of the icon, `catalog::ICON`, which is filled there.
+        Probe {
+            target,
+            what: "icon",
+            x: middle.0,
+            y: middle.1,
+            expected: icon,
+            tolerance: icon_tolerance,
+        },
+    ];
+    if cell.style == IconButtonStyle::Outlined {
+        // The outline's first pixel row or column, in the middle of a straight edge at least 8 points long, as for the
+        // buttons: the top edge if it has one, else the left. A round uniform icon button is a circle, and has none.
+        // The outline is 1 point wide at every size (`SmallIconButtonTokens.OutlinedOutlineWidth`, ADR 0012),
+        // faded by the icon's disabled opacity when disabled (androidx `outlinedIconButtonVibrantBorder`), and the
+        // state layer lies inside it.
+        let (outline, tolerance) = if cell.availability == Availability::Disabled {
+            faded(
+                scheme,
+                outlined_icon_button_tokens::OUTLINE_COLOR,
+                outlined_icon_button_tokens::DISABLED_OPACITY,
+                surface,
+            )
+        } else {
+            (
+                Rgb::of(scheme, outlined_icon_button_tokens::OUTLINE_COLOR),
+                0,
+            )
+        };
+        let straight = |side: Points| side.0 - 2.0 * icon_corner_radius(cell).0 >= STRAIGHT_EDGE.0;
+        let place = if straight(width) {
+            Some((middle.0, y))
+        } else if straight(height) {
+            Some((x, middle.1))
+        } else {
+            None
+        };
+        if let Some((x, y)) = place {
+            probes.push(Probe {
+                target,
+                what: "outline",
+                x,
+                y,
+                expected: outline,
+                tolerance,
+            });
+        }
+    }
+    probes
+}
+
+/// The pixels the checks know in `shot`, for every button and icon button of the catalog.
+fn shot_probes(shot: Shot) -> Vec<Probe> {
+    let scheme = shot.appearance.scheme();
+    Cell::all()
+        .flat_map(|cell| probes(cell, &scheme, shot.hovers(Target::Button(cell))))
+        .chain(
+            IconCell::all()
+                .flat_map(|cell| icon_probes(cell, &scheme, shot.hovers(Target::IconButton(cell)))),
+        )
+        .collect()
 }
 
 /// A decoded screenshot: 8-bit RGBA, row by row.
@@ -378,7 +641,7 @@ impl fmt::Display for Mismatch {
         write!(
             f,
             "{} {} at ({}, {}) points: expected {} (± {}), found ",
-            probe.cell.test_id(),
+            probe.target.test_id(),
             probe.what,
             probe.x.0,
             probe.y.0,
@@ -395,9 +658,8 @@ impl fmt::Display for Mismatch {
 /// Every probe of `shot` that `image` does not match.
 fn check(image: &Image, shot: Shot) -> Result<Vec<Mismatch>, String> {
     let scale = image.scale()?;
-    let scheme = shot.appearance.scheme();
-    Ok(Cell::all()
-        .flat_map(|cell| probes(cell, &scheme, shot.hovered == Some(cell)))
+    Ok(shot_probes(shot)
+        .into_iter()
         .filter_map(|probe| {
             let (x, y) = pixel_of(&probe, scale);
             let found = image.pixel(x, y);
@@ -493,25 +755,47 @@ mod tests {
         Cell::new(style, ButtonShape::Round, ButtonSize::Small, availability)
     }
 
+    fn icon_cell(style: IconButtonStyle, availability: Availability) -> IconCell {
+        IconCell::new(
+            style,
+            IconButtonWidth::Uniform,
+            IconButtonShape::Round,
+            IconButtonSize::Small,
+            availability,
+        )
+    }
+
     /// The catalog painted as the tokens say, at `scale`: every probe of `shot` holds its expected color, and the
     /// rest a color no probe expects.
     fn painted(shot: Shot, scale: u32) -> Image {
         let (width, height) = grid::viewport();
         let (width, height) = (points_to_u32(width) * scale, points_to_u32(height) * scale);
         let mut rgba = [1, 2, 3, 255].repeat((width * height) as usize);
-        let scheme = shot.appearance.scheme();
-        for cell in Cell::all() {
-            for probe in probes(cell, &scheme, shot.hovered == Some(cell)) {
-                let (x, y) = pixel_of(&probe, scale);
-                let start = ((y * width + x) * 4) as usize;
-                rgba[start..start + 3].copy_from_slice(&probe.expected.0);
-            }
+        for probe in shot_probes(shot) {
+            let (x, y) = pixel_of(&probe, scale);
+            let start = ((y * width + x) * 4) as usize;
+            rgba[start..start + 3].copy_from_slice(&probe.expected.0);
         }
         Image {
             width,
             height,
             rgba,
         }
+    }
+
+    /// `image` as an RGBA PNG without compression. Compressed by the unoptimized test build, the catalog's 18
+    /// screenshots made `run_reports_missing_and_wrong_screenshots` take 36 seconds in the development container, and
+    /// 9 uncompressed (one run each).
+    fn encode_uncompressed(image: &Image) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let mut encoder = png::Encoder::new(&mut bytes, image.width, image.height);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        encoder.set_compression(png::Compression::NoCompression);
+        let mut writer = encoder.write_header().unwrap();
+        writer.write_image_data(&image.rgba).unwrap();
+        writer.finish().unwrap();
+        bytes
     }
 
     fn encode(width: u32, height: u32, color: png::ColorType, data: &[u8]) -> Vec<u8> {
@@ -694,6 +978,282 @@ mod tests {
     }
 
     #[test]
+    fn icon_button_containers_are_the_style_tokens_colors() {
+        let surface = Rgb::of(&LIGHT, ColorRole::Surface);
+        let primary = Rgb::of(&LIGHT, ColorRole::Primary);
+        let filled = icon_cell(IconButtonStyle::Filled, Availability::Enabled);
+        assert_eq!(icon_container(filled, &LIGHT, false), (primary, 0));
+        assert_eq!(
+            icon_container(
+                icon_cell(IconButtonStyle::Tonal, Availability::Enabled),
+                &LIGHT,
+                false
+            ),
+            (Rgb::of(&LIGHT, ColorRole::SecondaryContainer), 0)
+        );
+        for style in [IconButtonStyle::Outlined, IconButtonStyle::Standard] {
+            for availability in grid::AVAILABILITIES {
+                assert_eq!(
+                    icon_container(icon_cell(style, availability), &LIGHT, false),
+                    (surface, 0)
+                );
+            }
+        }
+        // Disabled: on surface at 0.1 over the surface, for both.
+        let on_surface = Rgb::of(&LIGHT, ColorRole::OnSurface);
+        for style in [IconButtonStyle::Filled, IconButtonStyle::Tonal] {
+            assert_eq!(
+                icon_container(icon_cell(style, Availability::Disabled), &LIGHT, false),
+                (on_surface.over(0.1, surface), BLEND_TOLERANCE)
+            );
+        }
+        // Hovered: the icon's color at 0.08 over the container; a disabled icon button shows no hover.
+        let on_primary = Rgb::of(&LIGHT, ColorRole::OnPrimary);
+        assert_eq!(
+            icon_container(filled, &LIGHT, true),
+            (on_primary.over(0.08, primary), BLEND_TOLERANCE)
+        );
+        let on_surface_variant = Rgb::of(&LIGHT, ColorRole::OnSurfaceVariant);
+        assert_eq!(
+            icon_container(
+                icon_cell(IconButtonStyle::Standard, Availability::Enabled),
+                &LIGHT,
+                true
+            ),
+            (on_surface_variant.over(0.08, surface), BLEND_TOLERANCE)
+        );
+        let disabled = icon_cell(IconButtonStyle::Filled, Availability::Disabled);
+        assert_eq!(
+            icon_container(disabled, &LIGHT, true),
+            icon_container(disabled, &LIGHT, false)
+        );
+    }
+
+    #[test]
+    fn the_icon_takes_each_style_color_and_fades_over_the_container_when_disabled() {
+        let roles: Vec<ColorRole> = grid::ICON_STYLES
+            .into_iter()
+            .map(icon_content_role)
+            .collect();
+        assert_eq!(
+            roles,
+            [
+                ColorRole::OnPrimary,
+                ColorRole::OnSecondaryContainer,
+                ColorRole::OnSurfaceVariant,
+                ColorRole::OnSurfaceVariant,
+            ]
+        );
+        for style in grid::ICON_STYLES {
+            assert_eq!(
+                icon_color(icon_cell(style, Availability::Enabled), &LIGHT),
+                (Rgb::of(&LIGHT, icon_content_role(style)), 0)
+            );
+        }
+        let surface = Rgb::of(&LIGHT, ColorRole::Surface);
+        let on_surface = Rgb::of(&LIGHT, ColorRole::OnSurface);
+        // Over the surface: one blend.
+        for style in [IconButtonStyle::Outlined, IconButtonStyle::Standard] {
+            assert_eq!(
+                icon_color(icon_cell(style, Availability::Disabled), &LIGHT),
+                (on_surface.over(0.38, surface), BLEND_TOLERANCE)
+            );
+        }
+        // Over the disabled container: a blend over a blend.
+        let container = on_surface.over(0.1, surface);
+        for style in [IconButtonStyle::Filled, IconButtonStyle::Tonal] {
+            assert_eq!(
+                icon_color(icon_cell(style, Availability::Disabled), &LIGHT),
+                (on_surface.over(0.38, container), 2 * BLEND_TOLERANCE)
+            );
+        }
+    }
+
+    #[test]
+    fn corners_are_the_size_tokens_radius_at_most_half_the_shorter_side() {
+        use IconButtonShape::{Round, Square};
+        use IconButtonWidth::{Narrow, Uniform, Wide};
+        let radius = |width, shape, size| {
+            icon_corner_radius(IconCell::new(
+                IconButtonStyle::Outlined,
+                width,
+                shape,
+                size,
+                Availability::Enabled,
+            ))
+            .0
+        };
+        let squares: Vec<f32> = grid::ICON_SIZES
+            .into_iter()
+            .map(|size| radius(Wide, Square, size))
+            .collect();
+        assert_eq!(squares, [12.0, 12.0, 16.0, 28.0, 28.0]);
+        // Round: half the shorter side, the height when wide and the width when narrow.
+        let rounds: Vec<f32> = grid::ICON_SIZES
+            .into_iter()
+            .map(|size| radius(Wide, Round, size))
+            .collect();
+        assert_eq!(rounds, [16.0, 20.0, 28.0, 48.0, 68.0]);
+        assert_eq!(radius(Narrow, Round, IconButtonSize::ExtraSmall), 14.0);
+        assert_eq!(radius(Uniform, Round, IconButtonSize::Large), 48.0);
+    }
+
+    #[test]
+    fn icon_probes_read_the_container_the_corner_the_icon_and_a_straight_outline() {
+        use IconButtonShape::{Round, Square};
+        use IconButtonWidth::{Narrow, Uniform, Wide};
+        let filled = icon_cell(IconButtonStyle::Filled, Availability::Enabled);
+        let (x, y) = filled.origin();
+        let found = icon_probes(filled, &LIGHT, false);
+        assert_eq!(found.len(), 3);
+        // A 24-point icon in 40 points: 8 points of side space, halved.
+        assert_eq!(
+            (found[0].x, found[0].y),
+            (Points(x.0 + 4.0), Points(y.0 + 20.0))
+        );
+        assert_eq!(found[0].what, "container");
+        assert_eq!((found[1].x, found[1].y), (x, y));
+        assert_eq!(found[1].expected, Rgb::of(&LIGHT, ColorRole::Surface));
+        assert_eq!(
+            (found[2].x, found[2].y),
+            (Points(x.0 + 20.0), Points(y.0 + 20.0))
+        );
+        assert_eq!(
+            (found[2].expected, found[2].tolerance),
+            (Rgb::of(&LIGHT, ColorRole::OnPrimary), 0)
+        );
+        assert_eq!(found[2].target, Target::IconButton(filled));
+
+        let outlined = |width, shape, size, availability| {
+            let cell = IconCell::new(IconButtonStyle::Outlined, width, shape, size, availability);
+            (cell, icon_probes(cell, &LIGHT, false))
+        };
+        // Wide: the middle of the top edge. 40 by 32 points, round: 8 points straight.
+        let (cell, found) = outlined(
+            Wide,
+            Round,
+            IconButtonSize::ExtraSmall,
+            Availability::Enabled,
+        );
+        let (x, y) = cell.origin();
+        assert_eq!(found.len(), 4);
+        assert_eq!((found[3].x, found[3].y), (Points(x.0 + 20.0), y));
+        assert_eq!(
+            (found[3].expected, found[3].tolerance),
+            (Rgb::of(&LIGHT, ColorRole::OutlineVariant), 0)
+        );
+        // Narrow and square, 28 by 32 points with 12-point corners: 4 points straight on top, 8 on the left.
+        let (cell, found) = outlined(
+            Narrow,
+            Square,
+            IconButtonSize::ExtraSmall,
+            Availability::Disabled,
+        );
+        let (x, y) = cell.origin();
+        assert_eq!((found[3].x, found[3].y), (x, Points(y.0 + 16.0)));
+        let surface = Rgb::of(&LIGHT, ColorRole::Surface);
+        assert_eq!(
+            (found[3].expected, found[3].tolerance),
+            (
+                Rgb::of(&LIGHT, ColorRole::OutlineVariant).over(0.38, surface),
+                BLEND_TOLERANCE
+            )
+        );
+        // The container is read halfway into the 4-point side space.
+        assert_eq!(found[0].x, Points(x.0 + 2.0));
+        // Narrow and round, 28 by 32: 4 points straight on the left, none on top.
+        assert_eq!(
+            outlined(
+                Narrow,
+                Round,
+                IconButtonSize::ExtraSmall,
+                Availability::Enabled
+            )
+            .1
+            .len(),
+            3
+        );
+        // Narrow and round, 32 by 40: 8 points straight on the left.
+        assert_eq!(
+            outlined(Narrow, Round, IconButtonSize::Small, Availability::Enabled)
+                .1
+                .len(),
+            4
+        );
+        // Uniform and round: a circle, no straight edge at any size.
+        for size in grid::ICON_SIZES {
+            assert_eq!(
+                outlined(Uniform, Round, size, Availability::Enabled)
+                    .1
+                    .len(),
+                3,
+                "{size:?}"
+            );
+        }
+        // Uniform and square, 32 by 32 with 12-point corners: 8 points straight on top.
+        let (cell, found) = outlined(
+            Uniform,
+            Square,
+            IconButtonSize::ExtraSmall,
+            Availability::Enabled,
+        );
+        let (x, y) = cell.origin();
+        assert_eq!((found[3].x, found[3].y), (Points(x.0 + 16.0), y));
+        // Hovering changes the container, not the corner, the icon or the outline.
+        let (cell, rest) = outlined(Wide, Round, IconButtonSize::Small, Availability::Enabled);
+        let hovered = icon_probes(cell, &LIGHT, true);
+        assert_ne!(hovered[0], rest[0]);
+        assert_eq!(hovered[1..], rest[1..]);
+    }
+
+    #[test]
+    fn every_shot_reads_every_component_and_the_hovered_one_hovered() {
+        let shot = Shot::all()[5];
+        let found = shot_probes(shot);
+        let rest = shot_probes(Shot::all()[0]);
+        assert_eq!(found.len(), rest.len());
+        let changed: Vec<&Probe> = found
+            .iter()
+            .zip(&rest)
+            .filter(|(a, b)| a != b)
+            .map(|(a, _)| a)
+            .collect();
+        // Only the hovered icon button's container.
+        assert_eq!(changed.len(), 1);
+        assert_eq!(changed[0].target, shot.hovered.unwrap());
+        assert_eq!(changed[0].what, "container");
+        let buttons = rest
+            .iter()
+            .filter(|p| matches!(p.target, Target::Button(_)))
+            .count();
+        let icon_buttons = rest.len() - buttons;
+        assert_eq!(
+            buttons,
+            Cell::all()
+                .map(|c| probes(c, &LIGHT, false).len())
+                .sum::<usize>()
+        );
+        assert_eq!(
+            icon_buttons,
+            IconCell::all()
+                .map(|c| icon_probes(c, &LIGHT, false).len())
+                .sum::<usize>()
+        );
+        assert!(icon_buttons >= IconCell::all().count() * 3);
+    }
+
+    #[test]
+    fn a_target_is_named_by_its_test_id() {
+        let button = cell(ButtonStyle::Text, Availability::Disabled);
+        assert_eq!(Target::Button(button).test_id(), button.test_id());
+        let icon_button = icon_cell(IconButtonStyle::Tonal, Availability::Enabled);
+        assert_eq!(
+            Target::IconButton(icon_button).test_id(),
+            "icon-tonal-small-uniform-round-enabled"
+        );
+    }
+
+    #[test]
     fn the_shots_are_the_test_script_files() {
         let names: Vec<String> = Shot::all().into_iter().map(Shot::file_name).collect();
         assert_eq!(
@@ -704,17 +1264,33 @@ mod tests {
                 "light-hover-tonal.png",
                 "light-hover-outlined.png",
                 "light-hover-text.png",
+                "light-hover-icon-filled.png",
+                "light-hover-icon-tonal.png",
+                "light-hover-icon-outlined.png",
+                "light-hover-icon-standard.png",
                 "dark-rest.png",
                 "dark-hover-filled.png",
                 "dark-hover-tonal.png",
                 "dark-hover-outlined.png",
                 "dark-hover-text.png",
+                "dark-hover-icon-filled.png",
+                "dark-hover-icon-tonal.png",
+                "dark-hover-icon-outlined.png",
+                "dark-hover-icon-standard.png",
             ]
         );
         assert_eq!(Shot::all()[0].appearance.scheme(), LIGHT);
         assert_eq!(
-            Shot::all()[5].appearance.scheme(),
+            Shot::all()[9].appearance.scheme(),
             ColorScheme::BASELINE_DARK
+        );
+        // The icon buttons hovered are the small uniform round enabled ones.
+        assert_eq!(
+            Shot::all()[5].hovered,
+            Some(Target::IconButton(icon_cell(
+                IconButtonStyle::Filled,
+                Availability::Enabled
+            )))
         );
     }
 
@@ -731,7 +1307,9 @@ mod tests {
     fn one_wrong_pixel_fails_and_is_named() {
         let shot = Shot::all()[1];
         let mut image = painted(shot, 1);
-        let hovered = shot.hovered.unwrap();
+        let Some(Target::Button(hovered)) = shot.hovered else {
+            panic!("the second shot hovers the filled button");
+        };
         let probe = probes(hovered, &LIGHT, true)[0];
         let (x, y) = pixel_of(&probe, 1);
         let start = ((y * image.width + x) * 4) as usize;
@@ -749,7 +1327,7 @@ mod tests {
             )
         );
         // The same image is not the dark shot.
-        assert_ne!(check(&image, Shot::all()[6]).unwrap(), Vec::new());
+        assert_ne!(check(&image, Shot::all()[10]).unwrap(), Vec::new());
     }
 
     #[test]
@@ -914,8 +1492,11 @@ mod tests {
         assert!(matches!(run(&directory, &mut out), Err(Error::Read { .. })));
         for shot in Shot::all() {
             let image = painted(shot, 1);
-            let bytes = encode(image.width, image.height, png::ColorType::Rgba, &image.rgba);
-            fs::write(directory.join(shot.file_name()), bytes).unwrap();
+            fs::write(
+                directory.join(shot.file_name()),
+                encode_uncompressed(&image),
+            )
+            .unwrap();
         }
         let mut out = Vec::new();
         assert!(run(&directory, &mut out).is_ok());
