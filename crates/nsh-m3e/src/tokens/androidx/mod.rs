@@ -23,7 +23,6 @@ pub mod elevation_tokens;
 pub mod expressive_motion_tokens;
 pub mod extended_fab_large_tokens;
 pub mod extended_fab_medium_tokens;
-pub mod extended_fab_primary_tokens;
 pub mod extended_fab_small_tokens;
 pub mod fab_baseline_tokens;
 pub mod fab_large_tokens;

@@ -157,16 +157,6 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
-        file: "ExtendedFabPrimaryTokens.kt",
-        object: None,
-        doc: &[
-            "The extended floating action button's default size, its label's type style, and its colors and \
-             elevation in each state. Colors are roles of the scheme ([`crate::color::ColorRole`]), resolved against \
-             the light or dark [`crate::color::ColorScheme`]. androidx's extended button takes its colors and \
-             elevations from `FabPrimaryContainerTokens` and reads only this file's height, shape and label font.",
-        ],
-    },
-    Source {
         file: "ExtendedFabSmallTokens.kt",
         object: None,
         doc: &[

@@ -115,7 +115,7 @@ impl SpringSpec {
     /// The layout transition that plays this spring: what `ElementRef::animate_layout` takes to move frames as the
     /// spring would.
     ///
-    /// NSH's `LayoutCurve::Spring { damping }` is a damped spring that is fitted into the duration, as UIKit's
+    /// NSH's `LayoutCurve::Spring { damping }` is a damped spring that is fitted into the duration, as `UIKit`'s
     /// `usingSpringWithDamping` does: its envelope has fallen to 1/1000 by the end (`nsh_core::transition::spring`,
     /// `SETTLE`, and the critically damped `w = 9.233`, at the pinned NSH revision). Its damping ratio is the spring's
     /// own, and the duration that makes it the same spring is the time the spring takes to fall to 1/1000:
@@ -275,9 +275,8 @@ mod tests {
     /// revision (`crates/nsh-core/src/transition.rs`, lines 650 to 669), transcribed because NSH does not export it.
     /// The tests below compare it with a spring that is integrated, so that nothing here is taken on trust from this
     /// transcription or from the formula under test.
-    fn nsh_curve(damping: f32, x: f32) -> f64 {
+    fn nsh_curve(damping: f32, x: f64) -> f64 {
         const SETTLE: f64 = 6.907_755;
-        let x = f64::from(x);
         let zeta = f64::from(damping).clamp(0.05, 1.0);
         if zeta > 0.999 {
             let w = 9.233;
@@ -308,7 +307,7 @@ mod tests {
         fractions
             .iter()
             .zip(played)
-            .map(|(x, played)| (nsh_curve(damping, *x as f32) - played).abs())
+            .map(|(x, played)| (nsh_curve(damping, *x) - played).abs())
             .fold(0.0, f64::max)
     }
 
@@ -399,7 +398,7 @@ mod tests {
                 panic!("not a spring: {token:?}");
             };
             let highest = (1..1000)
-                .map(|i| nsh_curve(damping, i as f32 / 1000.0))
+                .map(|i| nsh_curve(damping, f64::from(i) / 1000.0))
                 .fold(0.0, f64::max);
             if is_spatial(token) {
                 assert!(highest > 1.001, "{token:?} peaks at {highest}");
