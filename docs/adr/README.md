@@ -27,3 +27,4 @@ Only the user moves an ADR from Proposed to Accepted.
 | [0017](0017-draw-icons-from-path-data.md) | Icons are SVG path data drawn on a canvas in a token color; the library ships every Material Symbol in its three styles | Accepted |
 | [0018](0018-draw-elevation-as-two-box-shadows-per-level.md) | Elevation is drawn as the two box shadows Material Web gives each level | Accepted |
 | [0020](0020-draw-the-loading-indicator-with-animated-cubics.md) | The loading indicator's morphing shapes are one canvas of cubics whose points are animated values | Accepted |
+| [0021](0021-expand-a-pressed-button-group-item.md) | How a button group widens the item a finger presses | Proposed |
