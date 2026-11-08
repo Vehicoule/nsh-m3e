@@ -23,4 +23,5 @@ pub mod motion;
 pub mod snackbar;
 pub mod switch;
 mod tint;
+pub mod toggle_button;
 pub mod tokens;
