@@ -195,18 +195,18 @@ mod tests {
 
     #[test]
     fn the_badges_are_in_a_row_below_the_icon_buttons() {
-        // The icon buttons' grid ends at the 24 points of margin and 1,760 of rows and gaps below its top, the
-        // buttons' 880 above it: the badges' row starts at 2,664.
-        assert_eq!(grid::badge_top(), Points(2664.0));
+        // The switches' grid ends 96 points below the icon buttons' grid, which ends at the 24 points of margin and
+        // 1,760 of rows and gaps below its top, the buttons' 880 above it: the badges' row starts at 2,760.
+        assert_eq!(grid::badge_top(), Points(2760.0));
         let origins: Vec<(Points, Points)> = BadgeCell::all().map(BadgeCell::origin).collect();
         assert_eq!(
             origins,
             [
-                (Points(24.0), Points(2664.0)),
-                (Points(224.0), Points(2664.0)),
-                (Points(424.0), Points(2664.0)),
-                (Points(624.0), Points(2664.0)),
-                (Points(824.0), Points(2664.0)),
+                (Points(24.0), Points(2760.0)),
+                (Points(224.0), Points(2760.0)),
+                (Points(424.0), Points(2760.0)),
+                (Points(624.0), Points(2760.0)),
+                (Points(824.0), Points(2760.0)),
             ]
         );
         // The anchor: the small uniform icon button, 40 points on each side.
@@ -218,17 +218,17 @@ mod tests {
         // A dot: 6 points from the anchor's end, so [34, 40], at the anchor's top; its height is its token's, 6.
         assert_eq!(
             BadgeCell::Dot.badge_origin(),
-            (Points(24.0 + 34.0), Points(2664.0))
+            (Points(24.0 + 34.0), Points(2760.0))
         );
         assert_eq!(BadgeCell::Dot.badge_height(), Points(6.0));
         // A label: 12 points before the end, so 28 from the anchor's left; 14 below its top, so 16 - 14 = 2 above.
         assert_eq!(
             BadgeCell::One.badge_origin(),
-            (Points(224.0 + 28.0), Points(2664.0 - 2.0))
+            (Points(224.0 + 28.0), Points(2760.0 - 2.0))
         );
         assert_eq!(
             BadgeCell::LongText.badge_origin(),
-            (Points(824.0 + 28.0), Points(2664.0 - 2.0))
+            (Points(824.0 + 28.0), Points(2760.0 - 2.0))
         );
         for cell in [
             BadgeCell::One,

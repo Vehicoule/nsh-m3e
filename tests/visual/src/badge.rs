@@ -182,32 +182,32 @@ mod tests {
 
     #[test]
     fn a_dot_is_read_in_its_middle_and_on_each_side() {
-        // The dot's anchor is at (24, 2664), 40 points wide: the dot is [58, 64] x [2664, 2670], its middle (61, 2667).
+        // The dot's anchor is at (24, 2760), 40 points wide: the dot is [58, 64] x [2760, 2766], its middle (61, 2763).
         assert_eq!(
             light(BadgeCell::Dot),
             [
-                ("dot", 61.0, 2667.0, ERROR),
-                ("left of the dot", 55.0, 2667.0, SURFACE),
-                ("right of the dot", 66.0, 2667.0, SURFACE),
-                ("above the dot", 61.0, 2661.0, SURFACE),
-                ("below the dot", 61.0, 2672.0, SURFACE),
+                ("dot", 61.0, 2763.0, ERROR),
+                ("left of the dot", 55.0, 2763.0, SURFACE),
+                ("right of the dot", 66.0, 2763.0, SURFACE),
+                ("above the dot", 61.0, 2757.0, SURFACE),
+                ("below the dot", 61.0, 2768.0, SURFACE),
             ]
         );
     }
 
     #[test]
     fn a_label_is_read_at_its_left_top_bottom_and_outside() {
-        // The label "1": its anchor is at (224, 2664), the badge starts 12 points before the anchor's end, at 252, and
-        // 2 above the anchor's top, at 2662; it is 16 tall.
+        // The label "1": its anchor is at (224, 2760), the badge starts 12 points before the anchor's end, at 252, and
+        // 2 above the anchor's top, at 2758; it is 16 tall.
         assert_eq!(
             light(BadgeCell::One),
             [
-                ("left of the label", 254.0, 2670.0, ERROR),
-                ("top of the label", 260.0, 2663.0, ERROR),
-                ("bottom of the label", 260.0, 2676.0, ERROR),
-                ("outside the label's left", 249.0, 2670.0, SURFACE),
-                ("above the label", 260.0, 2659.0, SURFACE),
-                ("below the label", 260.0, 2680.0, SURFACE),
+                ("left of the label", 254.0, 2766.0, ERROR),
+                ("top of the label", 260.0, 2759.0, ERROR),
+                ("bottom of the label", 260.0, 2772.0, ERROR),
+                ("outside the label's left", 249.0, 2766.0, SURFACE),
+                ("above the label", 260.0, 2755.0, SURFACE),
+                ("below the label", 260.0, 2776.0, SURFACE),
             ]
         );
         // The other labels' probes are the same relative to their own badges: they do not depend on the width.
@@ -220,7 +220,7 @@ mod tests {
             assert_eq!(found.len(), 6, "{cell:?}");
             assert_eq!(found[0].1, x + 30.0, "{cell:?}");
             assert_eq!(found[1].1, x + 36.0, "{cell:?}");
-            assert_eq!(found[0].2, 2670.0, "{cell:?}");
+            assert_eq!(found[0].2, 2766.0, "{cell:?}");
         }
     }
 
@@ -255,8 +255,8 @@ mod tests {
     #[test]
     fn a_probe_reads_the_top_left_pixel_of_its_point_at_the_scale() {
         let probe = cell_probes(BadgeCell::Dot, Appearance::Light)[0];
-        assert_eq!(probe.pixel(1), (61, 2667));
-        assert_eq!(probe.pixel(2), (122, 5334));
+        assert_eq!(probe.pixel(1), (61, 2763));
+        assert_eq!(probe.pixel(2), (122, 5526));
     }
 
     /// The catalog painted as the tokens say, at `scale`: every probe holds its expected color, and the rest a color
@@ -303,7 +303,7 @@ mod tests {
         assert_eq!(found[0].found, Some(SURFACE));
         assert_eq!(
             found[0].to_string(),
-            "badge-dot dot at (61, 2667) points: expected #b3261e, found #fef7ff"
+            "badge-dot dot at (61, 2763) points: expected #b3261e, found #fef7ff"
         );
         // The light screenshot is not the dark one: every probe of it differs.
         let other = check(&painted(Appearance::Light, 1), Appearance::Dark).unwrap();
@@ -332,7 +332,7 @@ mod tests {
         };
         assert_eq!(
             missing.to_string(),
-            "badge-dot dot at (61, 2667) points: expected #b3261e, found no pixel"
+            "badge-dot dot at (61, 2763) points: expected #b3261e, found no pixel"
         );
     }
 }

@@ -1,4 +1,5 @@
-//! Where the catalog puts each button and icon button, so that the visual checks know where to read its pixels.
+//! Where the catalog puts each button, icon button and divider, so that the visual checks know where to read its
+//! pixels.
 //!
 //! The buttons sit on a grid: one column per style and shape, one row per size, the enabled rows above the disabled
 //! ones. Each button's top left corner is at a fixed place, whatever the width of its label.
@@ -6,14 +7,20 @@
 //! The icon buttons sit on a second grid below the first: one column per style and width, one row per size, in four
 //! blocks of rows, enabled then disabled, round then square in each.
 //!
-//! The badges sit in one row below the second grid ([`crate::badge`]).
+//! The dividers sit in one column in the strip the icon buttons' grid leaves free on its right: one cell per direction
+//! and thickness, each a square space that its divider fills along its length.
+//!
+//! The switches sit on a third grid below the second ([`crate::switch`]).
+//!
+//! The badges sit in one row below the third ([`crate::badge`]).
 
 use nsh_core::geometry::Points;
 use nsh_m3e::button::{ButtonShape, ButtonSize, ButtonStyle};
+use nsh_m3e::divider::DividerOrientation;
 use nsh_m3e::icon_button::{IconButtonShape, IconButtonSize, IconButtonStyle, IconButtonWidth};
 use nsh_m3e::tokens::androidx::{
     button_large_tokens, button_medium_tokens, button_small_tokens, button_xlarge_tokens,
-    button_xsmall_tokens, large_icon_button_tokens, medium_icon_button_tokens,
+    button_xsmall_tokens, divider_tokens, large_icon_button_tokens, medium_icon_button_tokens,
     small_icon_button_tokens, xlarge_icon_button_tokens, xsmall_icon_button_tokens,
 };
 
@@ -92,9 +99,27 @@ pub const ICON_SIZES: [IconButtonSize; 5] = [
 /// side of a 40-point icon). A layout value of the catalog, not of Material.
 pub const ICON_COLUMN_WIDTH: Points = Points(200.0);
 
-/// The size of the viewport the catalog is opened in, width and height: the two grids, the badges' row and their
-/// margins. The buttons' grid is the widest: 8 columns of 320 points, where the icon buttons' grid has 12 of 200 and
-/// the badges' row 5 of 200.
+/// Every divider direction, in the order of the columns.
+pub const DIVIDER_ORIENTATIONS: [DividerOrientation; 2] =
+    [DividerOrientation::Horizontal, DividerOrientation::Vertical];
+
+/// Every divider thickness, in the order of the columns within a direction: the token's, then two others. The others
+/// are whole numbers of points, so that the line's edges fall on pixel edges at a whole scale and no pixel of it is
+/// antialiased. Not Material's values: the divider takes any thickness, and these are what the catalog shows.
+pub const DIVIDER_THICKNESSES: [Points; 3] = [divider_tokens::THICKNESS, Points(2.0), Points(4.0)];
+
+/// The length of the space a divider of the catalog fills: its width for a horizontal divider, its height for a
+/// vertical one. A layout value of the catalog, not of Material.
+pub const DIVIDER_SPACE: Points = Points(96.0);
+
+/// The space between the icon buttons' last column and the dividers' column. A layout value of the catalog, not of
+/// Material.
+pub const DIVIDER_GUTTER: Points = Points(16.0);
+
+/// The size of the viewport the catalog is opened in, width and height: the three grids, the badges' row and their
+/// margins. The buttons' grid is the widest: 8 columns of 320 points, where the icon buttons' grid has 12 of 200, the
+/// switches' 4 of 96 and the badges' row 5 of 200. The icon buttons' grid leaves a strip on its right, below the
+/// buttons' rows, where the dividers' column is.
 #[must_use]
 pub fn viewport() -> (Points, Points) {
     let mut width = MARGIN.0 * 2.0;
@@ -107,18 +132,10 @@ pub fn viewport() -> (Points, Points) {
     (Points(width), Points(height))
 }
 
-/// The top of the badges' row: below the icon buttons' rows, each followed by its gap.
+/// The top of the badges' row: below the switches' grid, which ends with the gap of its last row.
 #[must_use]
 pub fn badge_top() -> Points {
-    let mut top = icon_top().0;
-    for _ in AVAILABILITIES {
-        for _ in ICON_SHAPES {
-            for size in ICON_SIZES {
-                top += icon_height(size).0 + ROW_GAP.0;
-            }
-        }
-    }
-    Points(top)
+    Points(crate::switch::top().0 + crate::switch::block_height().0)
 }
 
 /// The top of the icon buttons' grid: below the buttons' rows, each followed by its gap.
@@ -131,6 +148,16 @@ pub fn icon_top() -> Points {
         }
     }
     Points(top)
+}
+
+/// The left of the dividers' column: past the icon buttons' columns and the gutter.
+#[must_use]
+pub fn divider_left() -> Points {
+    let mut left = MARGIN.0;
+    for _ in 0..ICON_STYLES.len() * ICON_WIDTHS.len() {
+        left += ICON_COLUMN_WIDTH.0;
+    }
+    Points(left + DIVIDER_GUTTER.0)
 }
 
 /// The height of an icon button of `size`: its `ContainerHeight` token, as the icon button takes it.
@@ -470,8 +497,79 @@ impl IconCell {
     }
 }
 
+/// One divider of the catalog: in a square space of [`DIVIDER_SPACE`] points, at its top left corner, filling the space
+/// along its length.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DividerCell {
+    /// The direction it runs in.
+    pub orientation: DividerOrientation,
+    /// How thick it is.
+    pub thickness: Points,
+}
+
+impl Default for DividerCell {
+    /// The divider every component gets by default: horizontal, at the token's thickness.
+    fn default() -> Self {
+        Self::new(DividerOrientation::default(), divider_tokens::THICKNESS)
+    }
+}
+
+impl DividerCell {
+    /// The divider running in `orientation`, `thickness` thick.
+    #[must_use]
+    pub const fn new(orientation: DividerOrientation, thickness: Points) -> Self {
+        Self {
+            orientation,
+            thickness,
+        }
+    }
+
+    /// Every divider of the catalog, top to bottom.
+    pub fn all() -> impl Iterator<Item = Self> {
+        DIVIDER_ORIENTATIONS.into_iter().flat_map(|orientation| {
+            DIVIDER_THICKNESSES
+                .into_iter()
+                .map(move |thickness| Self::new(orientation, thickness))
+        })
+    }
+
+    /// The test id of the view around it, which the test scripts name (`id:divider-horizontal-1`): its direction and
+    /// its thickness in points.
+    #[must_use]
+    pub fn test_id(self) -> String {
+        let orientation = match self.orientation {
+            DividerOrientation::Vertical => "vertical",
+            // `DividerOrientation` is non-exhaustive; the default direction is the horizontal one.
+            _ => "horizontal",
+        };
+        format!("divider-{orientation}-{}", self.thickness.0)
+    }
+
+    /// The width and height of the line, in points: the space it fills along its length, its thickness across.
+    #[must_use]
+    pub fn frame(self) -> (Points, Points) {
+        match self.orientation {
+            DividerOrientation::Vertical => (self.thickness, DIVIDER_SPACE),
+            _ => (DIVIDER_SPACE, self.thickness),
+        }
+    }
+
+    /// The top left corner of its space in the viewport, in points: where the line starts, with no inset.
+    #[must_use]
+    pub fn origin(self) -> (Points, Points) {
+        let row = position(&DIVIDER_ORIENTATIONS, self.orientation) * DIVIDER_THICKNESSES.len()
+            + position(&DIVIDER_THICKNESSES, self.thickness);
+        let mut y = icon_top().0;
+        for _ in 0..row {
+            y += DIVIDER_SPACE.0 + ROW_GAP.0;
+        }
+        (divider_left(), Points(y))
+    }
+}
+
 /// Where `item` is in `items`, or 0 for an item the catalog does not show.
-fn position<T: PartialEq + Copy>(items: &[T], item: T) -> usize {
+pub(crate) fn position<T: PartialEq + Copy>(items: &[T], item: T) -> usize {
     items.iter().position(|i| *i == item).unwrap_or(0)
 }
 
@@ -552,8 +650,8 @@ mod tests {
     fn the_viewport_holds_the_grids_and_their_margins() {
         let (width, height) = viewport();
         // The buttons' 8 columns of 320 points are wider than the icon buttons' 12 of 200; below the buttons' 880
-        // points of rows, the icon buttons' 1,760, then the badges' row: 40 points.
-        assert_eq!((width, height), (Points(2608.0), Points(2728.0)));
+        // points of rows, the icon buttons' 1,760, then the switches' 96 and the badges' row: 40 points.
+        assert_eq!((width, height), (Points(2608.0), Points(2824.0)));
         for cell in Cell::all() {
             let (x, y) = cell.origin();
             assert!(x.0 + COLUMN_WIDTH.0 <= width.0 - MARGIN.0);
@@ -569,8 +667,13 @@ mod tests {
             assert!(y.0 + cell_height.0 <= height.0 - MARGIN.0);
             bottom = Points(bottom.0.max(y.0 + cell_height.0));
         }
-        // The last row of icon buttons and its gap end where the badges' row starts, and that row ends at the margin.
-        assert_eq!(bottom.0 + ROW_GAP.0, badge_top().0);
+        // The last row of icon buttons and its gap end where the switches' grid starts, which ends where the badges' row
+        // starts, and that row ends at the margin.
+        assert_eq!(bottom.0 + ROW_GAP.0, crate::switch::top().0);
+        assert_eq!(
+            crate::switch::top().0 + crate::switch::block_height().0,
+            badge_top().0
+        );
         let (anchor_width, anchor_height) = crate::badge::anchor();
         let mut badges_bottom = Points(0.0);
         for cell in crate::badge::BadgeCell::all() {
@@ -580,6 +683,31 @@ mod tests {
             badges_bottom = Points(badges_bottom.0.max(y.0 + anchor_height.0));
         }
         assert_eq!(badges_bottom.0, height.0 - MARGIN.0);
+    }
+
+    #[test]
+    fn the_dividers_are_in_the_strip_beside_the_icon_buttons_within_the_viewport() {
+        let (width, height) = viewport();
+        // The icon buttons' grid ends at its last column; the dividers' column starts a gutter past it.
+        let icons_right = IconCell::all()
+            .map(|cell| cell.origin().0.0 + cell.frame().0.0)
+            .fold(0.0_f32, f32::max);
+        assert_eq!(divider_left(), Points(2440.0));
+        assert!(icons_right + DIVIDER_GUTTER.0 <= divider_left().0);
+        let mut bottom = 0.0_f32;
+        for cell in DividerCell::all() {
+            let (x, y) = cell.origin();
+            // Inside the viewport's margins, beside the icon buttons' rows and not under the buttons' ones.
+            assert!(x.0 + DIVIDER_SPACE.0 <= width.0 - MARGIN.0, "{cell:?}");
+            assert!(y.0 >= icon_top().0, "{cell:?}");
+            assert!(y.0 + DIVIDER_SPACE.0 <= height.0 - MARGIN.0, "{cell:?}");
+            // The one point of surface read before the line's start is past the icon buttons.
+            assert!(x.0 - 1.0 >= icons_right, "{cell:?}");
+            bottom = bottom.max(y.0 + DIVIDER_SPACE.0);
+        }
+        // Six spaces and the five gaps between them: 6 x 96 + 5 x 16 points, well above the viewport's bottom.
+        assert_eq!(bottom - icon_top().0, 656.0);
+        assert!(bottom <= height.0 - MARGIN.0);
     }
 
     #[test]
@@ -752,6 +880,98 @@ mod tests {
             }
             .test_id(),
             "icon-outlined-extra-large-wide-round-enabled"
+        );
+    }
+
+    #[test]
+    fn every_divider_is_once_in_the_catalog() {
+        let cells: Vec<DividerCell> = DividerCell::all().collect();
+        assert_eq!(
+            cells.len(),
+            DIVIDER_ORIENTATIONS.len() * DIVIDER_THICKNESSES.len()
+        );
+        assert_eq!(cells.iter().collect::<HashSet<_>>().len(), cells.len());
+        assert_eq!(
+            cells
+                .iter()
+                .map(|c| c.test_id())
+                .collect::<HashSet<_>>()
+                .len(),
+            cells.len()
+        );
+        assert_eq!(
+            cells
+                .iter()
+                .map(|c| c.origin())
+                .collect::<HashSet<_>>()
+                .len(),
+            cells.len()
+        );
+        // What a divider is without a word said is in the catalog, in its place.
+        let default = DividerCell::default();
+        assert_eq!(default.orientation, DividerOrientation::Horizontal);
+        assert_eq!(default.thickness, divider_tokens::THICKNESS);
+        assert_eq!(cells.first(), Some(&default));
+    }
+
+    #[test]
+    fn the_dividers_thicknesses_are_the_token_then_whole_numbers_of_points() {
+        assert_eq!(DIVIDER_THICKNESSES[0], divider_tokens::THICKNESS);
+        let thicknesses: Vec<f32> = DIVIDER_THICKNESSES.into_iter().map(|t| t.0).collect();
+        assert_eq!(thicknesses, [1.0, 2.0, 4.0]);
+        // Whole, so that no edge of a line falls inside a pixel at a whole scale; all different, so that every cell
+        // shows another thickness; and each a line in its space.
+        for thickness in DIVIDER_THICKNESSES {
+            assert_eq!(thickness.0.fract(), 0.0, "{thickness:?}");
+            assert!(thickness.0 > 0.0 && thickness.0 < DIVIDER_SPACE.0);
+        }
+        assert_eq!(DIVIDER_SPACE.0.fract(), 0.0);
+    }
+
+    #[test]
+    fn the_dividers_column_is_where_the_layout_says() {
+        // To the right of the icon buttons' 12 columns of 200 points, past a gutter of 16, and from the top of their
+        // grid (904 points: 24 of margin and the buttons' 880 of rows) down.
+        let first = DividerCell::new(DividerOrientation::Horizontal, Points(1.0));
+        assert_eq!(first.origin(), (Points(2440.0), Points(904.0)));
+        // Thicker is the next cell down, vertical the fourth: a space is 96 points and its gap 16.
+        let thicker = DividerCell {
+            thickness: Points(2.0),
+            ..first
+        };
+        assert_eq!(thicker.origin(), (Points(2440.0), Points(1016.0)));
+        let thickest = DividerCell {
+            thickness: Points(4.0),
+            ..first
+        };
+        assert_eq!(thickest.origin(), (Points(2440.0), Points(1128.0)));
+        let vertical = DividerCell {
+            orientation: DividerOrientation::Vertical,
+            ..first
+        };
+        assert_eq!(vertical.origin(), (Points(2440.0), Points(1240.0)));
+        let last = DividerCell::new(DividerOrientation::Vertical, Points(4.0));
+        assert_eq!(last.origin(), (Points(2440.0), Points(1464.0)));
+        // The line fills the 96-point space along its length and is as thick as asked across.
+        assert_eq!(first.frame(), (Points(96.0), Points(1.0)));
+        assert_eq!(thickest.frame(), (Points(96.0), Points(4.0)));
+        assert_eq!(vertical.frame(), (Points(1.0), Points(96.0)));
+        assert_eq!(last.frame(), (Points(4.0), Points(96.0)));
+    }
+
+    #[test]
+    fn ids_name_the_divider() {
+        let ids: Vec<String> = DividerCell::all().map(DividerCell::test_id).collect();
+        assert_eq!(
+            ids,
+            [
+                "divider-horizontal-1",
+                "divider-horizontal-2",
+                "divider-horizontal-4",
+                "divider-vertical-1",
+                "divider-vertical-2",
+                "divider-vertical-4",
+            ]
         );
     }
 
