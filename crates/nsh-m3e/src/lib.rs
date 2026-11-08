@@ -17,6 +17,8 @@ pub mod color;
 pub mod elevation;
 pub mod icon;
 pub mod icon_button;
+#[cfg(test)]
+mod keyframe_probe;
 pub mod linear_progress_indicator;
 pub mod material_symbols;
 mod morph;

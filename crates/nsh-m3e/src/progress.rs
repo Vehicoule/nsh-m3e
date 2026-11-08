@@ -22,6 +22,7 @@ use nsh_core::geometry::Percentage;
 use nsh_core::prelude::*;
 
 use crate::tint::{Tint, tint_color};
+use crate::tokens::CubicBezier;
 use crate::tokens::androidx::progress_indicator_tokens;
 
 /// How far the work an indicator stands for has got.
@@ -137,6 +138,18 @@ pub(crate) fn accessible(
         })
 }
 
+/// Whether the looping motion of an indicator plays: not when the user asked for less motion (reduce motion), where an
+/// indicator that would loop holds a still pose instead. Reading it subscribes, so an indicator that reads it in a
+/// computation follows the setting when it changes.
+pub(crate) fn plays_loops() -> bool {
+    !reduce_motion()
+}
+
+/// `curve`, a Material 3 easing token, as the curve NSH's animations take.
+pub(crate) fn easing(curve: CubicBezier) -> Easing {
+    Easing::Bezier(curve.x1, curve.y1, curve.x2, curve.y2)
+}
+
 /// The color of the active indicator and of the stop: androidx `ProgressIndicatorTokens.ActiveIndicatorColor`, which
 /// the default `drawStopIndicator` takes as its `color` (`StopColor` names the same role).
 pub(crate) fn indicator_color() -> AdaptiveColor {
@@ -216,6 +229,21 @@ mod tests {
         assert_eq!(reading(Progress::Determinate(percentage(0.4))), Some(0.4));
         assert_eq!(reading(Progress::Determinate(percentage(3.0))), Some(1.0));
         assert_eq!(reading(Progress::Determinate(percentage(-3.0))), Some(0.0));
+    }
+
+    #[test]
+    fn a_curve_of_the_tokens_is_the_easing_nsh_takes_with_its_points_in_order() {
+        use crate::tokens::androidx::motion_tokens;
+
+        // Four different numbers, so that a swapped pair shows.
+        assert_eq!(
+            easing(CubicBezier::new(0.1, 0.2, 0.3, 0.4)),
+            Easing::Bezier(0.1, 0.2, 0.3, 0.4)
+        );
+        assert_eq!(
+            easing(motion_tokens::EASING_EMPHASIZED_ACCELERATE_CUBIC_BEZIER),
+            Easing::Bezier(0.3, 0.0, 0.8, 0.15)
+        );
     }
 
     #[test]
