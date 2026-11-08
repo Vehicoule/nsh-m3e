@@ -139,10 +139,13 @@ jobs:
             dbus-run-session -- xvfb-run -a -s "-screen 0 2800x2900x24" nsh test examples/catalog/switch.test.tsx --target linux
             # The checkboxes' window is taller (`catalog::checkbox::viewport`): it has its own, larger screen.
             dbus-run-session -- xvfb-run -a -s "-screen 0 2800x4000x24" nsh test examples/catalog/checkbox.test.tsx --target linux
+            # The FABs' window is taller still (`catalog::fab::viewport`).
+            dbus-run-session -- xvfb-run -a -s "-screen 0 2800x4000x24" nsh test examples/catalog/fab.test.tsx --target linux
           else
             nsh test examples/catalog/button.test.tsx --target web
             nsh test examples/catalog/switch.test.tsx --target web
             nsh test examples/catalog/checkbox.test.tsx --target web
+            nsh test examples/catalog/fab.test.tsx --target web
           fi
         env:
           RUSTFLAGS: ""

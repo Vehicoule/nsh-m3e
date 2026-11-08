@@ -1,19 +1,21 @@
 //! The catalog: every component of `nsh-m3e` in each of its states, for the visual checks of ADR 0013: the buttons,
-//! the icon buttons, the switches, the checkboxes, the dividers and the linear progress indicators.
+//! the icon buttons, the switches, the checkboxes, the dividers, the floating action buttons and the linear progress
+//! indicators.
 //!
-//! `nsh test` opens it on NSH's hosts (`button.test.tsx`, `switch.test.tsx` and `checkbox.test.tsx`, beside its
-//! `nsh.json`) and saves screenshots of it; `visual-checks` reads the pixels it knows in them, at the places [`grid`]
-//! gives for the buttons and icon buttons, [`switch`] for the switches, [`checkbox`] for the checkboxes and [`progress`]
-//! for the indicators. The catalog is a Rust app (`nsh.json` names its root, [`Catalog`]); nothing in it runs
-//! JavaScript.
+//! `nsh test` opens it on NSH's hosts (`button.test.tsx`, `switch.test.tsx`, `checkbox.test.tsx` and `fab.test.tsx`,
+//! beside its `nsh.json`) and saves screenshots of it; `visual-checks` reads the pixels it knows in them, at the places
+//! [`grid`], [`switch`], [`checkbox`], [`fab`] and [`progress`] give. The catalog is a Rust app (`nsh.json` names its
+//! root, [`Catalog`]); nothing in it runs JavaScript.
 //!
 //! - [`grid`]: the buttons, one column per style and shape, and the icon buttons on a second grid below them.
 //! - [`switch`]: the switches, on a grid of their own.
 //! - [`checkbox`]: the checkboxes, on a grid of their own.
+//! - [`fab`]: the floating action buttons, in a row of their own.
 //! - [`progress`]: the linear progress indicators, flat and wavy, determinate at several values and indeterminate, in a
 //!   column beside the icon buttons' grid.
 
 pub mod checkbox;
+pub mod fab;
 pub mod grid;
 pub mod progress;
 pub mod switch;
@@ -31,8 +33,8 @@ use crate::grid::{Availability, Cell, DIVIDER_SPACE, DividerCell, IconCell};
 use crate::progress::ProgressCell;
 use crate::switch::SwitchCell;
 
-/// The icon every icon button of the catalog shows: Material Symbols' `favorite`, filled, whose middle is filled, so
-/// that the visual checks read the icon's color there.
+/// The icon every icon button and FAB of the catalog shows: Material Symbols' `favorite`, filled, whose middle is
+/// filled, so that the visual checks read the icon's color there.
 pub const ICON: Icon = outlined::filled::FAVORITE;
 
 #[native_module("catalog/native")]
@@ -40,8 +42,9 @@ fn native(registry: &mut Registry) {
     registry.register::<Catalog>();
 }
 
-/// Every button, icon button, switch, checkbox, divider and progress indicator of the catalog at its place on the
-/// [`grid`], the [`switch`] grid, the [`checkbox`] grid and in the [`progress`] column, on the scheme's surface color.
+/// Every button, icon button, switch, checkbox, divider, FAB and progress indicator of the catalog at its place on the
+/// [`grid`], the [`switch`] grid, the [`checkbox`] grid, the [`fab`] row and in the [`progress`] column, on the
+/// scheme's surface color.
 #[component]
 pub fn Catalog() -> impl IntoElement {
     let surface = AdaptiveColor::rgb(
@@ -107,7 +110,7 @@ pub fn Catalog() -> impl IntoElement {
     });
     let page = SwitchCell::all().fold(page, |page, cell| page.child(switch::element(cell)));
     let page = ProgressCell::all().fold(page, |page, cell| page.child(progress::placed(cell)));
-    checkbox::place(page)
+    fab::place(checkbox::place(page))
 }
 
 #[cfg(test)]
@@ -168,9 +171,10 @@ mod tests {
                 _ => {}
             }
         }
+        // The FABs are buttons for screen readers too.
         assert_eq!(
             disabled.len(),
-            Cell::all().count() + IconCell::all().count()
+            Cell::all().count() + IconCell::all().count() + fab::FabCell::all().count()
         );
         let child_of = |id: NodeId| {
             parents
