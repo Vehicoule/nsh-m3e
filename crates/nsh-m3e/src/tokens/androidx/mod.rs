@@ -40,6 +40,7 @@ pub mod progress_indicator_tokens;
 pub mod secondary_navigation_tab_tokens;
 pub mod shape_tokens;
 pub mod small_icon_button_tokens;
+pub mod snackbar_tokens;
 pub mod standard_icon_button_tokens;
 pub mod state_tokens;
 pub mod text_button_tokens;
