@@ -1,15 +1,16 @@
 //! The catalog: every component of `nsh-m3e` in each of its states, for the visual checks of ADR 0013: the buttons,
-//! the icon buttons, the switches, the checkboxes, the dividers and the floating action buttons.
+//! the icon buttons, the switches, the checkboxes, the dividers, the floating action buttons and the text fields.
 //!
-//! `nsh test` opens it on NSH's hosts (`button.test.tsx`, `switch.test.tsx`, `checkbox.test.tsx` and `fab.test.tsx`,
-//! beside its `nsh.json`) and saves screenshots of it; `visual-checks` reads the pixels it knows in them, at the places
-//! [`grid`], [`switch`], [`checkbox`] and [`fab`] give.
+//! `nsh test` opens it on NSH's hosts (`button.test.tsx`, `switch.test.tsx`, `checkbox.test.tsx`, `fab.test.tsx` and
+//! `text_field.test.tsx`, beside its `nsh.json`) and saves screenshots of it; `visual-checks` reads the pixels it knows
+//! in them, at the places [`grid`], [`switch`], [`checkbox`], [`fab`] and [`mod@text_field`] give.
 //! The catalog is a Rust app (`nsh.json` names its root, [`Catalog`]); nothing in it runs JavaScript.
 
 pub mod checkbox;
 pub mod fab;
 pub mod grid;
 pub mod switch;
+pub mod text_field;
 
 use nsh_core::element::AdaptiveColor;
 use nsh_core::prelude::*;
@@ -23,7 +24,7 @@ use nsh_m3e::material_symbols::outlined;
 use crate::grid::{Availability, Cell, DIVIDER_SPACE, DividerCell, IconCell};
 use crate::switch::SwitchCell;
 
-/// The icon every icon button and FAB of the catalog shows: Material Symbols' `favorite`, filled, whose middle is
+/// The icon every icon button, FAB and rich text field of the catalog shows: Material Symbols' `favorite`, filled, whose middle is
 /// filled, so that the visual checks read the icon's color there.
 pub const ICON: Icon = outlined::filled::FAVORITE;
 
@@ -32,8 +33,9 @@ fn native(registry: &mut Registry) {
     registry.register::<Catalog>();
 }
 
-/// Every button, icon button, switch, checkbox, divider and FAB of the catalog at its place on the [`grid`], the
-/// [`switch`] grid, the [`checkbox`] grid and the [`fab`] row, on the scheme's surface color.
+/// Every button, icon button, switch, checkbox, divider, FAB and text field of the catalog at its place on the
+/// [`grid`], the [`switch`] grid, the [`checkbox`] grid, the [`fab`] row and the [`mod@text_field`] rows, on the
+/// scheme's surface color.
 #[component]
 pub fn Catalog() -> impl IntoElement {
     let surface = AdaptiveColor::rgb(
@@ -98,7 +100,7 @@ pub fn Catalog() -> impl IntoElement {
         )
     });
     let page = SwitchCell::all().fold(page, |page, cell| page.child(switch::element(cell)));
-    fab::place(checkbox::place(page))
+    text_field::place(fab::place(checkbox::place(page)))
 }
 
 #[cfg(test)]

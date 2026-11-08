@@ -25,6 +25,7 @@ mod morph_probe;
 pub mod motion;
 pub mod snackbar;
 pub mod switch;
+pub mod text_field;
 mod tint;
 pub mod toggle_button;
 pub mod tokens;

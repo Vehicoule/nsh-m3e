@@ -89,10 +89,11 @@ The visual checks ([ADR 0013](docs/adr/0013-visual-checks-on-nsh-hosts.md)) run 
 host's system libraries:
 
 ```sh
-# under xvfb-run with a screen larger than 2608 x 2784 points (2608 x 3008 for the FABs); or --target web
+# under xvfb-run with a screen larger than 2608 x 2784 points (2608 x 3008 for the FABs, 2608 x 3256 for the text fields); or --target web
 nsh test examples/catalog/button.test.tsx --target linux
 nsh test examples/catalog/switch.test.tsx --target linux
 nsh test examples/catalog/fab.test.tsx --target linux
+nsh test examples/catalog/text_field.test.tsx --target linux
 cargo run -p visual-checks --locked -- target/visual
 ```
 

@@ -31,8 +31,12 @@ components=(
     Switch.kt
     ProgressIndicator.kt
     WavyProgressIndicator.kt
+    TextField.kt
+    OutlinedTextField.kt
+    TextFieldDefaults.kt
     internal/LinearWavyProgressModifiers.kt
     internal/CircularWavyProgressModifiers.kt
+    internal/TextFieldImpl.kt
     Snackbar.kt
     ToggleButton.kt
 )
