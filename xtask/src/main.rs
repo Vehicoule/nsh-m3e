@@ -250,6 +250,15 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
+        file: "SnackbarTokens.kt",
+        object: None,
+        doc: &[
+            "The snackbar: its container's color, shape and elevation, the colors and type styles of its supporting \
+             text, its action's label and its icon, and its heights with one and two lines of text. Colors are \
+             roles of the scheme ([`crate::color::ColorRole`]).",
+        ],
+    },
+    Source {
         file: "StateTokens.kt",
         object: None,
         doc: &[
