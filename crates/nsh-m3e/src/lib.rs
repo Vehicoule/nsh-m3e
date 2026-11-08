@@ -26,5 +26,6 @@ mod morph;
 mod morph_probe;
 pub mod motion;
 pub mod progress;
+pub mod snackbar;
 mod tint;
 pub mod tokens;
