@@ -35,6 +35,7 @@ components=(
     internal/CircularWavyProgressModifiers.kt
     Snackbar.kt
     ToggleButton.kt
+    ButtonGroup.kt
 )
 
 root="$(git rev-parse --show-toplevel)"
