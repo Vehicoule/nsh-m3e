@@ -857,7 +857,40 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
+    use std::ops::Deref;
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
     use super::*;
+
+    /// A directory of the system's temporary one, created empty, that goes away when this is dropped, a failed
+    /// assertion included: the screenshots a test writes in it weigh about 870 MB, and `cargo mutants` runs a test that
+    /// fails once for each mutant it catches.
+    struct ScratchDir(PathBuf);
+
+    impl ScratchDir {
+        /// An empty directory named for `name` and for this process, so that two tests do not share one.
+        fn new(name: &str) -> Self {
+            let path = std::env::temp_dir().join(format!("{name}-{}", std::process::id()));
+            // One a run that was killed left behind is not this test's.
+            let _ = fs::remove_dir_all(&path);
+            fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Deref for ScratchDir {
+        type Target = Path;
+
+        fn deref(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for ScratchDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
 
     const LIGHT: ColorScheme = ColorScheme::BASELINE_LIGHT;
 
@@ -1781,8 +1814,7 @@ mod tests {
 
     #[test]
     fn run_reports_missing_and_wrong_screenshots() {
-        let directory = std::env::temp_dir().join(format!("visual-checks-{}", std::process::id()));
-        fs::create_dir_all(&directory).unwrap();
+        let directory = ScratchDir::new("visual-checks");
         let mut out = Vec::new();
         assert!(matches!(run(&directory, &mut out), Err(Error::Read { .. })));
         for shot in Shot::all() {
@@ -1863,6 +1895,29 @@ mod tests {
             out.lines().filter(|line| line.starts_with("  ")).count(),
             counted
         );
-        fs::remove_dir_all(&directory).unwrap();
+    }
+
+    // https://github.com/Vehicoule/nsh-m3e/issues/79
+    #[test]
+    fn regression_79_a_failed_test_leaves_nothing_in_the_temporary_directory() {
+        let path =
+            std::env::temp_dir().join(format!("visual-checks-scratch-{}", std::process::id()));
+        // While the test is running the directory is there, and what is written in it with it.
+        let failed = catch_unwind(AssertUnwindSafe(|| {
+            let directory = ScratchDir::new("visual-checks-scratch");
+            fs::write(directory.join("light-rest.png"), b"a screenshot").unwrap();
+            assert!(path.join("light-rest.png").exists());
+            panic!("an assertion that fails");
+        }));
+        assert!(failed.is_err());
+        assert!(!path.exists(), "the directory was left behind");
+        // A test that ends well leaves nothing either, and a directory a killed run left is not kept.
+        fs::create_dir_all(&path).unwrap();
+        fs::write(path.join("old.png"), b"left by a run that was killed").unwrap();
+        {
+            let directory = ScratchDir::new("visual-checks-scratch");
+            assert!(!directory.join("old.png").exists());
+        }
+        assert!(!path.exists(), "the directory was left behind");
     }
 }
