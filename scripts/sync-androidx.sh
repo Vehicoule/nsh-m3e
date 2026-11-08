@@ -18,8 +18,24 @@ tokens_path="compose/material3/material3/src/commonMain/kotlin/androidx/compose/
 copy="reference/androidx-material3-tokens"
 components_path="compose/material3/material3/src/commonMain/kotlin/androidx/compose/material3"
 components_copy="reference/androidx-material3-components"
-# The component files a component of this library follows (ADR 0012), each named for the androidx file.
-components=(Button.kt ColorScheme.kt Divider.kt IconButton.kt IconButtonDefaults.kt NavigationItem.kt Ripple.kt ShortNavigationBar.kt Tab.kt TabRow.kt)
+# The component files a component of this library follows (ADR 0012), each named for the androidx file, relative to
+# `components_path` and copied flat: the names under `internal/` do not collide with the others.
+components=(
+    Button.kt
+    ColorScheme.kt
+    Divider.kt
+    IconButton.kt
+    IconButtonDefaults.kt
+    NavigationItem.kt
+    ProgressIndicator.kt
+    Ripple.kt
+    ShortNavigationBar.kt
+    Tab.kt
+    TabRow.kt
+    WavyProgressIndicator.kt
+    internal/LinearWavyProgressModifiers.kt
+    internal/CircularWavyProgressModifiers.kt
+)
 
 root="$(git rev-parse --show-toplevel)"
 cd "$root"

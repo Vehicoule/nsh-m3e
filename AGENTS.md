@@ -73,6 +73,7 @@ scripts/sync-androidx.sh check
 cargo xtask gen-tokens --check
 scripts/sync-material-symbols.sh check
 cargo xtask gen-icons --check
+scripts/sync-material-web.sh check
 scripts/sync-nsh.sh check
 cargo mutants --workspace --cargo-arg=--locked   # cargo-mutants 27.1.0
 ```
@@ -111,7 +112,7 @@ request, and report what you ran.
 | `docs/` | Requirements and references |
 | `reference/` | Vendored sources of truth, pinned, never edited by hand |
 | `.claude/skills/` | Vendored skills for coding agents, pinned (the NSH ones are synced by `scripts/sync-nsh.sh`) |
-| `scripts/` | Repository tooling (`sync-nsh.sh`: keep the NSH skills on the pinned NSH commit; `sync-androidx.sh`: keep `reference/androidx-material3-tokens/` and `reference/androidx-material3-components/` on the pinned androidx commit; `sync-material-symbols.sh`: keep `reference/material-symbols/` on the pinned Material Symbols commit) |
+| `scripts/` | Repository tooling (`sync-nsh.sh`: keep the NSH skills on the pinned NSH commit; `sync-androidx.sh`: keep `reference/androidx-material3-tokens/` and `reference/androidx-material3-components/` on the pinned androidx commit; `sync-material-symbols.sh`: keep `reference/material-symbols/` on the pinned Material Symbols commit; `sync-material-web.sh`: keep `reference/material-web/` on the pinned Material Web commit) |
 
 A token module that a component needs and that does not exist yet is added by listing its androidx file in
 `SOURCES` (`xtask/src/main.rs`) and running `cargo xtask gen-tokens`, never by typing the values. The generator

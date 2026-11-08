@@ -71,6 +71,14 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
+        file: "CircularProgressIndicatorTokens.kt",
+        object: None,
+        doc: &[
+            "The circular progress indicator's sizes: its diameter and stroke widths, and the wave's amplitude, \
+             wavelength and diameter for the wavy one.",
+        ],
+    },
+    Source {
         file: "ColorDarkTokens.kt",
         object: None,
         doc: &[
@@ -172,6 +180,14 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
+        file: "LinearProgressIndicatorTokens.kt",
+        object: None,
+        doc: &[
+            "The linear progress indicator's sizes: its height, the stop and gap sizes, and the wave's amplitude, \
+             wavelength and height for the wavy one.",
+        ],
+    },
+    Source {
         file: "MediumIconButtonTokens.kt",
         object: None,
         doc: &[
@@ -247,6 +263,14 @@ const SOURCES: &[Source] = &[
              shape), and the icon and label colors of a tab active or inactive, with hover, focus and press. Colors are \
              roles of the scheme ([`crate::color::ColorRole`]), resolved against the light or dark \
              [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
+        file: "ProgressIndicatorTokens.kt",
+        object: None,
+        doc: &[
+            "The colors and shapes the linear and circular progress indicators share: the active indicator, the \
+             stop and the track. Colors are roles of the scheme ([`crate::color::ColorRole`]).",
         ],
     },
     Source {
@@ -363,8 +387,8 @@ const INDEX_DOC: &[&str] = &[
     "The Material 3 tokens, generated from the androidx Kotlin files vendored in \
      `reference/androidx-material3-tokens/` (ADR 0003).",
     "Each constant names its androidx token in its documentation. Numbers are `f32`, the type NSH takes; the \
-     generator refuses a value that `f32` cannot hold exactly, except a text unit (`0.1.sp`), which androidx \
-     itself rounds to the nearest `f32`.",
+     generator refuses a value that `f32` cannot hold exactly, except a text unit (`0.1.sp`) or a length \
+     (`1.6.dp`), which androidx itself rounds to the nearest `f32`.",
 ];
 
 const REFERENCE_DIR: &str = "reference/androidx-material3-tokens";
