@@ -6,6 +6,9 @@
 //! progress, the determinate ones from none of the work to all of it, and then the indeterminate one. The column is
 //! at the left of the dividers' ([`grid::divider_left`]) and starts below them ([`top`]).
 //!
+//! They are on the page only under reduced motion ([`crate::Catalog`] says why), where they hold still, and the
+//! screenshots of their own are taken so.
+//!
 //! The indicators are [`WIDTH`] points wide, narrower than the library's default of 240 points, which does not fit
 //! in that strip. The default width is the library's own tests' to pin.
 
@@ -210,6 +213,7 @@ mod tests {
     use std::sync::{Arc, Mutex, PoisonError};
 
     use nsh_core::geometry::Bounds;
+    use nsh_core::platform::Environment;
     use nsh_core::{AccessibilityRole, MountItem, NodeId};
     use nsh_engine::{EngineConfig, Root};
     use nsh_testing::Headless;
@@ -403,11 +407,63 @@ mod tests {
         assert_eq!(readings[0], Reading::Determinate(0));
     }
 
+    /// Starts the catalog as a user who asked for less motion, or not, sees it.
+    fn start(reduce_motion: bool) -> Headless {
+        Headless::start(EngineConfig {
+            environment: Environment {
+                reduce_motion,
+                ..Environment::default()
+            },
+            ..EngineConfig::new(Root::of::<Catalog>())
+        })
+        .unwrap()
+    }
+
+    /// The page has no indicator unless the user asked for less motion, and every one of them then, so that nothing on
+    /// it moves by itself in the screenshots of the other components (see [`Catalog`]).
+    #[test]
+    fn the_indicators_are_on_the_page_only_under_reduced_motion() {
+        for (reduce_motion, expected) in [(false, 0), (true, ProgressCell::all().count())] {
+            let mut app = start(reduce_motion);
+            let items: Arc<Mutex<Vec<MountItem>>> = Arc::default();
+            let sink = Arc::clone(&items);
+            app.observe(move |_, batch| {
+                sink.lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .extend(batch.items.iter().cloned());
+            });
+            app.wait_for("Filled").unwrap();
+            let items = items.lock().unwrap_or_else(PoisonError::into_inner).clone();
+            let bars = items
+                .iter()
+                .filter(|item| {
+                    matches!(
+                        item,
+                        MountItem::ViewProps { props, .. }
+                            if props.accessibility.role == AccessibilityRole::Progressbar
+                    )
+                })
+                .count();
+            let ids = items
+                .iter()
+                .filter(|item| {
+                    matches!(
+                        item,
+                        MountItem::ViewProps { props, .. }
+                            if props.test_id.as_ref().is_some_and(|id| id.starts_with("linear-"))
+                    )
+                })
+                .count();
+            assert_eq!(bars, expected, "reduce motion {reduce_motion}");
+            assert_eq!(ids, expected, "reduce motion {reduce_motion}");
+        }
+    }
+
     /// Every indicator is at its place, inside a view with its test id, as a progress bar from 0 to 1 that says how
     /// far the work is and what it is, with the size its shape gives it.
     #[test]
     fn every_indicator_is_where_the_grid_says_and_a_progress_bar() {
-        let mut app = Headless::start(EngineConfig::new(Root::of::<Catalog>())).unwrap();
+        let mut app = start(true);
         let items: Arc<Mutex<Vec<MountItem>>> = Arc::default();
         let sink = Arc::clone(&items);
         app.observe(move |_, batch| {

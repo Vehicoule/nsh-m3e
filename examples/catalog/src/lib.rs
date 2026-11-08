@@ -12,7 +12,8 @@
 //! - [`checkbox`]: the checkboxes, on a grid of their own.
 //! - [`fab`]: the floating action buttons, in a row of their own.
 //! - [`progress`]: the linear progress indicators, flat and wavy, determinate at several values and indeterminate, in a
-//!   column beside the icon buttons' grid.
+//!   column below the dividers'. They are on the page only when the user asked for less motion, where they
+//!   hold still ([`Catalog`] says why).
 
 pub mod checkbox;
 pub mod fab;
@@ -20,7 +21,7 @@ pub mod grid;
 pub mod progress;
 pub mod switch;
 
-use nsh_core::element::AdaptiveColor;
+use nsh_core::element::{AdaptiveColor, reduce_motion};
 use nsh_core::prelude::*;
 use nsh_m3e::button::button;
 use nsh_m3e::color::ColorScheme;
@@ -45,6 +46,13 @@ fn native(registry: &mut Registry) {
 /// Every button, icon button, switch, checkbox, divider, FAB and progress indicator of the catalog at its place on the
 /// [`grid`], the [`switch`] grid, the [`checkbox`] grid, the [`fab`] row and in the [`progress`] column, on the
 /// scheme's surface color.
+///
+/// The progress indicators are there only under reduced motion. Left to themselves they never stop (an indeterminate
+/// one loops, a wave travels), and on the Linux host the screenshots of everything else, taken once the window has
+/// painted what changed, came out one step behind (a hover or the dark appearance not drawn yet) in some of the runs
+/// of the pull request that added them. Under reduced motion they hold still, as the screenshots of their own need
+/// them to be, and nothing on the page moves by itself. The setting is read once, when the page is made: the tests
+/// open the page with it set or not.
 #[component]
 pub fn Catalog() -> impl IntoElement {
     let surface = AdaptiveColor::rgb(
@@ -109,7 +117,11 @@ pub fn Catalog() -> impl IntoElement {
         )
     });
     let page = SwitchCell::all().fold(page, |page, cell| page.child(switch::element(cell)));
-    let page = ProgressCell::all().fold(page, |page, cell| page.child(progress::placed(cell)));
+    let page = if reduce_motion() {
+        ProgressCell::all().fold(page, |page, cell| page.child(progress::placed(cell)))
+    } else {
+        page
+    };
     fab::place(checkbox::place(page))
 }
 
