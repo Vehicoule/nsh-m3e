@@ -373,7 +373,10 @@ mod tests {
         );
         assert_eq!(
             (none.x, none.y),
-            (Points(24.0 + 11.0 + 4.0), Points(2664.0 + 11.0 + 8.0))
+            (
+                Points(24.0 + 11.0 + 4.0),
+                Points(catalog::checkbox::top().0 + 11.0 + 8.0)
+            )
         );
     }
 
@@ -540,7 +543,7 @@ mod tests {
         assert_eq!(
             found[0].to_string(),
             format!(
-                "checkbox-checked-enabled mark at (109, 2683) points: expected {} (± 2), found #6750a4",
+                "checkbox-checked-enabled mark at (109, 2779) points: expected {} (± 2), found #6750a4",
                 wanted.expected
             )
         );
@@ -592,12 +595,9 @@ mod tests {
     }
 
     #[test]
-    fn a_screenshot_that_stops_above_the_checkboxes_is_refused() {
-        // A viewport that ends where the last band starts, with the margin below the icon buttons' rows: the page
-        // without the checkboxes and the FABs, which stand in that band (the FABs add no height to it, so the buttons'
-        // viewport is the checkboxes' too).
-        let (width, _) = catalog::grid::viewport();
-        let height = Points(catalog::grid::band_top().0 + catalog::grid::MARGIN.0);
+    fn a_screenshot_of_the_buttons_viewport_is_refused() {
+        // `button.test.tsx` opens the catalog at the viewport above the checkboxes.
+        let (width, height) = catalog::grid::viewport();
         let (width, height) = (points_to_u32(width), points_to_u32(height));
         let image = Image {
             width,

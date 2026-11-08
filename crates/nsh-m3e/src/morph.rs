@@ -67,12 +67,12 @@ fn half_shorter_side(size: Size<Points>) -> f32 {
     size.width.0.min(size.height.0) / 2.0
 }
 
-/// The spring of the morph: androidx `Button.kt` animates the button's shape with
-/// `MotionSchemeKeyTokens.DefaultEffects`, "intentional here to prevent any bounce in this component" (ADR 0011),
-/// converted as ADR 0004 says. Every field is written out, none taken from NSH's defaults: it starts from the speed
-/// the corners already have, at the screen's own rate (ADR 0010).
-fn morph_spring() -> Spring {
-    let spec = SpringToken::DefaultEffects.spec();
+/// The spring of the morph, from `token`, converted as ADR 0004 says: androidx `Button.kt` animates the button's shape
+/// with `MotionSchemeKeyTokens.DefaultEffects`, "intentional here to prevent any bounce in this component" (ADR 0011);
+/// `ToggleButton.kt` animates the toggle button's with `FastSpatial`. Every field is written out, none taken from NSH's
+/// defaults: it starts from the speed the corners already have, at the screen's own rate (ADR 0010).
+fn morph_spring(token: SpringToken) -> Spring {
+    let spec = token.spec();
     Spring {
         stiffness: spec.stiffness,
         damping: spec.damping_coefficient(),
@@ -82,8 +82,9 @@ fn morph_spring() -> Spring {
     }
 }
 
-/// A container drawn with an animated corner radius, and the state that moves it: its shape at rest, its shape while
-/// pressed, whether it is pressed, and its size. A `Copy` handle, like the signals it holds.
+/// A container drawn with an animated corner radius, and the state that moves it: its shape at rest, while pressed and
+/// while checked, whether it is pressed and checked, its size, and the spring that moves it. A `Copy` handle, like the
+/// signals it holds.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct DrawnShape {
     /// The corner radius, in points.
@@ -96,25 +97,62 @@ pub(crate) struct DrawnShape {
     pressed_corners: Signal<Corners>,
     /// Whether a press is down.
     pressed: Signal<bool>,
+    /// The corners while checked and not pressed: a toggle button's; a button, never checked, keeps its rest corners.
+    checked_corners: Signal<Corners>,
+    /// Whether it is checked.
+    checked: Signal<bool>,
+    /// The spring that moves the radius.
+    spring: SpringToken,
 }
 
 impl DrawnShape {
     /// A container at rest with `rest`'s corners, pressed into `pressed`'s, expected to be `size` until its layout
     /// says otherwise.
+    /// It is never checked, and its spring is the button's, `DefaultEffects`.
     pub(crate) fn new(rest: Corners, pressed: Corners, size: Size<Points>) -> Self {
+        Self::toggle(
+            [rest, pressed, rest],
+            false,
+            size,
+            SpringToken::DefaultEffects,
+        )
+    }
+
+    /// A container with the `[rest, pressed, checked]` corners, `checked` or not, expected to be `size` until its
+    /// layout says otherwise, moved by `spring`.
+    pub(crate) fn toggle(
+        [rest, pressed, checked_corners]: [Corners; 3],
+        checked: bool,
+        size: Size<Points>,
+        spring: SpringToken,
+    ) -> Self {
+        let start = if checked { checked_corners } else { rest };
         Self {
-            radius: animated_value(rest.radius(size)),
+            radius: animated_value(start.radius(size)),
             size: signal(size),
             rest: signal(rest),
             pressed_corners: signal(pressed),
             pressed: signal(false),
+            checked_corners: signal(checked_corners),
+            checked: signal(checked),
+            spring,
         }
     }
 
-    /// The corners it is at, or going to.
+    /// The corners it is at, or going to: pressed first, as androidx's `shapeByInteraction` in `ToggleButton.kt`
+    /// chooses, then checked, then at rest.
     fn target(self) -> Corners {
         if self.pressed.get() {
             self.pressed_corners.get()
+        } else {
+            self.unpressed()
+        }
+    }
+
+    /// The corners it has when no press is down: checked or at rest.
+    fn unpressed(self) -> Corners {
+        if self.checked.get() {
+            self.checked_corners.get()
         } else {
             self.rest.get()
         }
@@ -133,6 +171,38 @@ impl DrawnShape {
             self.rest.set(rest);
             self.pressed_corners.set(pressed);
             self.radius.set(self.target().radius(self.size.get()));
+        });
+    }
+
+    /// The checked corners change, as [`DrawnShape::set_corners`] does for the others.
+    pub(crate) fn set_checked_corners(self, checked_corners: Corners) {
+        untracked(|| {
+            if self.checked_corners.get() == checked_corners {
+                return;
+            }
+            self.checked_corners.set(checked_corners);
+            self.radius.set(self.target().radius(self.size.get()));
+        });
+    }
+
+    /// It was checked (`true`) or unchecked: the radius springs to the corners it now has, from where it is and as fast
+    /// as it moves. With reduce motion on, it goes at once to the corners it has when no press is down, which a press
+    /// does not change then: being checked is a state the shape shows, where a press is feedback that can be left out.
+    pub(crate) fn set_checked(self, checked: bool) {
+        untracked(|| {
+            if self.checked.get() == checked {
+                return;
+            }
+            self.checked.set(checked);
+            if reduce_motion() {
+                self.radius.set(self.unpressed().radius(self.size.get()));
+            } else if !self.pressed.get() {
+                // A press down keeps the pressed corners whatever it is: its end springs to the new ones.
+                let _ = self.radius.spring(
+                    self.target().radius(self.size.get()),
+                    morph_spring(self.spring),
+                );
+            }
         });
     }
 
@@ -162,9 +232,10 @@ impl DrawnShape {
             if reduce_motion() {
                 return;
             }
-            let _ = self
-                .radius
-                .spring(self.target().radius(self.size.get()), morph_spring());
+            let _ = self.radius.spring(
+                self.target().radius(self.size.get()),
+                morph_spring(self.spring),
+            );
         });
     }
 

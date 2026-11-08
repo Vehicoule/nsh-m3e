@@ -8,10 +8,9 @@
 // names are those `visual-checks` reads (`checkbox::Shot::file_name`).
 import { expect, open, test } from "nsh/test";
 
-// The catalog's viewport with the checkboxes' grid (`catalog::checkbox::viewport`), the one `button.test.tsx` opens
-// too: the checkboxes' grid and the FABs' row share the page's last band. `visual-checks` refuses a screenshot of
-// another size.
-const VIEWPORT = { width: 2608, height: 2800 };
+// The catalog's viewport with the checkboxes' grid (`catalog::checkbox::viewport`); the checkboxes' grid is below
+// the one `button.test.tsx` opens, so this viewport is taller. `visual-checks` refuses a screenshot of another size.
+const VIEWPORT = { width: 2608, height: 2896 };
 
 const STATES = ["unchecked", "checked", "indeterminate"];
 

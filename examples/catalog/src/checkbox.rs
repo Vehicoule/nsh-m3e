@@ -1,14 +1,12 @@
 //! Where the catalog puts each checkbox, so that the visual checks know where to read its pixels.
 //!
-//! The checkboxes sit on a small grid below the icon buttons' (see [`crate::grid`]), in the page's last band, where the
-//! FABs' row stands to their right: one column per state, one row per availability, the enabled row above the disabled
-//! one. A checkbox is laid out as its state layer, a square of
+//! The checkboxes sit on a small grid below the icon buttons' (see [`crate::grid`]): one column per state, one row
+//! per availability, the enabled row above the disabled one. A checkbox is laid out as its state layer, a square of
 //! `CheckboxTokens.StateLayerSize` points; its box is the `CheckboxTokens.ContainerSize` square in the middle of it.
 //!
-//! The grid's top is where the page's other grids end, so this grid is in the last block of the page, and [`viewport`]
-//! is the page's size, the same as [`crate::grid::viewport`] since the FABs, which are as tall as the checkboxes' two
-//! rows with their gaps, stand beside this grid and add no height. `button.test.tsx` and `checkbox.test.tsx` open the
-//! page at that size.
+//! The grid's top is where the page's other grids end, so this grid is the last block of the page, and
+//! [`viewport`] is the page's size with it. `button.test.tsx` opens the page at [`crate::grid::viewport`], which stops
+//! above this grid; `checkbox.test.tsx` opens it at [`viewport`].
 
 use nsh_core::geometry::Points;
 use nsh_core::prelude::*;
@@ -31,16 +29,16 @@ pub const COLUMN_GAP: Points = Points(24.0);
 /// The side of a checkbox's layout, in points: its state layer's size, `CheckboxTokens.StateLayerSize`.
 pub const SIDE: Points = checkbox_tokens::STATE_LAYER_SIZE;
 
-/// The top of the checkboxes' grid: where the rows of the grids above it end, one row gap after their last row, which
-/// is the top of the page's last band ([`grid::band_top`]), where the FABs' row starts too.
+/// The top of the checkboxes' grid: where the rows of the grids above it end, one row gap after their last row (the
+/// bottom margin of [`grid::viewport`] starts there).
 #[must_use]
 pub fn top() -> Points {
-    grid::band_top()
+    Points(grid::viewport().1.0 - MARGIN.0)
 }
 
 /// The size of the viewport the catalog is opened in to show the checkboxes, width and height: the page's width, as
 /// the checkboxes' grid is narrower than the buttons', and the height of the page with this grid and the margin
-/// below it, which is [`grid::viewport`]'s.
+/// below it.
 #[must_use]
 pub fn viewport() -> (Points, Points) {
     let mut height = top().0 + MARGIN.0;
@@ -187,45 +185,48 @@ mod tests {
 
     #[test]
     fn the_rows_and_columns_are_where_the_layout_says() {
-        // The grids above end where the last band starts: 24 points of margin, then the 880 points of the buttons'
-        // rows and gaps, then the icon buttons' 1,760.
-        assert_eq!(top(), Points(2664.0));
+        // The grids above end where the viewport's bottom margin starts: 24 points of margin before the viewport's end,
+        // which is 2,784 points down with the buttons' rows, the icon buttons' and the switches' above.
+        let top_y = Points(grid::viewport().1.0 - MARGIN.0);
+        assert_eq!(top(), top_y);
+        assert_eq!(top(), Points(2760.0));
         let first = CheckboxCell::new(CheckboxState::Unchecked, Availability::Enabled);
-        assert_eq!(first.origin(), (Points(24.0), Points(2664.0)));
+        assert_eq!(first.origin(), (Points(24.0), top_y));
         // Checked is the second column, 40 points of state layer and 24 of gap further; indeterminate the third.
         let checked = CheckboxCell {
             state: CheckboxState::Checked,
             ..first
         };
-        assert_eq!(checked.origin(), (Points(88.0), Points(2664.0)));
+        assert_eq!(checked.origin(), (Points(88.0), top_y));
         let indeterminate = CheckboxCell {
             state: CheckboxState::Indeterminate,
             ..first
         };
-        assert_eq!(indeterminate.origin(), (Points(152.0), Points(2664.0)));
+        assert_eq!(indeterminate.origin(), (Points(152.0), top_y));
         // The disabled row is below the enabled one: 40 points and a row gap.
         let disabled = CheckboxCell {
             availability: Availability::Disabled,
             ..first
         };
-        assert_eq!(disabled.origin(), (Points(24.0), Points(2720.0)));
+        assert_eq!(disabled.origin(), (Points(24.0), Points(top_y.0 + 56.0)));
         assert_eq!(SIDE, Points(40.0));
     }
 
     #[test]
     fn the_viewport_holds_the_checkboxes_and_the_grids_above() {
         let (width, height) = viewport();
-        // The page is as wide as the buttons' grid; the checkboxes' two rows and the margin below them make it as tall
-        // as the page `grid::viewport` gives, where the FABs' row, as tall as the two rows, stands beside them.
-        assert_eq!((width, height), (Points(2608.0), Points(2800.0)));
-        assert_eq!((width, height), grid::viewport());
+        // The page is as wide as the buttons' grid; the checkboxes' two rows and the margin below them make it 112
+        // points taller than the icon buttons' viewport.
+        assert_eq!((width, height), (Points(2608.0), Points(2896.0)));
+        assert_eq!(width, grid::viewport().0);
+        assert_eq!(height.0, grid::viewport().1.0 + 2.0 * (SIDE.0 + ROW_GAP.0));
         let mut bottom = Points(0.0);
         for cell in CheckboxCell::all() {
             let (x, y) = cell.origin();
             assert!(x.0 >= MARGIN.0, "{cell:?}");
             assert!(x.0 + SIDE.0 <= width.0 - MARGIN.0, "{cell:?}");
             // Below every icon button of the grid above, and a row gap clear of it.
-            assert!(y.0 >= grid::band_top().0, "{cell:?}");
+            assert!(y.0 >= grid::viewport().1.0 - MARGIN.0, "{cell:?}");
             assert!(y.0 + SIDE.0 <= height.0 - MARGIN.0, "{cell:?}");
             bottom = Points(bottom.0.max(y.0 + SIDE.0));
         }

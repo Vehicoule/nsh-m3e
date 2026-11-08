@@ -1,23 +1,26 @@
 //! The catalog: every component of `nsh-m3e` in each of its states, for the visual checks of ADR 0013: the buttons,
-//! the icon buttons, the floating action buttons and the checkboxes.
+//! the icon buttons, the switches, the checkboxes and the floating action buttons.
 //!
-//! `nsh test` opens it on NSH's hosts (`button.test.tsx` and `checkbox.test.tsx`, beside its `nsh.json`) and saves
-//! screenshots of it; `visual-checks` reads the pixels it knows in them, at the places [`grid`] and [`checkbox`] give.
+//! `nsh test` opens it on NSH's hosts (`button.test.tsx`, `switch.test.tsx`, `checkbox.test.tsx` and `fab.test.tsx`,
+//! beside its `nsh.json`) and saves screenshots of it; `visual-checks` reads the pixels it knows in them, at the places
+//! [`grid`], [`switch`], [`checkbox`] and [`fab`] give.
 //! The catalog is a Rust app (`nsh.json` names its root, [`Catalog`]); nothing in it runs JavaScript.
 
 pub mod checkbox;
+pub mod fab;
 pub mod grid;
+pub mod switch;
 
 use nsh_core::element::AdaptiveColor;
 use nsh_core::prelude::*;
 use nsh_m3e::button::button;
 use nsh_m3e::color::ColorScheme;
-use nsh_m3e::fab::fab;
 use nsh_m3e::icon::Icon;
 use nsh_m3e::icon_button::icon_button;
 use nsh_m3e::material_symbols::outlined;
 
-use crate::grid::{Availability, Cell, FabCell, IconCell};
+use crate::grid::{Availability, Cell, IconCell};
+use crate::switch::SwitchCell;
 
 /// The icon every icon button and FAB of the catalog shows: Material Symbols' `favorite`, filled, whose middle is
 /// filled, so that the visual checks read the icon's color there.
@@ -28,8 +31,8 @@ fn native(registry: &mut Registry) {
     registry.register::<Catalog>();
 }
 
-/// Every button, icon button, FAB and checkbox of the catalog at its place on the [`grid`] and the [`checkbox`] grid, on
-/// the scheme's surface color.
+/// Every button, icon button, switch, checkbox and FAB of the catalog at its place on the [`grid`], the [`switch`]
+/// grid, the [`checkbox`] grid and the [`fab`] row, on the scheme's surface color.
 #[component]
 pub fn Catalog() -> impl IntoElement {
     let surface = AdaptiveColor::rgb(
@@ -74,24 +77,8 @@ pub fn Catalog() -> impl IntoElement {
                 ),
         )
     });
-    let page = FabCell::all().fold(page, |page, cell| {
-        let (x, y) = cell.origin();
-        page.child(
-            view()
-                .absolute()
-                .left(x)
-                .top(y)
-                .test_id(&cell.test_id())
-                .child(
-                    fab()
-                        .icon(ICON)
-                        .label(cell.label())
-                        .style(cell.style)
-                        .size(cell.size),
-                ),
-        )
-    });
-    checkbox::place(page)
+    let page = SwitchCell::all().fold(page, |page, cell| page.child(switch::element(cell)));
+    fab::place(checkbox::place(page))
 }
 
 #[cfg(test)]
@@ -114,8 +101,8 @@ mod tests {
         assert_eq!(exports, ["Catalog"]);
     }
 
-    /// Every button, icon button and FAB is at its place on the grid, inside a view with its test id, enabled or
-    /// disabled as its cell says; every icon button and FAB has the size the grid gives it.
+    /// Every button and icon button is at its place on the grid, inside a view with its test id, enabled or disabled
+    /// as its cell says; every icon button has the size the grid gives it.
     #[test]
     fn every_button_is_where_the_grid_says() {
         let mut app = Headless::start(EngineConfig::new(Root::of::<Catalog>())).unwrap();
@@ -152,9 +139,10 @@ mod tests {
                 _ => {}
             }
         }
+        // The FABs are buttons for screen readers too.
         assert_eq!(
             disabled.len(),
-            Cell::all().count() + IconCell::all().count() + FabCell::all().count()
+            Cell::all().count() + IconCell::all().count() + fab::FabCell::all().count()
         );
         let child_of = |id: NodeId| {
             parents
@@ -197,24 +185,6 @@ mod tests {
                 cell.availability == Availability::Disabled,
                 "{cell:?}"
             );
-        }
-        for cell in FabCell::all() {
-            let id = ids[&cell.test_id()];
-            let (x, y) = cell.origin();
-            assert_eq!(
-                (frames[&id].origin.x, frames[&id].origin.y),
-                (x, y),
-                "{cell:?}"
-            );
-            let button = child_of(id);
-            let (width, height) = cell.frame();
-            assert_eq!(
-                (frames[&button].size.width, frames[&button].size.height),
-                (width, height),
-                "{cell:?}"
-            );
-            // A FAB takes presses: it is never disabled.
-            assert!(!disabled[&button], "{cell:?}");
         }
     }
 }
