@@ -8,7 +8,7 @@
 //! The baseline schemes come from androidx `ColorLightTokens` and `ColorDarkTokens` (ADR 0003). Schemes made from a
 //! seed color (dynamic color) are an algorithm, not tokens, and come with their own ADR.
 
-use nsh_core::element::{AdaptiveColor, Tokens};
+use nsh_core::element::{AdaptiveColor, PropEnum, Tokens};
 
 use crate::tokens::Srgb;
 use crate::tokens::androidx::{color_dark_tokens, color_light_tokens};
@@ -20,6 +20,11 @@ macro_rules! roles {
     ($( $role:ident, $field:ident, $token:ident, $name:literal; )*) => {
         /// A color role of the Material 3 scheme: androidx `ColorSchemeKeyTokens`.
         ///
+        /// A role is a prop value ([`PropEnum`]), so a component whose color androidx takes as a parameter takes a
+        /// `Prop<ColorRole>`: the color follows the appearance and the app's scheme ([ADR 0008]).
+        ///
+        /// [ADR 0008]: https://github.com/Vehicoule/nsh-m3e/blob/main/docs/adr/0008-color-scheme-in-nsh-tokens.md
+        ///
         /// ```
         /// use nsh_m3e::color::{ColorRole, ColorScheme};
         /// use nsh_m3e::tokens::androidx::palette_tokens::PRIMARY40;
@@ -27,7 +32,7 @@ macro_rules! roles {
         /// assert_eq!(ColorScheme::BASELINE_LIGHT.get(ColorRole::Primary), PRIMARY40);
         /// ```
         #[non_exhaustive]
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PropEnum)]
         pub enum ColorRole {
             $(
                 #[doc = concat!("androidx: `ColorSchemeKeyTokens.", stringify!($role), "`.")]
