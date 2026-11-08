@@ -5,6 +5,14 @@
 pub(crate) const PROGRESS_INDICATOR_KT: &str =
     include_str!("../../../reference/androidx-material3-components/ProgressIndicator.kt");
 
+/// `WavyProgressIndicator.kt`: the wavy indicators, their defaults and their constants.
+pub(crate) const WAVY_PROGRESS_INDICATOR_KT: &str =
+    include_str!("../../../reference/androidx-material3-components/WavyProgressIndicator.kt");
+
+/// `LinearWavyProgressModifiers.kt`: how the linear wavy indicators draw and move.
+pub(crate) const LINEAR_WAVY_MODIFIERS_KT: &str =
+    include_str!("../../../reference/androidx-material3-components/LinearWavyProgressModifiers.kt");
+
 /// `MotionTokens.kt`: the curves and durations of the Material 3 motion tokens.
 pub(crate) const MOTION_TOKENS_KT: &str =
     include_str!("../../../reference/androidx-material3-tokens/MotionTokens.kt");

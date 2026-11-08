@@ -47,7 +47,9 @@ pub enum Progress {
     /// The share of the work done, as a fraction: 0 is none and 1 is all of it, as androidx's `progress`.
     ///
     /// A fraction outside 0 to 1 is held to it (see [`Progress::coerced`]). A NaN draws no more than the stop of a
-    /// flat indicator and is read as 0 by screen readers, as androidx's flat indicator does with one.
+    /// flat indicator and is read as 0 by screen readers, as androidx's flat indicator does with one. A wavy
+    /// indicator takes a fraction that is not finite (a NaN, an infinity) for no progress at all, as androidx's wavy
+    /// indicator does ("Return a non-finite value ... while the progress is unknown"): it is indeterminate.
     Determinate(Percentage),
 }
 
@@ -67,6 +69,25 @@ impl Progress {
     pub(crate) fn reading(self) -> Option<f32> {
         self.coerced()
             .map(|fraction| if fraction.0.is_nan() { 0.0 } else { fraction.0 })
+    }
+
+    /// Whether an indicator of `shape` shows this as no progress: the work's extent is unknown, or, for a wavy
+    /// indicator, the fraction is not finite (`!currentProgress.isFinite()` in `LinearWavyProgressIndicator`).
+    pub(crate) fn is_indeterminate_in(self, shape: ProgressShape) -> bool {
+        match self {
+            Self::Indeterminate => true,
+            Self::Determinate(fraction) => shape == ProgressShape::Wavy && !fraction.0.is_finite(),
+        }
+    }
+
+    /// What screen readers get as the value of an indicator of `shape`: [`Progress::reading`], or nothing where the
+    /// indicator is indeterminate in that shape (a wavy one with a fraction that is not finite).
+    pub(crate) fn reading_in(self, shape: ProgressShape) -> Option<f32> {
+        if self.is_indeterminate_in(shape) {
+            None
+        } else {
+            self.reading()
+        }
     }
 }
 
@@ -220,6 +241,44 @@ mod tests {
         let nan = Progress::Determinate(percentage(f32::NAN));
         assert!(nan.coerced().is_some_and(|fraction| fraction.0.is_nan()));
         assert_eq!(nan.reading(), Some(0.0));
+    }
+
+    #[test]
+    fn only_a_wavy_indicator_takes_a_fraction_that_is_not_finite_for_no_progress() {
+        use ProgressShape::{Flat, Wavy};
+
+        // Unknown is unknown in both shapes.
+        for shape in [Flat, Wavy] {
+            assert!(Progress::Indeterminate.is_indeterminate_in(shape));
+            assert_eq!(Progress::Indeterminate.reading_in(shape), None);
+            // A finite fraction, in range or not, is known in both.
+            for fraction in [-3.0, -0.0, 0.0, 0.4, 1.0, 3.0] {
+                let progress = Progress::Determinate(percentage(fraction));
+                assert!(!progress.is_indeterminate_in(shape), "{fraction}");
+                assert_eq!(progress.reading_in(shape), progress.reading(), "{fraction}");
+            }
+        }
+        // A fraction that is not finite: the flat indicator draws and reads it as its own case (NaN: 0, the infinities
+        // held to the range), the wavy one has no progress to show and screen readers no value.
+        for fraction in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let progress = Progress::Determinate(percentage(fraction));
+            assert!(!progress.is_indeterminate_in(Flat), "{fraction}");
+            assert!(progress.reading_in(Flat).is_some(), "{fraction}");
+            assert!(progress.is_indeterminate_in(Wavy), "{fraction}");
+            assert_eq!(progress.reading_in(Wavy), None, "{fraction}");
+        }
+        assert_eq!(
+            Progress::Determinate(percentage(f32::NAN)).reading_in(Flat),
+            Some(0.0)
+        );
+        assert_eq!(
+            Progress::Determinate(percentage(f32::INFINITY)).reading_in(Flat),
+            Some(1.0)
+        );
+        assert_eq!(
+            Progress::Determinate(percentage(f32::NEG_INFINITY)).reading_in(Flat),
+            Some(0.0)
+        );
     }
 
     #[test]

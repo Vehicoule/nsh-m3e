@@ -34,7 +34,16 @@
 //! With reduce motion on, the indicator does not move: it draws one still pose, the strokes androidx draws at one
 //! instant of the cycle (`still_pose`).
 //!
+//! # The wavy form
+//!
+//! [`ProgressShape::Wavy`] draws the same indicator with an active line that waves, as androidx's
+//! `LinearWavyProgressIndicator` does. It is its own drawing (`wavy`): taller, with a track path of its own, and a wave
+//! that is drawn once and moved by the animation graph. It takes the same four forms: determinate and indeterminate,
+//! each of which moves (the wave travels, the indeterminate lines go round) or, with reduce motion, holds still.
+//!
 //! [ADR 0012]: https://github.com/Vehicoule/nsh-m3e/blob/main/docs/adr/0012-follow-androidx-components-where-tokens-are-wrong.md
+
+use std::rc::Rc;
 
 use nsh_core::SvgPaint;
 use nsh_core::canvas::LineCap;
@@ -42,10 +51,14 @@ use nsh_core::element::{CanvasArg, layout_rtl};
 use nsh_core::geometry::Points;
 use nsh_core::prelude::*;
 
-use crate::progress::{self, Progress, easing, indicator_color, plays_loops, track_color};
+use crate::progress::{
+    self, Progress, ProgressShape, easing, indicator_color, plays_loops, track_color,
+};
 use crate::tokens::CubicBezier;
 use crate::tokens::androidx::linear_progress_indicator_tokens as tokens;
 use crate::tokens::androidx::motion_tokens;
+
+mod wavy;
 
 /// The width of a linear progress indicator when none is given: androidx `LinearIndicatorWidth`, "given in the spec
 /// but not defined as a token" (`ProgressIndicator.kt`, lines 1028 to 1031).
@@ -627,6 +640,15 @@ fn stroke_still(painter: Painter, line: Option<Line>, y: f32, thickness: f32) ->
     }
 }
 
+/// The two values that move a wave.
+#[derive(Debug, Clone, Copy)]
+struct WaveNodes {
+    /// How high the wave is, from 0 (a flat line) to 1.
+    amplitude: AnimatedNode,
+    /// How far the wave has travelled, in wavelengths, counted up for ever.
+    phase: AnimatedNode,
+}
+
 /// What the layers draw, with the sizes they draw in.
 #[derive(Debug, Clone, Copy)]
 struct Layers {
@@ -634,6 +656,12 @@ struct Layers {
     /// The four values of the indeterminate motion.
     course: Course<AnimatedNode>,
     geometry: Geometry,
+    /// Flat or wavy.
+    shape: ProgressShape,
+    /// The values that move the wave of a wavy indicator.
+    wave: WaveNodes,
+    /// Whether the wave travels: not with reduce motion, where it holds the position it starts at.
+    travels: bool,
 }
 
 impl Layers {
@@ -667,8 +695,67 @@ impl Layers {
         cap(self.geometry.width, self.geometry.height)
     }
 
-    /// The first line, at the back: line 1 of an indeterminate indicator. A determinate one has none.
+    /// What a wavy indicator draws: the pieces of its track and the windows of its lines for the mode, the wave of that
+    /// mode, the wave's motion, and the stop (a determinate indicator's).
+    fn wavy(self) -> Wavy {
+        let geometry = self.geometry;
+        let width = geometry.width;
+        let fixed = |start: f32, end: f32| (Value::Fixed(start), Value::Fixed(end));
+        let (pairs, length, stop) = match self.mode {
+            Mode::Determinate(fraction) => {
+                let fraction = if fraction.is_finite() {
+                    fraction.clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                (
+                    vec![fixed(0.0, fraction)],
+                    wavy::DETERMINATE_WAVELENGTH,
+                    wavy::stop(fraction, width),
+                )
+            }
+            Mode::Moving => {
+                let at = self.course.map(Value::Moving);
+                (
+                    vec![
+                        (at.first_tail, at.first_head),
+                        (at.second_tail, at.second_head),
+                    ],
+                    wavy::INDETERMINATE_WAVELENGTH,
+                    None,
+                )
+            }
+            Mode::Still => {
+                let at = still_pose();
+                (
+                    vec![
+                        fixed(at.first_tail, at.first_head),
+                        fixed(at.second_tail, at.second_head),
+                    ],
+                    wavy::INDETERMINATE_WAVELENGTH,
+                    None,
+                )
+            }
+        };
+        let wave = wavy::Wave::new(length);
+        Wavy {
+            layout: wavy::layout(&pairs, width),
+            wave,
+            motion: wavy::Motion::of(self.wave.amplitude, self.wave.phase, wave, self.travels),
+            stop,
+            frame: wavy::Frame {
+                width,
+                ltr: geometry.ltr,
+            },
+        }
+    }
+
+    /// The first line, at the back: line 1 of an indeterminate indicator. A determinate one has none, and neither has a
+    /// wavy one, which draws its lines together.
     fn first_line(self) -> Painter {
+        if self.shape == ProgressShape::Wavy {
+            return Self::painter();
+        }
         let (y, thickness) = self.pen();
         match self.mode {
             Mode::Determinate(_) => Self::painter(),
@@ -685,6 +772,10 @@ impl Layers {
 
     /// The track: a determinate indicator's, or the three tracks of an indeterminate one.
     fn track(self) -> Painter {
+        if self.shape == ProgressShape::Wavy {
+            let wavy = self.wavy();
+            return wavy::track(Self::painter(), &wavy.layout, wavy.frame);
+        }
         let (y, thickness) = self.pen();
         let geometry = self.geometry;
         match self.mode {
@@ -718,8 +809,20 @@ impl Layers {
         }
     }
 
-    /// The last line, at the front: a determinate indicator's, with the stop; line 2 of an indeterminate one.
+    /// The last line, at the front: a determinate indicator's, with the stop; line 2 of an indeterminate one. A wavy
+    /// indicator draws all its lines here, and the stop.
     fn last_line(self) -> Painter {
+        if self.shape == ProgressShape::Wavy {
+            let wavy = self.wavy();
+            return wavy::lines(
+                Self::painter(),
+                &wavy.layout,
+                wavy.wave,
+                wavy.motion,
+                wavy.stop,
+                wavy.frame,
+            );
+        }
         let (y, thickness) = self.pen();
         let geometry = self.geometry;
         match self.mode {
@@ -755,6 +858,15 @@ impl Layers {
     }
 }
 
+/// What a wavy indicator draws, for a mode.
+struct Wavy {
+    layout: wavy::Layout,
+    wave: wavy::Wave,
+    motion: wavy::Motion,
+    stop: Option<Stop>,
+    frame: wavy::Frame,
+}
+
 /// A canvas filling the indicator.
 fn layer(canvas: CanvasView) -> CanvasView {
     canvas.absolute().inset(px(0.0))
@@ -769,6 +881,9 @@ pub struct LinearProgressIndicatorProps {
     pub progress: Prop<Progress>,
     /// What screen readers say: what is in progress. An indicator shows no text, so this is its only name.
     pub label: Prop<Option<SharedString>>,
+    /// Whether the active line is straight or waves: flat by default.
+    #[prop(default)]
+    pub shape: Prop<ProgressShape>,
     /// How wide it is: [`DEFAULT_WIDTH`] by default.
     #[prop(default = DEFAULT_WIDTH)]
     pub width: Prop<Points>,
@@ -799,7 +914,10 @@ pub fn LinearProgressIndicator(
     props: LinearProgressIndicatorProps,
     _cx: Scope<NoEvent>,
 ) -> impl IntoElement {
-    let height = tokens::HEIGHT;
+    let height = move || match props.shape.get() {
+        ProgressShape::Flat => tokens::HEIGHT,
+        ProgressShape::Wavy => wavy::HEIGHT,
+    };
     let size = move || props.width.get();
     let values = Course {
         first_head: animated_value(0.0),
@@ -808,10 +926,15 @@ pub fn LinearProgressIndicator(
         second_tail: animated_value(0.0),
     };
     let course = values.map(|value| *value.node());
-    let mode = computed(move || match props.progress.get() {
-        Progress::Determinate(fraction) => Mode::Determinate(fraction.0),
-        Progress::Indeterminate if plays_loops() => Mode::Moving,
-        Progress::Indeterminate => Mode::Still,
+    let mode = computed(move || {
+        let progress = props.progress.get();
+        match progress {
+            Progress::Determinate(fraction) if !progress.is_indeterminate_in(props.shape.get()) => {
+                Mode::Determinate(fraction.0)
+            }
+            _ if plays_loops() => Mode::Moving,
+            _ => Mode::Still,
+        }
     });
     // Nothing moves unless the indicator is indeterminate and may move; the values rest where they are when it stops,
     // and start again from the start of the cycle when it plays again.
@@ -824,15 +947,33 @@ pub fn LinearProgressIndicator(
             animation.stop();
         }
     });
+    // The wave of a wavy indicator: how high it is, and how far it has travelled. It starts as high as it is to be, and
+    // moves only where it is wavy, may move, and has a height to show.
+    let wavy = computed(move || props.shape.get() == ProgressShape::Wavy);
+    let waving = Rc::new(wavy::Waving::new(
+        wavy::target(untracked(|| mode.get())),
+        untracked(|| wavy.get()),
+    ));
+    let wave = WaveNodes {
+        amplitude: waving.amplitude(),
+        phase: waving.phase(),
+    };
+    let reach = Rc::clone(&waving);
+    effect(move || reach.reach(wavy.get(), plays_loops(), wavy::target(mode.get())));
+    let travel = computed(move || wavy::travel(wavy.get(), plays_loops(), mode.get()));
+    effect(move || waving.go(travel.get()));
     let layers = move || Layers {
         mode: mode.get(),
         course,
         geometry: Geometry {
             width: size().0,
-            height: height.0,
+            height: height().0,
             gap: tokens::TRACK_ACTIVE_SPACE.0,
             ltr: !layout_rtl(),
         },
+        shape: props.shape.get(),
+        wave,
+        travels: plays_loops(),
     };
     let first = canvas(move || layers().first_line()).stroke_color(indicator_color());
     let track = canvas(move || layers().track()).stroke_color(track_color());
@@ -841,7 +982,7 @@ pub fn LinearProgressIndicator(
         .fill_color(indicator_color());
     progress::accessible(
         view(),
-        move || props.progress.get().reading(),
+        move || props.progress.get().reading_in(props.shape.get()),
         move || props.label.get(),
     )
     .w(size)
@@ -1136,6 +1277,8 @@ mod tests {
     struct ProbeProps {
         #[prop(default)]
         progress: Prop<Progress>,
+        #[prop(default)]
+        shape: Prop<ProgressShape>,
         #[prop(default = DEFAULT_WIDTH)]
         width: Prop<Points>,
         label: Prop<Option<SharedString>>,
@@ -1144,12 +1287,14 @@ mod tests {
     #[component]
     fn Probe(props: ProbeProps) -> impl IntoElement {
         let progress = signal(props.progress.get_untracked());
+        let shape = signal(props.shape.get_untracked());
         let shown = signal(true);
         // A row, so that the indicator keeps its own size, not stretched across a column.
         view()
             .child(view().flex_row().child(when(shown, move || {
                 linear_progress_indicator()
                     .progress(move || progress.get())
+                    .shape(move || shape.get())
                     .width(props.width)
                     .label(props.label)
             })))
@@ -1159,6 +1304,14 @@ mod tests {
             .child(text("Full").on_press(move |(): &()| {
                 progress.set(Progress::Determinate(percentage(1.0)));
             }))
+            .child(text("Low").on_press(move |(): &()| {
+                progress.set(Progress::Determinate(percentage(0.05)));
+            }))
+            .child(text("Nan").on_press(move |(): &()| {
+                progress.set(Progress::Determinate(percentage(f32::NAN)));
+            }))
+            .child(text("Waves").on_press(move |(): &()| shape.set(ProgressShape::Wavy)))
+            .child(text("Straight").on_press(move |(): &()| shape.set(ProgressShape::Flat)))
             .child(text("Loop").on_press(move |(): &()| progress.set(Progress::Indeterminate)))
             .child(text("Remove").on_press(move |(): &()| shown.set(false)))
             .child(text("ready"))
@@ -1167,6 +1320,7 @@ mod tests {
     #[derive(Debug, Clone, Copy)]
     struct Config {
         progress: Progress,
+        shape: ProgressShape,
         width: Points,
         label: Option<&'static str>,
         dark: bool,
@@ -1178,6 +1332,7 @@ mod tests {
         fn default() -> Self {
             Self {
                 progress: Progress::Determinate(percentage(0.0)),
+                shape: ProgressShape::Flat,
                 width: DEFAULT_WIDTH,
                 label: None,
                 dark: false,
@@ -1190,6 +1345,7 @@ mod tests {
     fn start(config: Config) -> (Headless, Recording) {
         let root = Root::new::<Probe>(move || ProbeProps {
             progress: Prop::new(config.progress),
+            shape: Prop::new(config.shape),
             width: Prop::new(config.width),
             label: Prop::new(config.label.map(SharedString::from)),
         });
@@ -2926,4 +3082,6 @@ mod tests {
         assert!(replay(&recording).is_animating());
         Ok(())
     }
+
+    mod wavy_form;
 }
