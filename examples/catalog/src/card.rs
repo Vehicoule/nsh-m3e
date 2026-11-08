@@ -139,6 +139,7 @@ impl CardCell {
     }
 
     /// Its name, which it shows in its top left corner and which screen readers say for the cards that take presses.
+    /// No two are alike, and none is the label of a button of the catalog.
     #[must_use]
     pub fn label(self) -> String {
         let style = match self.style {
@@ -147,9 +148,9 @@ impl CardCell {
             _ => "Filled",
         };
         match self.kind {
-            CardKind::Clickable => format!("{style} clickable"),
-            CardKind::Disabled => format!("{style} disabled"),
-            _ => style.to_owned(),
+            CardKind::Clickable => format!("{style} card, clickable"),
+            CardKind::Disabled => format!("{style} card, disabled"),
+            _ => format!("{style} card"),
         }
     }
 
@@ -234,7 +235,8 @@ mod tests {
     use std::sync::{Arc, Mutex, PoisonError};
 
     use nsh_core::geometry::Bounds;
-    use nsh_core::{AccessibilityRole, MountItem, NodeId};
+    use nsh_core::platform::{ColorScheme as Appearance, Environment};
+    use nsh_core::{AccessibilityRole, Color, MountItem, NodeId};
     use nsh_engine::{EngineConfig, Root};
     use nsh_testing::Headless;
 
@@ -385,7 +387,7 @@ mod tests {
     #[test]
     fn labels_and_ids_name_the_card() {
         let cell = CardCell::new(CardStyle::Elevated, CardKind::Clickable);
-        assert_eq!(cell.label(), "Elevated clickable");
+        assert_eq!(cell.label(), "Elevated card, clickable");
         assert_eq!(cell.style_name(), "elevated");
         assert_eq!(cell.kind_name(), "clickable");
         assert_eq!(cell.test_id(), "card-elevated-clickable");
@@ -395,7 +397,11 @@ mod tests {
             .collect();
         assert_eq!(
             labels,
-            ["Elevated", "Elevated clickable", "Elevated disabled"]
+            [
+                "Elevated card",
+                "Elevated card, clickable",
+                "Elevated card, disabled"
+            ]
         );
         let styles: Vec<String> = STYLES
             .into_iter()
@@ -486,6 +492,52 @@ mod tests {
                 },
                 "{cell:?}"
             );
+        }
+    }
+
+    /// Every card shows its name in the on-surface color of the appearance, the content color of all three
+    /// containers, so that it reads on each of them.
+    #[test]
+    fn every_card_names_itself_in_the_on_surface_color_of_each_appearance() {
+        for (appearance, scheme) in [
+            (Appearance::Light, ColorScheme::BASELINE_LIGHT),
+            (Appearance::Dark, ColorScheme::BASELINE_DARK),
+        ] {
+            let mut app = Headless::start(EngineConfig {
+                environment: Environment {
+                    color_scheme: appearance,
+                    ..Environment::default()
+                },
+                ..EngineConfig::new(Root::of::<Catalog>())
+            })
+            .unwrap();
+            let items: Arc<Mutex<Vec<MountItem>>> = Arc::default();
+            let sink = Arc::clone(&items);
+            app.observe(move |_, batch| {
+                sink.lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .extend(batch.items.iter().cloned());
+            });
+            app.wait_for("Filled").unwrap();
+            let items = items.lock().unwrap_or_else(PoisonError::into_inner).clone();
+            let names: HashMap<String, Color> = items
+                .iter()
+                .filter_map(|item| match item {
+                    MountItem::Text { text, .. } => text
+                        .spans
+                        .first()
+                        .map(|span| (text.text.clone(), span.style.color)),
+                    _ => None,
+                })
+                .collect();
+            let on_surface = Color((scheme.on_surface.to_hex() << 8) | 0xff);
+            for cell in CardCell::all() {
+                assert_eq!(
+                    names.get(&cell.label()),
+                    Some(&on_surface),
+                    "{cell:?} in {appearance:?}"
+                );
+            }
         }
     }
 }

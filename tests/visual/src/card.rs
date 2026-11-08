@@ -18,7 +18,7 @@ use nsh_m3e::color::{ColorRole, ColorScheme};
 use nsh_m3e::elevation::Elevation;
 use nsh_m3e::tokens::Shape;
 use nsh_m3e::tokens::androidx::{
-    elevated_card_tokens, filled_card_tokens, outlined_card_tokens, state_tokens,
+    elevated_card_tokens, filled_card_tokens, outlined_card_tokens, shape_tokens, state_tokens,
 };
 
 use super::{Appearance, Image, Mismatch, Probe, Rgb, Target, faded, pixel_of, points_to_u32};
@@ -123,15 +123,14 @@ fn edge(cell: CardCell, scheme: &ColorScheme, hovered: bool) -> (Rgb, u8) {
     }
 }
 
-/// The radius of the corners of the card `cell`: its style's `ContainerShape`, which is `CornerMedium` for the three.
+/// The shape of the container of every card: `CornerMedium`, whichever the style (`FilledCardTokens`,
+/// `ElevatedCardTokens` and `OutlinedCardTokens` all say it; a test pins that they do).
+const CARD_SHAPE: Shape = shape_tokens::CORNER_MEDIUM;
+
+/// The radius of the corners of the card `cell`.
 fn corner_radius(cell: CardCell) -> Points {
-    let shape = match cell.style {
-        CardStyle::Elevated => elevated_card_tokens::CONTAINER_SHAPE,
-        CardStyle::Outlined => outlined_card_tokens::CONTAINER_SHAPE,
-        _ => filled_card_tokens::CONTAINER_SHAPE,
-    };
     let (width, height) = cell.frame();
-    radius(shape, Points(width.0.min(height.0)))
+    radius(CARD_SHAPE, Points(width.0.min(height.0)))
 }
 
 /// The radius of the corners of `shape` on a box whose shorter side is `side`: no more than half of it, which is the
@@ -473,7 +472,6 @@ fn shaded(color: Rgb, numerator: u16, denominator: u16) -> Rgb {
 mod tests {
     use catalog::card::{GAP, HEIGHT, KINDS, WIDTH};
     use nsh_m3e::card::CardState;
-    use nsh_m3e::tokens::androidx::shape_tokens;
 
     use super::*;
     use crate::BLEND_TOLERANCE;
@@ -630,7 +628,10 @@ mod tests {
         // Deep enough for the arc's antialiasing and the 1-point outline, and the first such pixel.
         assert!(depth(offset, 12.0) >= ARC_MARGIN);
         assert!(depth(offset - 1.0, 12.0) < ARC_MARGIN);
-        // Every card's corner is CornerMedium, 12 points, which fits in a box of 96 by 160.
+        // Every style's container shape is CornerMedium, 12 points, which fits in a box of 96 by 160.
+        assert_eq!(filled_card_tokens::CONTAINER_SHAPE, CARD_SHAPE);
+        assert_eq!(elevated_card_tokens::CONTAINER_SHAPE, CARD_SHAPE);
+        assert_eq!(outlined_card_tokens::CONTAINER_SHAPE, CARD_SHAPE);
         for card in CardCell::all() {
             assert_eq!(corner_radius(card), Points(12.0), "{card:?}");
         }
