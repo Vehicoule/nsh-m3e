@@ -5,8 +5,9 @@
 //! icon button of the catalog, the pixels whose color the tokens give: the container's color inside it, the
 //! outline's on its edge, the surface outside its top left corner, where a rounded corner leaves the background, and
 //! an icon button's icon color in its middle; and for every navigation bar, its edges against the surface, the
-//! container's color and each item's pill, icon and state layer ([`navigation`]). Where the antialiasing of an edge,
-//! of the label or of the icon's edge makes a color unknown, nothing is checked.
+//! container's color and each item's pill, icon and state layer ([`navigation`]); and for every row of tabs, its
+//! edges, the divider, each tab's container, indicator bar, icon and state layer ([`tabs`]). Where the antialiasing of
+//! an edge, of the label or of the icon's edge makes a color unknown, nothing is checked.
 //!
 //! It is not a `cargo xtask` task: `xtask` must build when the library does not (it regenerates the library's
 //! tokens), so it cannot depend on it, and these checks take every expected color from the library's tokens.
@@ -18,9 +19,11 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 mod navigation;
+mod tabs;
 
 use catalog::grid::{self, Availability, Cell, IconCell};
 use catalog::navigation::{ItemState, NavCell};
+use catalog::tabs::{Content, RowKind, TabCell, TabState};
 use nsh_core::geometry::Points;
 use nsh_m3e::button::{ButtonShape, ButtonSize, ButtonStyle};
 use nsh_m3e::color::{ColorRole, ColorScheme};
@@ -78,23 +81,30 @@ impl Appearance {
     }
 }
 
-/// A component of the catalog: a button, an icon button, a navigation bar or one of its items.
+/// A component of the catalog: a button, an icon button, a navigation bar or one of its items, a row of tabs or one
+/// of its tabs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Target {
     Button(Cell),
     IconButton(IconCell),
     NavigationBar(NavCell),
     NavigationItem(NavCell, ItemState),
+    TabRow(TabCell),
+    Tab(TabCell, TabState),
 }
 
 impl Target {
-    /// The test id of the view around it; an item's is its bar's and its own label.
+    /// The test id of the view around it; an item's or a tab's is its bar's or row's and its own label.
     fn test_id(self) -> String {
         match self {
             Self::Button(cell) => cell.test_id(),
             Self::IconButton(cell) => cell.test_id(),
             Self::NavigationBar(cell) => cell.test_id(),
             Self::NavigationItem(cell, state) => {
+                format!("{}-{}", cell.test_id(), state.label().to_lowercase())
+            }
+            Self::TabRow(cell) => cell.test_id(),
+            Self::Tab(cell, state) => {
                 format!("{}-{}", cell.test_id(), state.label().to_lowercase())
             }
         }
@@ -118,6 +128,20 @@ fn hovered_items() -> [Target; 4] {
     ]
 }
 
+/// The tabs the mouse is over in the screenshots, each in its row, with its icon alone so that the icon's color is read
+/// under the state layer: the three tabs of the first primary row, whose container and icon are then all read, and the
+/// unselected tab of the first secondary row, whose state layer is another color.
+fn hovered_tabs() -> [Target; 4] {
+    let primary = TabCell::new(RowKind::Primary, Content::Icon);
+    let secondary = TabCell::new(RowKind::Secondary, Content::Icon);
+    [
+        Target::Tab(primary, TabState::Selected),
+        Target::Tab(primary, TabState::Unselected),
+        Target::Tab(primary, TabState::Disabled),
+        Target::Tab(secondary, TabState::Unselected),
+    ]
+}
+
 /// One screenshot the test scripts take.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Shot {
@@ -129,7 +153,7 @@ struct Shot {
 impl Shot {
     /// Every screenshot `examples/catalog/button.test.tsx` takes, in each appearance: the catalog at rest, then the
     /// mouse over the small round enabled button of each style, then over the small uniform round enabled icon
-    /// button of each style, then over each of [`hovered_items`].
+    /// button of each style, then over each of [`hovered_items`], then over each of [`hovered_tabs`].
     fn all() -> Vec<Self> {
         Appearance::ALL
             .into_iter()
@@ -161,6 +185,7 @@ impl Shot {
                             .into_iter()
                             .map(move |item| shot(Some(item))),
                     )
+                    .chain(hovered_tabs().into_iter().map(move |tab| shot(Some(tab))))
             })
             .collect()
     }
@@ -179,8 +204,13 @@ impl Shot {
                     cell.label().to_lowercase()
                 )
             }
-            Some(item @ (Target::NavigationItem(..) | Target::NavigationBar(_))) => {
-                format!("{appearance}-hover-{}.png", item.test_id())
+            Some(
+                target @ (Target::NavigationItem(..)
+                | Target::NavigationBar(_)
+                | Target::Tab(..)
+                | Target::TabRow(_)),
+            ) => {
+                format!("{appearance}-hover-{}.png", target.test_id())
             }
         }
     }
@@ -194,6 +224,14 @@ impl Shot {
     fn hovered_item(self, cell: NavCell) -> Option<ItemState> {
         match self.hovered {
             Some(Target::NavigationItem(bar, state)) if bar == cell => Some(state),
+            _ => None,
+        }
+    }
+
+    /// The tab of the row `cell` the mouse is over in it, if any.
+    fn hovered_tab(self, cell: TabCell) -> Option<TabState> {
+        match self.hovered {
+            Some(Target::Tab(row, state)) if row == cell => Some(state),
             _ => None,
         }
     }
@@ -558,7 +596,7 @@ fn icon_probes(cell: IconCell, scheme: &ColorScheme, hovered: bool) -> Vec<Probe
     probes
 }
 
-/// The pixels the checks know in `shot`, for every button, icon button and navigation bar of the catalog.
+/// The pixels the checks know in `shot`, for every button, icon button, navigation bar and row of tabs of the catalog.
 fn shot_probes(shot: Shot) -> Vec<Probe> {
     let scheme = shot.appearance.scheme();
     Cell::all()
@@ -571,6 +609,7 @@ fn shot_probes(shot: Shot) -> Vec<Probe> {
             NavCell::all()
                 .flat_map(|cell| navigation::probes(cell, &scheme, shot.hovered_item(cell))),
         )
+        .chain(TabCell::all().flat_map(|cell| tabs::probes(cell, &scheme, shot.hovered_tab(cell))))
         .collect()
 }
 
@@ -1276,7 +1315,8 @@ mod tests {
         let icon_buttons = count(|t| matches!(t, Target::IconButton(_)));
         let navigation =
             count(|t| matches!(t, Target::NavigationBar(_) | Target::NavigationItem(..)));
-        assert_eq!(rest.len(), buttons + icon_buttons + navigation);
+        let tabs = count(|t| matches!(t, Target::TabRow(_) | Target::Tab(..)));
+        assert_eq!(rest.len(), buttons + icon_buttons + navigation + tabs);
         assert_eq!(
             buttons,
             Cell::all()
@@ -1295,8 +1335,15 @@ mod tests {
                 .map(|c| navigation::probes(c, &LIGHT, None).len())
                 .sum::<usize>()
         );
+        assert_eq!(
+            tabs,
+            TabCell::all()
+                .map(|c| tabs::probes(c, &LIGHT, None).len())
+                .sum::<usize>()
+        );
         assert!(icon_buttons >= IconCell::all().count() * 3);
         assert!(navigation >= NavCell::all().count() * 8);
+        assert!(tabs >= TabCell::all().count() * 20);
     }
 
     /// The mouse over a navigation item changes that item's probes and no one else's, and over a disabled item
@@ -1353,6 +1400,88 @@ mod tests {
         );
     }
 
+    /// The mouse over a tab changes that tab's probes and no one else's, and over a disabled tab nothing changes.
+    #[test]
+    fn a_hovered_tab_changes_only_its_own_probes() {
+        let shots = Shot::all();
+        let rest = shot_probes(shots[0]);
+        let primary = TabCell::new(RowKind::Primary, Content::Icon);
+        let secondary = TabCell::new(RowKind::Secondary, Content::Icon);
+        let differing = |shot: Shot| -> Vec<(Target, &str)> {
+            let found = shot_probes(shot);
+            assert_eq!(found.len(), rest.len());
+            found
+                .iter()
+                .zip(&rest)
+                .filter(|(a, b)| a != b)
+                .map(|(a, _)| (a.target, a.what))
+                .collect()
+        };
+        // Over the selected tab: its container, the pixel above its bar, the two of its bar's sides that are not the bar
+        // and, in a primary row, the two beyond the bar's ends, and its icon; not the bar, and no other tab.
+        let selected = shots[13];
+        assert_eq!(
+            selected.hovered,
+            Some(Target::Tab(primary, TabState::Selected))
+        );
+        let tab = Target::Tab(primary, TabState::Selected);
+        assert_eq!(
+            differing(selected),
+            [
+                (tab, "container"),
+                (tab, "above the bar"),
+                (tab, "bar at the left edge"),
+                (tab, "bar at the right edge"),
+                (tab, "left of the bar"),
+                (tab, "right of the bar"),
+                (tab, "icon"),
+            ]
+        );
+        // Over the unselected tab: the same reads, and the pixel where the bar would be, but no ends of a bar.
+        let unselected = shots[14];
+        assert_eq!(
+            unselected.hovered,
+            Some(Target::Tab(primary, TabState::Unselected))
+        );
+        let tab = Target::Tab(primary, TabState::Unselected);
+        assert_eq!(
+            differing(unselected),
+            [
+                (tab, "container"),
+                (tab, "above the bar"),
+                (tab, "bar top"),
+                (tab, "bar at the left edge"),
+                (tab, "bar at the right edge"),
+                (tab, "icon"),
+            ]
+        );
+        // Over the disabled one, no state layer: the screenshot is read as at rest.
+        let disabled = shots[15];
+        assert_eq!(
+            disabled.hovered,
+            Some(Target::Tab(primary, TabState::Disabled))
+        );
+        assert_eq!(shot_probes(disabled), rest);
+        // The secondary row's unselected tab: the same reads as the primary row's, in the other row.
+        let other = shots[16];
+        assert_eq!(
+            other.hovered,
+            Some(Target::Tab(secondary, TabState::Unselected))
+        );
+        let tab = Target::Tab(secondary, TabState::Unselected);
+        assert_eq!(
+            differing(other),
+            [
+                (tab, "container"),
+                (tab, "above the bar"),
+                (tab, "bar top"),
+                (tab, "bar at the left edge"),
+                (tab, "bar at the right edge"),
+                (tab, "icon"),
+            ]
+        );
+    }
+
     #[test]
     fn a_target_is_named_by_its_test_id() {
         let button = cell(ButtonStyle::Text, Availability::Disabled);
@@ -1370,6 +1499,12 @@ mod tests {
         assert_eq!(
             Target::NavigationItem(bar, ItemState::Unselected).test_id(),
             "navigation-equal-top-shown-search"
+        );
+        let row = TabCell::new(RowKind::Secondary, Content::Both);
+        assert_eq!(Target::TabRow(row).test_id(), "tabs-secondary-both");
+        assert_eq!(
+            Target::Tab(row, TabState::Disabled).test_id(),
+            "tabs-secondary-both-artists"
         );
     }
 
@@ -1392,6 +1527,10 @@ mod tests {
                 "light-hover-navigation-equal-top-shown-search.png",
                 "light-hover-navigation-equal-top-shown-library.png",
                 "light-hover-navigation-equal-start-shown-search.png",
+                "light-hover-tabs-primary-icon-songs.png",
+                "light-hover-tabs-primary-icon-albums.png",
+                "light-hover-tabs-primary-icon-artists.png",
+                "light-hover-tabs-secondary-icon-albums.png",
                 "dark-rest.png",
                 "dark-hover-filled.png",
                 "dark-hover-tonal.png",
@@ -1405,11 +1544,15 @@ mod tests {
                 "dark-hover-navigation-equal-top-shown-search.png",
                 "dark-hover-navigation-equal-top-shown-library.png",
                 "dark-hover-navigation-equal-start-shown-search.png",
+                "dark-hover-tabs-primary-icon-songs.png",
+                "dark-hover-tabs-primary-icon-albums.png",
+                "dark-hover-tabs-primary-icon-artists.png",
+                "dark-hover-tabs-secondary-icon-albums.png",
             ]
         );
         assert_eq!(Shot::all()[0].appearance.scheme(), LIGHT);
         assert_eq!(
-            Shot::all()[13].appearance.scheme(),
+            Shot::all()[17].appearance.scheme(),
             ColorScheme::BASELINE_DARK
         );
         // The icon buttons hovered are the small uniform round enabled ones.

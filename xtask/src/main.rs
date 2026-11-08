@@ -85,6 +85,14 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
+        file: "DividerTokens.kt",
+        object: None,
+        doc: &[
+            "The divider's color and thickness. The color is a role of the scheme ([`crate::color::ColorRole`]), \
+             resolved against the light or dark [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
         file: "ElevatedButtonTokens.kt",
         object: None,
         doc: &[
@@ -229,6 +237,25 @@ const SOURCES: &[Source] = &[
              error) at a range of tones from 0 (black) to 100 (white), in 8-bit sRGB.",
             "Components never draw with a palette color: they draw with a color role of the scheme, which names one \
              of these tones ([`super::color_light_tokens`], [`super::color_dark_tokens`]).",
+        ],
+    },
+    Source {
+        file: "PrimaryNavigationTabTokens.kt",
+        object: None,
+        doc: &[
+            "The primary tab and its row: the container (color, height, shape), the active indicator (color, height, \
+             shape), and the icon and label colors of a tab active or inactive, with hover, focus and press. Colors are \
+             roles of the scheme ([`crate::color::ColorRole`]), resolved against the light or dark \
+             [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
+        file: "SecondaryNavigationTabTokens.kt",
+        object: None,
+        doc: &[
+            "The secondary tab and its row: the container (color, height, shape), the divider (color, height), and the \
+             icon and label colors of a tab active or inactive, with hover, focus and press. Colors are roles of the \
+             scheme ([`crate::color::ColorRole`]), resolved against the light or dark [`crate::color::ColorScheme`].",
         ],
     },
     Source {

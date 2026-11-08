@@ -234,6 +234,7 @@ mod tests {
     use std::collections::HashSet;
 
     use super::*;
+    use crate::tabs;
 
     #[test]
     fn every_bar_is_once_in_the_catalog() {
@@ -311,8 +312,9 @@ mod tests {
             assert!(y.0 >= top().0, "{cell:?}");
             assert!(y.0 + cell.height().0 <= height.0 - MARGIN.0, "{cell:?}");
         }
-        // The last row and its gap end at the bottom margin, which is where the viewport ends.
-        assert_eq!(bottom().0 + MARGIN.0, height.0);
+        // The last row and its gap end where the tab rows begin, above the bottom margin.
+        assert_eq!(bottom(), tabs::top());
+        assert!(bottom().0 + MARGIN.0 <= height.0);
     }
 
     #[test]

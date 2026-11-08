@@ -4,15 +4,16 @@
 // inside its app, so this file is beside the catalog's `nsh.json`.
 //
 // The catalog shows every size, style, shape and availability of the button on a grid, every size, width, style,
-// shape and availability of the icon button on a second grid below it, and every arrangement, icon position and label
-// visibility of the navigation bar on a third.
+// shape and availability of the icon button on a second grid below it, every arrangement, icon position and label
+// visibility of the navigation bar on a third, and every kind of row of tabs with a label, an icon and both on a fourth.
 // Each appearance gets one screenshot at rest, one with the mouse over the small round enabled button of each style,
-// one with the mouse over the small uniform round enabled icon button of each style, and one with the mouse over each
-// of four items of the navigation bars. The file names are those `visual-checks` reads (`Shot::file_name`).
+// one with the mouse over the small uniform round enabled icon button of each style, one with the mouse over each of
+// four items of the navigation bars, and one with the mouse over each of four tabs. The file names are those
+// `visual-checks` reads (`Shot::file_name`).
 import { expect, open, test } from "nsh/test";
 
 // The catalog's viewport (`catalog::grid::viewport`); `visual-checks` refuses a screenshot of another size.
-const VIEWPORT = { width: 2608, height: 2848 };
+const VIEWPORT = { width: 2608, height: 2976 };
 
 const STYLES = ["filled", "tonal", "outlined", "text"];
 
@@ -27,10 +28,19 @@ const NAVIGATION_ITEMS = [
   ["navigation-equal-start-shown", "Search"],
 ] as const;
 
+// The tabs the mouse goes over, each as its row's test id and its label (`visual-checks`' `hovered_tabs`): all three tabs
+// of the first primary row with its icons alone, and the unselected one of the secondary row with its icons alone.
+const TABS = [
+  ["tabs-primary-icon", "Songs"],
+  ["tabs-primary-icon", "Albums"],
+  ["tabs-primary-icon", "Artists"],
+  ["tabs-secondary-icon", "Albums"],
+] as const;
+
 for (const scheme of ["light", "dark"] as const) {
   test(`the buttons in ${scheme} appearance`, async () => {
     const app = await open(".", { ...VIEWPORT, colorScheme: scheme });
-    for (const label of ["Filled", "Tonal", "Outlined", "Text", "Home", "Search"]) {
+    for (const label of ["Filled", "Tonal", "Outlined", "Text", "Home", "Search", "Songs"]) {
       expect(app.texts()).toContain(label);
     }
     await app.screenshot(`target/visual/${scheme}-rest.png`);
@@ -46,6 +56,12 @@ for (const scheme of ["light", "dark"] as const) {
       await app.hover(`id:${bar} >> label:${item}`);
       await app.screenshot(
         `target/visual/${scheme}-hover-${bar}-${item.toLowerCase()}.png`,
+      );
+    }
+    for (const [row, tab] of TABS) {
+      await app.hover(`id:${row} >> label:${tab}`);
+      await app.screenshot(
+        `target/visual/${scheme}-hover-${row}-${tab.toLowerCase()}.png`,
       );
     }
   });
