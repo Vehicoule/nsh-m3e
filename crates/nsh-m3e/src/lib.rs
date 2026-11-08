@@ -23,6 +23,8 @@ pub mod motion;
 pub mod navigation_bar;
 pub mod navigation_item;
 pub mod snackbar;
+pub mod switch;
 pub mod tabs;
 mod tint;
+pub mod toggle_button;
 pub mod tokens;

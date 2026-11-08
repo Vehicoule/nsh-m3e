@@ -329,6 +329,15 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
+        file: "SwitchTokens.kt",
+        object: None,
+        doc: &[
+            "The switch's track, handle and icon: their sizes, and their colors in each state, selected and unselected, \
+             enabled and disabled. Colors are roles of the scheme ([`crate::color::ColorRole`]), resolved against the \
+             light or dark [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
         file: "TextButtonTokens.kt",
         object: None,
         doc: &[

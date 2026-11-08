@@ -266,25 +266,25 @@ mod tests {
     fn the_rows_and_columns_are_where_the_layout_says() {
         let first = TabCell::default();
         // Below the navigation bars: they end at 2,824 points, the last row's gap included.
-        assert_eq!(top(), Points(2824.0));
-        assert_eq!(first.origin(), (Points(24.0), Points(2824.0)));
+        assert_eq!(top(), Points(2920.0));
+        assert_eq!(first.origin(), (Points(24.0), Points(2920.0)));
         let icon = TabCell {
             content: Content::Icon,
             ..first
         };
-        assert_eq!(icon.origin(), (Points(664.0), Points(2824.0)));
+        assert_eq!(icon.origin(), (Points(664.0), Points(2920.0)));
         let both = TabCell {
             content: Content::Both,
             ..first
         };
-        assert_eq!(both.origin(), (Points(1304.0), Points(2824.0)));
+        assert_eq!(both.origin(), (Points(1304.0), Points(2920.0)));
         // Secondary is the second row: below the first row (48 points) and the gap.
         let secondary = TabCell {
             kind: RowKind::Secondary,
             ..first
         };
-        assert_eq!(secondary.origin(), (Points(24.0), Points(2888.0)));
-        assert_eq!(bottom(), Points(2952.0));
+        assert_eq!(secondary.origin(), (Points(24.0), Points(2984.0)));
+        assert_eq!(bottom(), Points(3048.0));
     }
 
     #[test]
@@ -308,7 +308,7 @@ mod tests {
         let centers: Vec<f32> = TABS.into_iter().map(|s| row.tab_center(s).0.0).collect();
         assert_eq!(centers, [104.0, 264.0, 424.0]);
         // Every tab is in the middle of the row's height (2,824 and half of 48 points).
-        assert_eq!(row.tab_center(TabState::Selected).1, Points(2848.0));
+        assert_eq!(row.tab_center(TabState::Selected).1, Points(2944.0));
         assert_eq!(row.tab_left(TabState::Disabled), Points(344.0));
     }
 

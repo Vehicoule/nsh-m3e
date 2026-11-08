@@ -203,15 +203,15 @@ mod tests {
             );
         };
         // A bar of 480 points at 24, 2,664 and 64 points tall: its middle is 2,696.
-        assert_eq!((x, y), (Points(24.0), Points(2664.0)));
-        at("surface left of the bar", 23.0, 2696.0, surface);
-        at("container at the left edge", 24.0, 2696.0, container);
-        at("container at the right edge", 503.0, 2696.0, container);
-        at("surface right of the bar", 504.0, 2696.0, surface);
-        at("surface above the bar", 26.0, 2663.0, surface);
-        at("container at the top", 26.0, 2664.0, container);
-        at("container at the bottom", 26.0, 2727.0, container);
-        at("surface below the bar", 26.0, 2728.0, surface);
+        assert_eq!((x, y), (Points(24.0), Points(2760.0)));
+        at("surface left of the bar", 23.0, 2792.0, surface);
+        at("container at the left edge", 24.0, 2792.0, container);
+        at("container at the right edge", 503.0, 2792.0, container);
+        at("surface right of the bar", 504.0, 2792.0, surface);
+        at("surface above the bar", 26.0, 2759.0, surface);
+        at("container at the top", 26.0, 2760.0, container);
+        at("container at the bottom", 26.0, 2823.0, container);
+        at("surface below the bar", 26.0, 2824.0, surface);
     }
 
     #[test]
@@ -232,7 +232,7 @@ mod tests {
                 );
                 assert_eq!(
                     (probe.x, probe.y, probe.expected, probe.tolerance),
-                    (Points(center), Points(2666.0), container, 0),
+                    (Points(center), Points(2762.0), container, 0),
                     "{state:?}"
                 );
             }
@@ -252,7 +252,7 @@ mod tests {
             let probe = named(&probes, Target::NavigationItem(cell, state), "pill");
             assert_eq!(
                 (probe.x, probe.y, probe.expected, probe.tolerance),
-                (Points(x), Points(2686.0), expected, 0),
+                (Points(x), Points(2782.0), expected, 0),
                 "{state:?}"
             );
         };
@@ -270,7 +270,7 @@ mod tests {
             let icon = |state| {
                 let probe = named(&probes, Target::NavigationItem(cell, state), "icon");
                 // The icon's middle: the pill's, 2,686 points down.
-                assert_eq!(probe.y, Points(2686.0));
+                assert_eq!(probe.y, Points(2782.0));
                 (probe.x, probe.expected, probe.tolerance)
             };
             let selected = Rgb::of(&scheme, bar::ITEM_ACTIVE_ICON_COLOR);
@@ -367,17 +367,17 @@ mod tests {
         let (pill, icon) = places(
             cell(NavigationItemIconPosition::Top, NavigationItemLabel::Shown),
             104.0,
-            2696.0,
-            2664.0,
+            2792.0,
+            2760.0,
         );
-        assert_eq!((pill, icon), ((84.0, 2686.0), Some((104.0, 2686.0))));
+        assert_eq!((pill, icon), ((84.0, 2782.0), Some((104.0, 2782.0))));
         let (pill, icon) = places(
             cell(NavigationItemIconPosition::Top, NavigationItemLabel::Hidden),
             104.0,
-            2696.0,
-            2664.0,
+            2792.0,
+            2760.0,
         );
-        assert_eq!((pill, icon), ((84.0, 2696.0), Some((104.0, 2696.0))));
+        assert_eq!((pill, icon), ((84.0, 2792.0), Some((104.0, 2792.0))));
         // Start: the pill is read 16 points above the middle; the icon only where there is no label.
         let (pill, icon) = places(
             cell(
@@ -385,20 +385,20 @@ mod tests {
                 NavigationItemLabel::Hidden,
             ),
             104.0,
-            2696.0,
-            2664.0,
+            2792.0,
+            2760.0,
         );
-        assert_eq!((pill, icon), ((104.0, 2680.0), Some((104.0, 2696.0))));
+        assert_eq!((pill, icon), ((104.0, 2776.0), Some((104.0, 2792.0))));
         let (pill, icon) = places(
             cell(
                 NavigationItemIconPosition::Start,
                 NavigationItemLabel::Shown,
             ),
             104.0,
-            2696.0,
-            2664.0,
+            2792.0,
+            2760.0,
         );
-        assert_eq!((pill, icon), ((104.0, 2680.0), None));
+        assert_eq!((pill, icon), ((104.0, 2776.0), None));
     }
 
     #[test]

@@ -1,14 +1,15 @@
 //! Checks the known pixels of the catalog's screenshots (ADR 0013): `cargo run -p visual-checks -- <directory>`.
 //!
 //! `nsh test examples/catalog --target <host>` opens the catalog on one of NSH's hosts and saves its screenshots in
-//! `target/visual` (`examples/catalog/button.test.tsx` and `checkbox.test.tsx`). This reads each of them and checks,
-//! for every button and icon button of the catalog, the pixels whose color the tokens give: the container's color
-//! inside it, the outline's on its edge, the surface outside its top left corner, where a rounded corner leaves the
-//! background, and an icon button's icon color in its middle; for every checkbox, the places [`checkbox`] gives; for
-//! every navigation bar, its edges against the surface, the container's color and each item's pill, icon and state
-//! layer ([`navigation`]); and for every row of tabs, its edges, the divider, each tab's container, indicator bar,
-//! icon and state layer ([`tabs`]). Where the antialiasing of an edge, of the label or of the icon's edge makes a
-//! color unknown, nothing is checked.
+//! `target/visual` (`examples/catalog/button.test.tsx`, `switch.test.tsx` and `checkbox.test.tsx`). This reads
+//! each of them and checks, for every button and icon button of the catalog, the pixels whose color the tokens
+//! give: the container's color inside it, the outline's on its edge, the surface outside its top left corner,
+//! where a rounded corner leaves the background, and an icon button's icon color in its middle; the switches' are
+//! in [`switch`] and every checkbox's at the places [`checkbox`] gives; for every navigation bar, its edges
+//! against the surface, the container's color and each item's pill, icon and state layer ([`navigation`]); and for
+//! every row of tabs, its edges, the divider, each tab's container, indicator bar, icon and state layer
+//! ([`tabs`]). Where the antialiasing of an edge, of the label or of the icon's edge makes a color unknown,
+//! nothing is checked.
 //!
 //! It is not a `cargo xtask` task: `xtask` must build when the library does not (it regenerates the library's
 //! tokens), so it cannot depend on it, and these checks take every expected color from the library's tokens.
@@ -26,6 +27,7 @@ use std::process::ExitCode;
 use catalog::checkbox::CheckboxCell;
 use catalog::grid::{self, Availability, Cell, IconCell};
 use catalog::navigation::{ItemState, NavCell};
+use catalog::switch::SwitchCell;
 use catalog::tabs::{Content, RowKind, TabCell, TabState};
 use nsh_core::geometry::Points;
 use nsh_m3e::button::{ButtonShape, ButtonSize, ButtonStyle};
@@ -41,6 +43,8 @@ use nsh_m3e::tokens::androidx::{
     standard_icon_button_tokens, state_tokens, xlarge_icon_button_tokens,
     xsmall_icon_button_tokens,
 };
+
+mod switch;
 
 const USAGE: &str = "usage: cargo run -p visual-checks -- <directory of screenshots>";
 
@@ -84,8 +88,8 @@ impl Appearance {
     }
 }
 
-/// A component of the catalog: a button, an icon button, a checkbox, a navigation bar or one of its items, a row of tabs or
-/// one of its tabs.
+/// A component of the catalog: a button, an icon button, a switch, a checkbox, a navigation bar or one of its items, a
+/// row of tabs or one of its tabs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Target {
     Button(Cell),
@@ -94,6 +98,7 @@ enum Target {
     NavigationItem(NavCell, ItemState),
     TabRow(TabCell),
     Tab(TabCell, TabState),
+    Switch(SwitchCell),
     Checkbox(CheckboxCell),
 }
 
@@ -111,6 +116,7 @@ impl Target {
             Self::Tab(cell, state) => {
                 format!("{}-{}", cell.test_id(), state.label().to_lowercase())
             }
+            Self::Switch(cell) => cell.test_id(),
             Self::Checkbox(cell) => cell.test_id(),
         }
     }
@@ -158,7 +164,8 @@ struct Shot {
 impl Shot {
     /// Every screenshot `examples/catalog/button.test.tsx` takes, in each appearance: the catalog at rest, then the
     /// mouse over the small round enabled button of each style, then over the small uniform round enabled icon
-    /// button of each style, then over each of [`hovered_items`], then over each of [`hovered_tabs`].
+    /// button of each style, then over each of [`hovered_items`], then over each of [`hovered_tabs`]; then those
+    /// `examples/catalog/switch.test.tsx` takes, in each appearance: the mouse over each of [`switch::HOVERED`].
     fn all() -> Vec<Self> {
         Appearance::ALL
             .into_iter()
@@ -192,6 +199,12 @@ impl Shot {
                     )
                     .chain(hovered_tabs().into_iter().map(move |tab| shot(Some(tab))))
             })
+            .chain(Appearance::ALL.into_iter().flat_map(|appearance| {
+                switch::HOVERED.into_iter().map(move |cell| Self {
+                    appearance,
+                    hovered: Some(Target::Switch(cell)),
+                })
+            }))
             .collect()
     }
 
@@ -217,6 +230,8 @@ impl Shot {
             ) => {
                 format!("{appearance}-hover-{}.png", target.test_id())
             }
+            // The test id already starts with `switch-`.
+            Some(Target::Switch(cell)) => format!("{appearance}-hover-{}.png", cell.test_id()),
             // The buttons' script never hovers a checkbox; the checkbox's own shots are `checkbox::Shot`.
             Some(Target::Checkbox(cell)) => format!("{appearance}-hover-{}.png", cell.test_id()),
         }
@@ -603,7 +618,8 @@ fn icon_probes(cell: IconCell, scheme: &ColorScheme, hovered: bool) -> Vec<Probe
     probes
 }
 
-/// The pixels the checks know in `shot`, for every button, icon button, navigation bar and row of tabs of the catalog.
+/// The pixels the checks know in `shot`, for every button, icon button, switch, navigation bar and row of tabs of the
+/// catalog.
 fn shot_probes(shot: Shot) -> Vec<Probe> {
     let scheme = shot.appearance.scheme();
     Cell::all()
@@ -611,6 +627,10 @@ fn shot_probes(shot: Shot) -> Vec<Probe> {
         .chain(
             IconCell::all()
                 .flat_map(|cell| icon_probes(cell, &scheme, shot.hovers(Target::IconButton(cell)))),
+        )
+        .chain(
+            SwitchCell::all()
+                .flat_map(|cell| switch::probes(cell, &scheme, shot.hovers(Target::Switch(cell)))),
         )
         .chain(
             NavCell::all()
@@ -1348,10 +1368,20 @@ mod tests {
         let count = |is: fn(&Target) -> bool| rest.iter().filter(|p| is(&p.target)).count();
         let buttons = count(|t| matches!(t, Target::Button(_)));
         let icon_buttons = count(|t| matches!(t, Target::IconButton(_)));
+        let switches = count(|t| matches!(t, Target::Switch(_)));
         let navigation =
             count(|t| matches!(t, Target::NavigationBar(_) | Target::NavigationItem(..)));
         let tabs = count(|t| matches!(t, Target::TabRow(_) | Target::Tab(..)));
-        assert_eq!(rest.len(), buttons + icon_buttons + navigation + tabs);
+        assert_eq!(
+            rest.len(),
+            buttons + icon_buttons + switches + navigation + tabs
+        );
+        assert_eq!(
+            switches,
+            SwitchCell::all()
+                .map(|c| switch::probes(c, &LIGHT, false).len())
+                .sum::<usize>()
+        );
         assert_eq!(
             buttons,
             Cell::all()
@@ -1583,6 +1613,10 @@ mod tests {
                 "dark-hover-tabs-primary-icon-albums.png",
                 "dark-hover-tabs-primary-icon-artists.png",
                 "dark-hover-tabs-secondary-icon-albums.png",
+                "light-hover-switch-off-plain-enabled.png",
+                "light-hover-switch-on-icon-enabled.png",
+                "dark-hover-switch-off-plain-enabled.png",
+                "dark-hover-switch-on-icon-enabled.png",
             ]
         );
         assert_eq!(Shot::all()[0].appearance.scheme(), LIGHT);

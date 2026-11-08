@@ -29,6 +29,7 @@ components=(
     NavigationItem.kt
     Checkbox.kt
     ComposeMaterial3Flags.kt
+    Switch.kt
     ProgressIndicator.kt
     Ripple.kt
     ShortNavigationBar.kt
@@ -39,6 +40,7 @@ components=(
     internal/CircularWavyProgressModifiers.kt
     Snackbar.kt
     ComposeMaterial3Flags.kt
+    ToggleButton.kt
 )
 
 root="$(git rev-parse --show-toplevel)"

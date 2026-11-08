@@ -278,12 +278,12 @@ mod tests {
             );
         };
         // A row of 480 points at 24, 2,824 and 48 points tall: its divider's line is 2,871.
-        assert_eq!(cell.origin(), (Points(24.0), Points(2824.0)));
-        at("surface left of the row", 23.0, 2871.0, surface);
-        at("surface right of the row", 504.0, 2871.0, surface);
-        at("surface above the row", 26.0, 2823.0, surface);
-        at("surface below the row", 26.0, 2872.0, surface);
-        at("divider at the right edge", 503.0, 2871.0, divider);
+        assert_eq!(cell.origin(), (Points(24.0), Points(2920.0)));
+        at("surface left of the row", 23.0, 2967.0, surface);
+        at("surface right of the row", 504.0, 2967.0, surface);
+        at("surface above the row", 26.0, 2919.0, surface);
+        at("surface below the row", 26.0, 2968.0, surface);
+        at("divider at the right edge", 503.0, 2967.0, divider);
         assert_eq!(all.iter().filter(|p| p.target == target).count(), 5);
     }
 
@@ -328,33 +328,33 @@ mod tests {
         let top = |state| read(cell, &LIGHT, None, state, "bar top");
         assert_eq!(
             top(TabState::Selected),
-            ((Points(104.0), Points(2869.0)), indicator, 0)
+            ((Points(104.0), Points(2965.0)), indicator, 0)
         );
         assert_eq!(
             top(TabState::Unselected),
-            ((Points(264.0), Points(2869.0)), container, 0)
+            ((Points(264.0), Points(2965.0)), container, 0)
         );
         assert_eq!(
             top(TabState::Disabled),
-            ((Points(424.0), Points(2869.0)), container, 0)
+            ((Points(424.0), Points(2965.0)), container, 0)
         );
         let line = |state| read(cell, &LIGHT, None, state, "bottom line");
         assert_eq!(
             line(TabState::Selected),
-            ((Points(104.0), Points(2871.0)), indicator, 0)
+            ((Points(104.0), Points(2967.0)), indicator, 0)
         );
         assert_eq!(
             line(TabState::Unselected),
-            ((Points(264.0), Points(2871.0)), divider, 0)
+            ((Points(264.0), Points(2967.0)), divider, 0)
         );
         assert_eq!(
             line(TabState::Disabled),
-            ((Points(424.0), Points(2871.0)), divider, 0)
+            ((Points(424.0), Points(2967.0)), divider, 0)
         );
         // The bar is no taller than 3 points: above it, the container.
         assert_eq!(
             read(cell, &LIGHT, None, TabState::Selected, "above the bar"),
-            ((Points(104.0), Points(2868.0)), container, 0)
+            ((Points(104.0), Points(2964.0)), container, 0)
         );
     }
 
@@ -365,14 +365,14 @@ mod tests {
         let indicator = Rgb::of(&LIGHT, primary::ACTIVE_INDICATOR_COLOR);
         let container = Rgb::of(&LIGHT, secondary::CONTAINER_COLOR);
         // The second row is at 2,888: its bar's middle row is 2,934. The selected tab spans 24 to 184.
-        assert_eq!(secondary_row.origin(), (Points(24.0), Points(2888.0)));
+        assert_eq!(secondary_row.origin(), (Points(24.0), Points(2984.0)));
         for (what, x) in [
             ("bar at the left edge", 24.0),
             ("bar at the right edge", 183.0),
         ] {
             assert_eq!(
                 read(secondary_row, &LIGHT, None, TabState::Selected, what),
-                ((Points(x), Points(2934.0)), indicator, 0),
+                ((Points(x), Points(3030.0)), indicator, 0),
                 "{what}"
             );
             // The tabs next to it have none at their edges.
@@ -400,19 +400,19 @@ mod tests {
         let read = |what| read(row, &LIGHT, None, TabState::Selected, what);
         assert_eq!(
             read("bar inside its left end"),
-            ((Points(736.0), Points(2870.0)), indicator, 0)
+            ((Points(736.0), Points(2966.0)), indicator, 0)
         );
         assert_eq!(
             read("bar inside its right end"),
-            ((Points(752.0), Points(2870.0)), indicator, 0)
+            ((Points(752.0), Points(2966.0)), indicator, 0)
         );
         assert_eq!(
             read("left of the bar"),
-            ((Points(728.0), Points(2870.0)), container, 0)
+            ((Points(728.0), Points(2966.0)), container, 0)
         );
         assert_eq!(
             read("right of the bar"),
-            ((Points(760.0), Points(2870.0)), container, 0)
+            ((Points(760.0), Points(2966.0)), container, 0)
         );
         // Only the selected tab of a primary row with an icon alone has them: a label's width is the font's, and a
         // secondary bar has no ends inside its tab.
@@ -442,9 +442,9 @@ mod tests {
                 assert_ne!(selected, unselected, "{kind:?}");
                 // The icon's middle: the icon column's first tab's, 744, and the row's, 24 points down.
                 let top = if kind == RowKind::Secondary {
-                    2912.0
+                    3008.0
                 } else {
-                    2848.0
+                    2944.0
                 };
                 let icon = |state| read(cell, &scheme, None, state, "icon");
                 assert_eq!(
