@@ -3,8 +3,8 @@
 //! The indicators sit in one column in the strip to the right of the icon buttons' grid: the space that grid leaves
 //! between its last column and the viewport's right margin, so that the viewport stays the size the buttons and the
 //! icon buttons make. The flat ones come first and the wavy ones after them; in each block there is one row per
-//! progress, the determinate ones from none of the work to all of it, and then the indeterminate one. The column
-//! starts at the top of the icon buttons' grid.
+//! progress, the determinate ones from none of the work to all of it, and then the indeterminate one. The column is
+//! at the left of the dividers' ([`grid::divider_left`]) and starts below them ([`top`]).
 //!
 //! The indicators are [`WIDTH`] points wide, narrower than the library's default of 240 points, which does not fit
 //! in that strip. The default width is the library's own tests' to pin.
@@ -15,7 +15,7 @@ use nsh_m3e::linear_progress_indicator::linear_progress_indicator;
 use nsh_m3e::progress::{Progress, ProgressShape};
 use nsh_m3e::tokens::androidx::linear_progress_indicator_tokens;
 
-use crate::grid::{self, ICON_COLUMN_WIDTH, ICON_STYLES, ICON_WIDTHS, MARGIN, ROW_GAP};
+use crate::grid::{self, DIVIDER_SPACE, DividerCell, MARGIN, ROW_GAP};
 
 /// Every shape, in the order of the row blocks.
 pub const SHAPES: [ProgressShape; 2] = [ProgressShape::Flat, ProgressShape::Wavy];
@@ -25,8 +25,8 @@ pub const SHAPES: [ProgressShape; 2] = [ProgressShape::Flat, ProgressShape::Wavy
 /// and one near the end, where the track is a few points long.
 pub const PERCENTS: [u8; 6] = [0, 10, 50, 90, 95, 100];
 
-/// How wide each indicator is: what the strip beside the icon buttons' grid leaves, less a margin on its left. A
-/// layout value of the catalog, not of Material.
+/// How wide each indicator is: less than the 144 points the strip beside the icon buttons' grid leaves between the
+/// dividers' gutter and the viewport's right margin. A layout value of the catalog, not of Material.
 pub const WIDTH: Points = Points(120.0);
 
 /// What an indicator of the catalog shows of the work.
@@ -132,7 +132,7 @@ impl ProgressCell {
     /// The top left corner of its container in the viewport, in points.
     #[must_use]
     pub fn origin(self) -> (Points, Points) {
-        let mut y = grid::icon_top().0;
+        let mut y = top().0;
         for shape in SHAPES {
             for reading in Reading::all() {
                 if (shape, reading) == (self.shape, self.reading) {
@@ -157,20 +157,27 @@ pub fn height(shape: ProgressShape) -> Points {
     }
 }
 
-/// The left edge of the column: past the icon buttons' grid and a margin.
+/// The left edge of the column: the dividers', past the icon buttons' grid and the gutter.
 #[must_use]
 pub fn left() -> Points {
-    let mut x = MARGIN.0;
-    for _ in 0..ICON_STYLES.len() * ICON_WIDTHS.len() {
-        x += ICON_COLUMN_WIDTH.0;
+    grid::divider_left()
+}
+
+/// The top of the column: below the dividers' column, which starts at the top of the icon buttons' grid, a row gap past
+/// the last divider's space.
+#[must_use]
+pub fn top() -> Points {
+    let mut top = grid::icon_top().0;
+    for _ in DividerCell::all() {
+        top += DIVIDER_SPACE.0 + ROW_GAP.0;
     }
-    Points(x + MARGIN.0)
+    Points(top)
 }
 
 /// The right and bottom edges of the indicators and the margin around them: what the viewport must hold of them.
 #[must_use]
 pub fn extent() -> (Points, Points) {
-    let mut bottom = grid::icon_top().0 + MARGIN.0;
+    let mut bottom = top().0 + MARGIN.0;
     for shape in SHAPES {
         for _ in Reading::all() {
             bottom += height(shape).0 + ROW_GAP.0;
@@ -245,41 +252,44 @@ mod tests {
     #[test]
     fn the_rows_are_where_the_layout_says() {
         use ProgressShape::{Flat, Wavy};
-        // Past the icon buttons' 12 columns of 200 points, which start at the margin, and a margin.
-        assert_eq!(left(), Points(2448.0));
+        // Past the icon buttons' 12 columns of 200 points, which start at the margin, and the gutter: where the
+        // dividers' column is.
+        assert_eq!(left(), Points(2440.0));
         assert_eq!(WIDTH, Points(120.0));
         let at = |shape, reading| ProgressCell::new(shape, reading).origin();
-        // The column starts at the top of the icon buttons' grid.
+        // The icon buttons' grid starts at 904 and the dividers' column with it; its six spaces of 96 points and
+        // their gaps (6 * 112) end at 1576, where the column starts.
         assert_eq!(grid::icon_top(), Points(904.0));
+        assert_eq!(top(), Points(1576.0));
         assert_eq!(
             at(Flat, Reading::Determinate(0)),
-            (Points(2448.0), Points(904.0))
+            (Points(2440.0), Points(1576.0))
         );
         // Below a flat indicator (4 points) and the gap.
         assert_eq!(
             at(Flat, Reading::Determinate(10)),
-            (Points(2448.0), Points(924.0))
+            (Points(2440.0), Points(1596.0))
         );
         assert_eq!(
             at(Flat, Reading::Determinate(100)),
-            (Points(2448.0), Points(1004.0))
+            (Points(2440.0), Points(1676.0))
         );
         assert_eq!(
             at(Flat, Reading::Indeterminate),
-            (Points(2448.0), Points(1024.0))
+            (Points(2440.0), Points(1696.0))
         );
         // The wavy block starts below the seven flat rows (7 * 20 points), and a wavy row is 10 points and the gap.
         assert_eq!(
             at(Wavy, Reading::Determinate(0)),
-            (Points(2448.0), Points(1044.0))
+            (Points(2440.0), Points(1716.0))
         );
         assert_eq!(
             at(Wavy, Reading::Determinate(10)),
-            (Points(2448.0), Points(1070.0))
+            (Points(2440.0), Points(1742.0))
         );
         assert_eq!(
             at(Wavy, Reading::Indeterminate),
-            (Points(2448.0), Points(1200.0))
+            (Points(2440.0), Points(1872.0))
         );
     }
 
@@ -314,16 +324,32 @@ mod tests {
             let (x, y) = cell.origin();
             let (cell_width, cell_height) = cell.frame();
             assert!(x.0 >= left().0, "{cell:?}");
-            assert!(y.0 >= grid::icon_top().0, "{cell:?}");
+            assert!(y.0 >= top().0, "{cell:?}");
             assert!(x.0 + cell_width.0 + MARGIN.0 <= width.0, "{cell:?}");
             assert!(y.0 + cell_height.0 + MARGIN.0 <= height.0, "{cell:?}");
         }
         // The edges they need, a margin past the last of them, are inside what the catalog is opened in: the strip
         // changes nothing of the viewport.
         let (right, bottom) = extent();
-        assert_eq!((right, bottom), (Points(2592.0), Points(1250.0)));
+        assert_eq!((right, bottom), (Points(2584.0), Points(1922.0)));
         assert!(right.0 <= width.0 && bottom.0 <= height.0);
         assert_eq!((width, height), (Points(2608.0), Points(2784.0)));
+    }
+
+    #[test]
+    fn the_column_starts_below_the_dividers_and_never_over_them() {
+        // The two columns are in the same strip, at the same left edge.
+        assert_eq!(left(), grid::divider_left());
+        for divider in DividerCell::all() {
+            let (x, y) = divider.origin();
+            assert_eq!(x, left(), "{divider:?}");
+            // Each divider's space and a row gap end above the column's top, so that no indicator is on a divider's
+            // space and the spaces' last row gap is the column's own.
+            assert!(y.0 + DIVIDER_SPACE.0 + ROW_GAP.0 <= top().0, "{divider:?}");
+        }
+        // The column's top is the last of them, exactly: no room is left unused between the two columns.
+        let last = DividerCell::all().last().map(|d| d.origin().1.0);
+        assert_eq!(last, Some(top().0 - ROW_GAP.0 - DIVIDER_SPACE.0));
     }
 
     #[test]

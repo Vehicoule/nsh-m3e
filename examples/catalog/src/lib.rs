@@ -1,5 +1,5 @@
 //! The catalog: every component of `nsh-m3e` in each of its states, for the visual checks of ADR 0013: the buttons,
-//! the icon buttons, the switches, the checkboxes and the linear progress indicators.
+//! the icon buttons, the switches, the checkboxes, the dividers and the linear progress indicators.
 //!
 //! `nsh test` opens it on NSH's hosts (`button.test.tsx`, `switch.test.tsx` and `checkbox.test.tsx`, beside its
 //! `nsh.json`) and saves screenshots of it; `visual-checks` reads the pixels it knows in them, at the places [`grid`]
@@ -22,11 +22,12 @@ use nsh_core::element::AdaptiveColor;
 use nsh_core::prelude::*;
 use nsh_m3e::button::button;
 use nsh_m3e::color::ColorScheme;
+use nsh_m3e::divider::divider;
 use nsh_m3e::icon::Icon;
 use nsh_m3e::icon_button::icon_button;
 use nsh_m3e::material_symbols::outlined;
 
-use crate::grid::{Availability, Cell, IconCell};
+use crate::grid::{Availability, Cell, DIVIDER_SPACE, DividerCell, IconCell};
 use crate::progress::ProgressCell;
 use crate::switch::SwitchCell;
 
@@ -39,8 +40,8 @@ fn native(registry: &mut Registry) {
     registry.register::<Catalog>();
 }
 
-/// Every button, icon button, switch, checkbox and progress indicator of the catalog at its place on the [`grid`], the
-/// [`switch`] grid, the [`checkbox`] grid and in the [`progress`] column, on the scheme's surface color.
+/// Every button, icon button, switch, checkbox, divider and progress indicator of the catalog at its place on the
+/// [`grid`], the [`switch`] grid, the [`checkbox`] grid and in the [`progress`] column, on the scheme's surface color.
 #[component]
 pub fn Catalog() -> impl IntoElement {
     let surface = AdaptiveColor::rgb(
@@ -85,6 +86,25 @@ pub fn Catalog() -> impl IntoElement {
                 ),
         )
     });
+    // A divider fills the space it is in along its length, so each one is given a square space to fill, as an app's
+    // layout gives it one.
+    let page = DividerCell::all().fold(page, |page, cell| {
+        let (x, y) = cell.origin();
+        page.child(
+            view()
+                .absolute()
+                .left(x)
+                .top(y)
+                .w(DIVIDER_SPACE)
+                .h(DIVIDER_SPACE)
+                .test_id(&cell.test_id())
+                .child(
+                    divider()
+                        .orientation(cell.orientation)
+                        .thickness(cell.thickness),
+                ),
+        )
+    });
     let page = SwitchCell::all().fold(page, |page, cell| page.child(switch::element(cell)));
     let page = ProgressCell::all().fold(page, |page, cell| page.child(progress::placed(cell)));
     checkbox::place(page)
@@ -95,7 +115,7 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex, PoisonError};
 
-    use nsh_core::geometry::{Bounds, Points};
+    use nsh_core::geometry::{Bounds, Points, Size, point};
     use nsh_core::{AccessibilityRole, MountItem, NodeId};
     use nsh_engine::{EngineConfig, Root};
     use nsh_testing::Headless;
@@ -193,6 +213,75 @@ mod tests {
                 cell.availability == Availability::Disabled,
                 "{cell:?}"
             );
+        }
+    }
+
+    /// Every divider is in its space at its place on the grid, and fills the space along its length and is as thick as
+    /// its cell says across it, at the start of the space; and it is the only thing in the space, hidden from
+    /// assistive technologies.
+    #[test]
+    fn every_divider_is_where_the_grid_says() {
+        let mut app = Headless::start(EngineConfig::new(Root::of::<Catalog>())).unwrap();
+        let items: Arc<Mutex<Vec<MountItem>>> = Arc::default();
+        let sink = Arc::clone(&items);
+        app.observe(move |_, batch| {
+            sink.lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .extend(batch.items.iter().cloned());
+        });
+        app.wait_for("Filled").unwrap();
+        let items = items.lock().unwrap_or_else(PoisonError::into_inner).clone();
+
+        let mut ids = HashMap::new();
+        let mut frames: HashMap<NodeId, Bounds<Points>> = HashMap::new();
+        let mut hidden = HashMap::new();
+        let mut children: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+        for item in &items {
+            match item {
+                MountItem::ViewProps { id, props } => {
+                    if let Some(test_id) = &props.test_id {
+                        ids.insert(test_id.to_string(), *id);
+                    }
+                    hidden.insert(*id, props.accessibility.hidden);
+                }
+                MountItem::Frame { id, frame } => {
+                    frames.insert(*id, *frame);
+                }
+                MountItem::Insert { parent, child, .. } => {
+                    children.entry(*parent).or_default().push(*child);
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(DividerCell::all().count(), 6);
+        for cell in DividerCell::all() {
+            let space = ids[&cell.test_id()];
+            let (x, y) = cell.origin();
+            assert_eq!(
+                frames[&space],
+                Bounds {
+                    origin: point(x, y),
+                    size: Size {
+                        width: DIVIDER_SPACE,
+                        height: DIVIDER_SPACE,
+                    },
+                },
+                "{cell:?}"
+            );
+            let [line] = children[&space][..] else {
+                panic!("one divider in the space of {cell:?}");
+            };
+            let (width, height) = cell.frame();
+            assert_eq!(
+                frames[&line],
+                Bounds {
+                    origin: point(Points(0.0), Points(0.0)),
+                    size: Size { width, height },
+                },
+                "{cell:?}"
+            );
+            assert_eq!(hidden.get(&line), Some(&true), "{cell:?}");
+            assert_ne!(hidden.get(&space), Some(&true), "{cell:?}");
         }
     }
 }
