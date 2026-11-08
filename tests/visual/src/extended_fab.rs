@@ -829,6 +829,30 @@ mod tests {
     }
 
     #[test]
+    fn a_shot_blends_the_hovered_fabs_container_and_no_other_pixel() {
+        // The comparison with the rest shot above is relative: it holds if the hovered FAB and all the others swap
+        // roles. This one is absolute, shot by shot: a blend's tolerance is on the container of the FAB the pointer
+        // is over, and on nothing else, and at rest on nothing.
+        for shot in Shot::all() {
+            let probes = shot_probes(shot);
+            assert!(!probes.is_empty(), "{shot:?}");
+            for probe in probes {
+                let hovered = Some(probe.target) == shot.hovered.map(Target::ExtendedFab);
+                let container = matches!(
+                    probe.what,
+                    "container" | "inside the corner" | "container past the square"
+                );
+                let expected = if hovered && container {
+                    BLEND_TOLERANCE
+                } else {
+                    0
+                };
+                assert_eq!(probe.tolerance, expected, "{shot:?} {probe:?}");
+            }
+        }
+    }
+
+    #[test]
     fn a_wrong_corner_width_or_surface_fails_where_it_is_wrong() {
         let shot = Shot::all()[0];
         let paint = |probe: Probe, color: Rgb| {
