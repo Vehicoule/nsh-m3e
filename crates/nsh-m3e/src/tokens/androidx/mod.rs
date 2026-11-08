@@ -13,6 +13,7 @@ pub mod button_medium_tokens;
 pub mod button_small_tokens;
 pub mod button_xlarge_tokens;
 pub mod button_xsmall_tokens;
+pub mod checkbox_tokens;
 pub mod circular_progress_indicator_tokens;
 pub mod color_dark_tokens;
 pub mod color_light_tokens;

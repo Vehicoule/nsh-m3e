@@ -1,10 +1,11 @@
-//! The catalog: every component of `nsh-m3e` in each of its states, for the visual checks of ADR 0013: the buttons
-//! and the icon buttons.
+//! The catalog: every component of `nsh-m3e` in each of its states, for the visual checks of ADR 0013: the buttons,
+//! the icon buttons and the checkboxes.
 //!
-//! `nsh test` opens it on NSH's hosts (`button.test.tsx`, beside its `nsh.json`) and saves screenshots of it; `visual-checks`
-//! reads the pixels it knows in them, at the places [`grid`] gives. The catalog is a Rust app (`nsh.json` names its
-//! root, [`Catalog`]); nothing in it runs JavaScript.
+//! `nsh test` opens it on NSH's hosts (`button.test.tsx` and `checkbox.test.tsx`, beside its `nsh.json`) and saves
+//! screenshots of it; `visual-checks` reads the pixels it knows in them, at the places [`grid`] and [`checkbox`] give.
+//! The catalog is a Rust app (`nsh.json` names its root, [`Catalog`]); nothing in it runs JavaScript.
 
+pub mod checkbox;
 pub mod grid;
 
 use nsh_core::element::AdaptiveColor;
@@ -26,7 +27,8 @@ fn native(registry: &mut Registry) {
     registry.register::<Catalog>();
 }
 
-/// Every button and icon button of the catalog at its place on the [`grid`], on the scheme's surface color.
+/// Every button, icon button and checkbox of the catalog at its place on the [`grid`] and the [`checkbox`] grid, on
+/// the scheme's surface color.
 #[component]
 pub fn Catalog() -> impl IntoElement {
     let surface = AdaptiveColor::rgb(
@@ -51,7 +53,7 @@ pub fn Catalog() -> impl IntoElement {
                 ),
         )
     });
-    IconCell::all().fold(page, |page, cell| {
+    let page = IconCell::all().fold(page, |page, cell| {
         let (x, y) = cell.origin();
         page.child(
             view()
@@ -70,7 +72,8 @@ pub fn Catalog() -> impl IntoElement {
                         .disabled(cell.availability == Availability::Disabled),
                 ),
         )
-    })
+    });
+    checkbox::place(page)
 }
 
 #[cfg(test)]
