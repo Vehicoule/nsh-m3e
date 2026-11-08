@@ -5,6 +5,7 @@
 //! reads the pixels it knows in them, at the places [`grid`] gives. The catalog is a Rust app (`nsh.json` names its
 //! root, [`Catalog`]); nothing in it runs JavaScript.
 
+pub mod chips;
 pub mod grid;
 
 use nsh_core::element::AdaptiveColor;
@@ -51,6 +52,7 @@ pub fn Catalog() -> impl IntoElement {
                 ),
         )
     });
+    let page = page.child(chips::block());
     IconCell::all().fold(page, |page, cell| {
         let (x, y) = cell.origin();
         page.child(
@@ -131,9 +133,10 @@ mod tests {
                 _ => {}
             }
         }
+        // Every chip has the button role too (a filter chip is a toggle button).
         assert_eq!(
             disabled.len(),
-            Cell::all().count() + IconCell::all().count()
+            Cell::all().count() + IconCell::all().count() + chips::ChipCell::all().count()
         );
         let child_of = |id: NodeId| {
             parents
