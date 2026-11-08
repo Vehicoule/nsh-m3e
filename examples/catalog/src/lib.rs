@@ -1,10 +1,11 @@
 //! The catalog: every component of `nsh-m3e` in each of its states, for the visual checks of ADR 0013: the buttons,
-//! the icon buttons, the navigation bars and the tab rows.
+//! the icon buttons, the checkboxes, the navigation bars and the tab rows.
 //!
-//! `nsh test` opens it on NSH's hosts (`button.test.tsx`, beside its `nsh.json`) and saves screenshots of it; `visual-checks`
-//! reads the pixels it knows in them, at the places [`grid`] gives. The catalog is a Rust app (`nsh.json` names its
-//! root, [`Catalog`]); nothing in it runs JavaScript.
+//! `nsh test` opens it on NSH's hosts (`button.test.tsx` and `checkbox.test.tsx`, beside its `nsh.json`) and saves
+//! screenshots of it; `visual-checks` reads the pixels it knows in them, at the places [`grid`] and [`checkbox`] give.
+//! The catalog is a Rust app (`nsh.json` names its root, [`Catalog`]); nothing in it runs JavaScript.
 
+pub mod checkbox;
 pub mod grid;
 pub mod navigation;
 pub mod tabs;
@@ -33,8 +34,8 @@ fn native(registry: &mut Registry) {
     registry.register::<Catalog>();
 }
 
-/// Every button, icon button, navigation bar and row of tabs of the catalog at its place on the [`grid`], the
-/// [`navigation`] grid and the [`tabs`] grid, on the scheme's surface color.
+/// Every button, icon button, checkbox, navigation bar and row of tabs of the catalog at its place on the [`grid`], the
+/// [`navigation`] grid, the [`tabs`] grid and the [`checkbox`] grid, on the scheme's surface color.
 #[component]
 pub fn Catalog() -> impl IntoElement {
     let surface = AdaptiveColor::rgb(
@@ -105,7 +106,7 @@ pub fn Catalog() -> impl IntoElement {
                 .child(bar),
         )
     });
-    TabCell::all().fold(page, |page, cell| {
+    let page = TabCell::all().fold(page, |page, cell| {
         let (x, y) = cell.origin();
         let tabs: Vec<AnyElement> = TABS
             .into_iter()
@@ -132,7 +133,8 @@ pub fn Catalog() -> impl IntoElement {
                 .test_id(&cell.test_id())
                 .child(row),
         )
-    })
+    });
+    checkbox::place(page)
 }
 
 #[cfg(test)]

@@ -27,6 +27,8 @@ components=(
     IconButton.kt
     IconButtonDefaults.kt
     NavigationItem.kt
+    Checkbox.kt
+    ComposeMaterial3Flags.kt
     ProgressIndicator.kt
     Ripple.kt
     ShortNavigationBar.kt

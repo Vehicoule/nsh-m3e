@@ -7,7 +7,7 @@ site may describe a newer version than the one this repository builds against.
 
 | What | Where | Pinned |
 |---|---|---|
-| Source | https://github.com/longbridge/nsh, branch `main` | `2208136f4cdd2f95b5b897971131f3195df4e39e`, the `rev` in the root `Cargo.toml`, bumped daily ([ADR 0006](adr/0006-pinned-versions-and-dependencies.md)) |
+| Source | https://github.com/longbridge/nsh, branch `main` | `c85e3f7dc878a638198cc129f835ec0afdfbd5a6`, the `rev` in the root `Cargo.toml`, bumped daily ([ADR 0006](adr/0006-pinned-versions-and-dependencies.md)) |
 | Coding and Design Guides, mode pages, recipes | [`.claude/skills/nsh/`](../.claude/skills/nsh/), [`.claude/skills/nsh-design-guides/`](../.claude/skills/nsh-design-guides/) | same revision |
 | Docs site (newest release, may be ahead) | https://nsh.dev, index for agents: https://nsh.dev/llms.txt | not pinned |
 | Animation and `Spring` | https://nsh.dev/docs/animation.md, `crates/nsh-core/src/element/animated.rs` | same revision |
@@ -20,7 +20,7 @@ site may describe a newer version than the one this repository builds against.
 |---|---|---|
 | Official token values | [`reference/androidx-material3-tokens/`](../reference/androidx-material3-tokens/) (from `androidx/androidx`, `compose/material3/material3/src/commonMain/kotlin/androidx/compose/material3/tokens/`) | `a8b393d51f9bdcfcac8f0a4a0992ecad1b27ba55`, moved by `scripts/sync-androidx.sh` when the tokens change |
 | Official implementation (behavior, layout, how tokens are used) | https://github.com/androidx/androidx/tree/androidx-main/compose/material3/material3 | read at the same revision |
-| Official implementation, where it overrides a token (ADR 0012) | [`reference/androidx-material3-components/`](../reference/androidx-material3-components/) (`Button.kt`, `ColorScheme.kt`, `Divider.kt`, `IconButton.kt`, `IconButtonDefaults.kt`, `NavigationItem.kt`, `ProgressIndicator.kt`, `Ripple.kt`, `ShortNavigationBar.kt`, `Tab.kt`, `TabRow.kt`, `WavyProgressIndicator.kt`, and `LinearWavyProgressModifiers.kt` and `CircularWavyProgressModifiers.kt` from its `internal/` folder) | the same commit, moved with the tokens by `scripts/sync-androidx.sh` |
+| Official implementation, where it overrides a token (ADR 0012) | [`reference/androidx-material3-components/`](../reference/androidx-material3-components/) (`Button.kt`, `ColorScheme.kt`, `Divider.kt`, `IconButton.kt`, `IconButtonDefaults.kt`, `Checkbox.kt`, `ComposeMaterial3Flags.kt`, `NavigationItem.kt`, `ProgressIndicator.kt`, `Ripple.kt`, `ShortNavigationBar.kt`, `Tab.kt`, `TabRow.kt`, `WavyProgressIndicator.kt`, and `LinearWavyProgressModifiers.kt` and `CircularWavyProgressModifiers.kt` from its `internal/` folder) | the same commit, moved with the tokens by `scripts/sync-androidx.sh` |
 | Icons (ADR 0017) | [`reference/material-symbols/`](../reference/material-symbols/) (from `google/material-design-icons`, `symbols/web/`) | `10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7`, moved by `scripts/sync-material-symbols.sh` |
 | Elevation shadows (ADR 0018) | [`reference/material-web/`](../reference/material-web/) (from `material-components/material-web`, `elevation/internal/_elevation.scss`) | `d872455c4be56022da2095349b30ef46e0b55bc3`, moved by `scripts/sync-material-web.sh` |
 | Guidelines (anatomy, states, usage, motion) | https://m3.material.io, sections Foundations, Styles, Components | not pinned (web) |

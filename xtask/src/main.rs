@@ -71,6 +71,16 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
+        file: "CheckboxTokens.kt",
+        object: None,
+        doc: &[
+            "The checkbox's box (its size, corner shape and outline widths), its mark's size, its state layer's size \
+             and shape, and its colors in each state, selected and unselected, enabled, disabled and with an error. \
+             Colors are roles of the scheme ([`crate::color::ColorRole`]), resolved against the light or dark \
+             [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
         file: "CircularProgressIndicatorTokens.kt",
         object: None,
         doc: &[
