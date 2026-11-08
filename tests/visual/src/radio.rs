@@ -394,6 +394,24 @@ mod tests {
     }
 
     #[test]
+    fn a_probe_reads_the_top_left_pixel_of_its_point_at_the_scale() {
+        let probe = probes(
+            cell(Selection::Selected, Availability::Enabled),
+            &LIGHT,
+            false,
+        )[0];
+        let (x, y) = (points_to_u32(probe.x), points_to_u32(probe.y));
+        // Neither is 0 or 1, which scaling and shifting by the scale would not tell apart.
+        assert!(x > 1 && y > 1, "{probe:?}");
+        for scale in 1..=3 {
+            assert_eq!(pixel_of(&probe, scale), (x * scale, y * scale));
+        }
+        // Whole points, so the point is the pixel's top left corner and not a fraction of one.
+        assert_eq!(probe.x.0.fract().to_bits(), 0.0_f32.to_bits());
+        assert_eq!(probe.y.0.fract().to_bits(), 0.0_f32.to_bits());
+    }
+
+    #[test]
     fn the_ring_and_the_dot_take_the_icon_colors_of_the_tokens() {
         let rgb = |scheme: &ColorScheme, role| Rgb::of(scheme, role);
         for scheme in [LIGHT, DARK] {

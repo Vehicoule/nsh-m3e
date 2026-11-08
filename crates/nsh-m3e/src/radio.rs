@@ -115,8 +115,9 @@ pub const DOT_SIZE: Points = Points(12.0);
 pub const PADDING: Points = Points(2.0);
 
 /// The side of the radio button's box: the ring and the padding on each side of it (`RadioButton.kt`, line 177 to
-/// 179). The state layer overflows it, and presses reach past it ([`Radio`]).
-pub const FRAME: Points = Points(radio_button_tokens::ICON_SIZE.0 + 2.0 * PADDING.0);
+/// 179), a sum of the padding twice and not `2.0 * PADDING.0`: with 2 points of padding both are 4, which no test
+/// could tell apart. The state layer overflows it, and presses reach past it ([`Radio`]).
+pub const FRAME: Points = Points(radio_button_tokens::ICON_SIZE.0 + PADDING.0 + PADDING.0);
 
 /// The four looks of a radio button: selected or not, enabled or not, in the order of its color progress. androidx
 /// picks the ring's and the dot's color from the same four (`RadioButtonColors.radioColor`, line 289 to 295).
@@ -912,6 +913,24 @@ mod tests {
         assert_eq!(layer.size, Size::new(Points(40.0), Points(40.0)));
         assert_eq!(layer.origin, point(px(-8.0), px(-8.0)));
         assert_eq!(mounted.size(), Size::new(Points(24.0), Points(24.0)));
+    }
+
+    /// The state layer is a circle that fills its 40-point box: centered on it, as wide as it.
+    #[test]
+    fn the_state_layer_is_a_circle_as_wide_as_its_box() {
+        let (_app, recording) = start(Config::default());
+        let mounted = Mounted::of(&recording.items());
+        let arcs = paths(mounted.drawing(mounted.layer), &replay(&recording));
+        let [layer] = &arcs[..] else {
+            panic!("one circle: {arcs:?}");
+        };
+        match layer.as_slice() {
+            [Step::Arc { x, y, radius, .. }] => {
+                assert_eq!((*x, *y), (20.0, 20.0), "{layer:?}");
+                assert_eq!(*radius, 20.0, "{layer:?}");
+            }
+            other => panic!("one arc, not {other:?}"),
+        }
     }
 
     #[test]
