@@ -119,6 +119,15 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
+        file: "ElevatedCardTokens.kt",
+        object: None,
+        doc: &[
+            "The elevated card's colors, shape and elevation in each state, and its focus indicator and icon. Colors \
+             are roles of the scheme ([`crate::color::ColorRole`]), resolved against the light or dark \
+             [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
         file: "ElevationTokens.kt",
         object: None,
         doc: &[
@@ -197,6 +206,15 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
+        file: "FilledCardTokens.kt",
+        object: None,
+        doc: &[
+            "The filled card's colors, shape and elevation in each state, and its focus indicator and icon. Colors \
+             are roles of the scheme ([`crate::color::ColorRole`]), resolved against the light or dark \
+             [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
         file: "FilledIconButtonTokens.kt",
         object: None,
         doc: &[
@@ -272,6 +290,15 @@ const SOURCES: &[Source] = &[
         doc: &[
             "The outlined button's colors and elevation in each state. Colors are roles of the scheme \
              ([`crate::color::ColorRole`]), resolved against the light or dark [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
+        file: "OutlinedCardTokens.kt",
+        object: None,
+        doc: &[
+            "The outlined card's colors, shape, outline and elevation in each state, and its icon. Colors are roles of the \
+             scheme ([`crate::color::ColorRole`]), resolved against the light or dark \
+             [`crate::color::ColorScheme`].",
         ],
     },
     Source {

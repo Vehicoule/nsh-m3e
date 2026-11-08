@@ -1,11 +1,12 @@
 //! The catalog: every component of `nsh-m3e` in each of its states, for the visual checks of ADR 0013: the buttons,
-//! the icon buttons, the switches, the checkboxes, the dividers and the floating action buttons.
+//! the icon buttons, the switches, the checkboxes, the dividers, the floating action buttons and the cards.
 //!
-//! `nsh test` opens it on NSH's hosts (`button.test.tsx`, `switch.test.tsx`, `checkbox.test.tsx` and `fab.test.tsx`,
-//! beside its `nsh.json`) and saves screenshots of it; `visual-checks` reads the pixels it knows in them, at the places
-//! [`grid`], [`switch`], [`checkbox`] and [`fab`] give.
+//! `nsh test` opens it on NSH's hosts (`button.test.tsx`, `switch.test.tsx`, `checkbox.test.tsx`, `fab.test.tsx` and
+//! `card.test.tsx`, beside its `nsh.json`) and saves screenshots of it; `visual-checks` reads the pixels it knows in
+//! them, at the places [`grid`], [`switch`], [`checkbox`], [`fab`] and [`card`] give.
 //! The catalog is a Rust app (`nsh.json` names its root, [`Catalog`]); nothing in it runs JavaScript.
 
+pub mod card;
 pub mod checkbox;
 pub mod fab;
 pub mod grid;
@@ -32,8 +33,8 @@ fn native(registry: &mut Registry) {
     registry.register::<Catalog>();
 }
 
-/// Every button, icon button, switch, checkbox, divider and FAB of the catalog at its place on the [`grid`], the
-/// [`switch`] grid, the [`checkbox`] grid and the [`fab`] row, on the scheme's surface color.
+/// Every button, icon button, switch, checkbox, divider, FAB and card of the catalog at its place on the [`grid`], the
+/// [`switch`] grid, the [`checkbox`] grid, the [`fab`] row and the [`card`] grid, on the scheme's surface color.
 #[component]
 pub fn Catalog() -> impl IntoElement {
     let surface = AdaptiveColor::rgb(
@@ -98,7 +99,7 @@ pub fn Catalog() -> impl IntoElement {
         )
     });
     let page = SwitchCell::all().fold(page, |page, cell| page.child(switch::element(cell)));
-    fab::place(checkbox::place(page))
+    card::place(fab::place(checkbox::place(page)))
 }
 
 #[cfg(test)]
@@ -159,10 +160,15 @@ mod tests {
                 _ => {}
             }
         }
-        // The FABs are buttons for screen readers too.
+        // The FABs are buttons for screen readers too, and so are the cards that take presses.
         assert_eq!(
             disabled.len(),
-            Cell::all().count() + IconCell::all().count() + fab::FabCell::all().count()
+            Cell::all().count()
+                + IconCell::all().count()
+                + fab::FabCell::all().count()
+                + card::CardCell::all()
+                    .filter(|cell| cell.kind != card::CardKind::Static)
+                    .count()
         );
         let child_of = |id: NodeId| {
             parents

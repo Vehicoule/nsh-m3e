@@ -22,6 +22,7 @@ components_copy="reference/androidx-material3-components"
 # `components_path` and copied flat: the names under `internal/` do not collide with the others.
 components=(
     Button.kt
+    Card.kt
     Divider.kt
     IconButton.kt
     IconButtonDefaults.kt
