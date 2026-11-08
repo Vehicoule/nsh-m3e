@@ -31,6 +31,8 @@ components=(
     WavyProgressIndicator.kt
     internal/LinearWavyProgressModifiers.kt
     internal/CircularWavyProgressModifiers.kt
+    Snackbar.kt
+    ComposeMaterial3Flags.kt
 )
 
 root="$(git rev-parse --show-toplevel)"
