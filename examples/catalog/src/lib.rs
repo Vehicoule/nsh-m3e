@@ -1,12 +1,14 @@
 //! The catalog: every component of `nsh-m3e` in each of its states, for the visual checks of ADR 0013: the buttons,
-//! the icon buttons, the checkboxes and the dividers.
+//! the icon buttons, the switches, the checkboxes and the dividers.
 //!
-//! `nsh test` opens it on NSH's hosts (`button.test.tsx` and `checkbox.test.tsx`, beside its `nsh.json`) and saves
-//! screenshots of it; `visual-checks` reads the pixels it knows in them, at the places [`grid`] and [`checkbox`] give.
+//! `nsh test` opens it on NSH's hosts (`button.test.tsx`, `switch.test.tsx` and `checkbox.test.tsx`, beside its
+//! `nsh.json`) and saves screenshots of it; `visual-checks` reads the pixels it knows in them, at the places
+//! [`grid`], [`switch`] and [`checkbox`] give.
 //! The catalog is a Rust app (`nsh.json` names its root, [`Catalog`]); nothing in it runs JavaScript.
 
 pub mod checkbox;
 pub mod grid;
+pub mod switch;
 
 use nsh_core::element::AdaptiveColor;
 use nsh_core::prelude::*;
@@ -18,6 +20,7 @@ use nsh_m3e::icon_button::icon_button;
 use nsh_m3e::material_symbols::outlined;
 
 use crate::grid::{Availability, Cell, DIVIDER_SPACE, DividerCell, IconCell};
+use crate::switch::SwitchCell;
 
 /// The icon every icon button of the catalog shows: Material Symbols' `favorite`, filled, whose middle is filled, so
 /// that the visual checks read the icon's color there.
@@ -28,8 +31,8 @@ fn native(registry: &mut Registry) {
     registry.register::<Catalog>();
 }
 
-/// Every button, icon button, checkbox and divider of the catalog at its place on the [`grid`] and the [`checkbox`]
-/// grid, on the scheme's surface color.
+/// Every button, icon button, switch, checkbox and divider of the catalog at its place on the [`grid`], the
+/// [`switch`] grid and the [`checkbox`] grid, on the scheme's surface color.
 #[component]
 pub fn Catalog() -> impl IntoElement {
     let surface = AdaptiveColor::rgb(
@@ -93,6 +96,7 @@ pub fn Catalog() -> impl IntoElement {
                 ),
         )
     });
+    let page = SwitchCell::all().fold(page, |page, cell| page.child(switch::element(cell)));
     checkbox::place(page)
 }
 

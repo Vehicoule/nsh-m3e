@@ -1,13 +1,13 @@
 //! Checks the known pixels of the catalog's screenshots (ADR 0013): `cargo run -p visual-checks -- <directory>`.
 //!
 //! `nsh test examples/catalog --target <host>` opens the catalog on one of NSH's hosts and saves its screenshots in
-//! `target/visual` (`examples/catalog/button.test.tsx` and `checkbox.test.tsx`). This reads each of them and checks,
-//! for every button and icon button of the catalog, the pixels whose color the tokens give: the container's color
-//! inside it, the outline's on its edge, the surface outside its top left corner, where a rounded corner leaves the
-//! background, and an icon button's icon color in its middle; for every checkbox, the places [`checkbox`] gives; and
-//! for every divider, the line's color from end to end and across its whole thickness, and the surface one point past
-//! each of its ends and sides. Where the antialiasing of an edge, of the label or of the icon's edge makes a color
-//! unknown, nothing is checked.
+//! `target/visual` (`examples/catalog/button.test.tsx`, `switch.test.tsx` and `checkbox.test.tsx`). This reads
+//! each of them and checks, for every button and icon button of the catalog, the pixels whose color the tokens
+//! give: the container's color inside it, the outline's on its edge, the surface outside its top left corner,
+//! where a rounded corner leaves the background, and an icon button's icon color in its middle; the switches' are
+//! in [`switch`] and every checkbox's at the places [`checkbox`] gives; and for every divider, the line's color from
+//! end to end and across its whole thickness, and the surface one point past each of its ends and sides. Where the
+//! antialiasing of an edge, of the label or of the icon's edge makes a color unknown, nothing is checked.
 //!
 //! It is not a `cargo xtask` task: `xtask` must build when the library does not (it regenerates the library's
 //! tokens), so it cannot depend on it, and these checks take every expected color from the library's tokens.
@@ -22,6 +22,7 @@ use std::process::ExitCode;
 
 use catalog::checkbox::CheckboxCell;
 use catalog::grid::{self, Availability, Cell, DividerCell, IconCell};
+use catalog::switch::SwitchCell;
 use nsh_core::geometry::Points;
 use nsh_m3e::button::{ButtonShape, ButtonSize, ButtonStyle};
 use nsh_m3e::color::{ColorRole, ColorScheme};
@@ -35,6 +36,8 @@ use nsh_m3e::tokens::androidx::{
     standard_icon_button_tokens, state_tokens, xlarge_icon_button_tokens,
     xsmall_icon_button_tokens,
 };
+
+mod switch;
 
 const USAGE: &str = "usage: cargo run -p visual-checks -- <directory of screenshots>";
 
@@ -78,11 +81,12 @@ impl Appearance {
     }
 }
 
-/// A component of the catalog: a button, an icon button, a checkbox or a divider.
+/// A component of the catalog: a button, an icon button, a switch, a checkbox or a divider.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Target {
     Button(Cell),
     IconButton(IconCell),
+    Switch(SwitchCell),
     Checkbox(CheckboxCell),
     Divider(DividerCell),
 }
@@ -93,6 +97,7 @@ impl Target {
         match self {
             Self::Button(cell) => cell.test_id(),
             Self::IconButton(cell) => cell.test_id(),
+            Self::Switch(cell) => cell.test_id(),
             Self::Checkbox(cell) => cell.test_id(),
             Self::Divider(cell) => cell.test_id(),
         }
@@ -110,7 +115,8 @@ struct Shot {
 impl Shot {
     /// Every screenshot `examples/catalog/button.test.tsx` takes, in each appearance: the catalog at rest, then the
     /// mouse over the small round enabled button of each style, then over the small uniform round enabled icon
-    /// button of each style.
+    /// button of each style; then those `examples/catalog/switch.test.tsx` takes, in each appearance: the mouse over
+    /// each of [`switch::HOVERED`].
     fn all() -> Vec<Self> {
         Appearance::ALL
             .into_iter()
@@ -138,6 +144,12 @@ impl Shot {
                         ))))
                     }))
             })
+            .chain(Appearance::ALL.into_iter().flat_map(|appearance| {
+                switch::HOVERED.into_iter().map(move |cell| Self {
+                    appearance,
+                    hovered: Some(Target::Switch(cell)),
+                })
+            }))
             .collect()
     }
 
@@ -155,6 +167,8 @@ impl Shot {
                     cell.label().to_lowercase()
                 )
             }
+            // The test id already starts with `switch-`.
+            Some(Target::Switch(cell)) => format!("{appearance}-hover-{}.png", cell.test_id()),
             // The buttons' script never hovers a checkbox; the checkbox's own shots are `checkbox::Shot`.
             Some(Target::Checkbox(cell)) => format!("{appearance}-hover-{}.png", cell.test_id()),
             // No screenshot has the mouse over a divider: it has no hover state, and the shots do not hover it.
@@ -576,7 +590,7 @@ fn divider_probes(cell: DividerCell, scheme: &ColorScheme) -> Vec<Probe> {
         .collect()
 }
 
-/// The pixels the checks know in `shot`, for every button, icon button and divider of the catalog.
+/// The pixels the checks know in `shot`, for every button, icon button, switch and divider of the catalog.
 fn shot_probes(shot: Shot) -> Vec<Probe> {
     let scheme = shot.appearance.scheme();
     Cell::all()
@@ -584,6 +598,10 @@ fn shot_probes(shot: Shot) -> Vec<Probe> {
         .chain(
             IconCell::all()
                 .flat_map(|cell| icon_probes(cell, &scheme, shot.hovers(Target::IconButton(cell)))),
+        )
+        .chain(
+            SwitchCell::all()
+                .flat_map(|cell| switch::probes(cell, &scheme, shot.hovers(Target::Switch(cell)))),
         )
         .chain(DividerCell::all().flat_map(|cell| divider_probes(cell, &scheme)))
         .collect()
@@ -1317,8 +1335,9 @@ mod tests {
         let count = |of: fn(&Target) -> bool| rest.iter().filter(|p| of(&p.target)).count();
         let buttons = count(|target| matches!(target, Target::Button(_)));
         let icon_buttons = count(|target| matches!(target, Target::IconButton(_)));
+        let switches = count(|target| matches!(target, Target::Switch(_)));
         let dividers = count(|target| matches!(target, Target::Divider(_)));
-        assert_eq!(rest.len(), buttons + icon_buttons + dividers);
+        assert_eq!(rest.len(), buttons + icon_buttons + switches + dividers);
         assert_eq!(
             buttons,
             Cell::all()
@@ -1549,6 +1568,10 @@ mod tests {
                 "dark-hover-icon-tonal.png",
                 "dark-hover-icon-outlined.png",
                 "dark-hover-icon-standard.png",
+                "light-hover-switch-off-plain-enabled.png",
+                "light-hover-switch-on-icon-enabled.png",
+                "dark-hover-switch-off-plain-enabled.png",
+                "dark-hover-switch-on-icon-enabled.png",
             ]
         );
         assert_eq!(Shot::all()[0].appearance.scheme(), LIGHT);
