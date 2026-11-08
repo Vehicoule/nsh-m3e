@@ -28,6 +28,7 @@ components=(
     WavyProgressIndicator.kt
     internal/LinearWavyProgressModifiers.kt
     internal/CircularWavyProgressModifiers.kt
+    ToggleButton.kt
 )
 
 root="$(git rev-parse --show-toplevel)"

@@ -20,4 +20,5 @@ mod morph;
 mod morph_probe;
 pub mod motion;
 mod tint;
+pub mod toggle_button;
 pub mod tokens;
