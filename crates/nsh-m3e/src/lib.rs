@@ -16,6 +16,7 @@ pub mod divider;
 pub mod elevation;
 pub mod icon;
 pub mod icon_button;
+pub mod icon_toggle_button;
 pub mod material_symbols;
 mod morph;
 #[cfg(test)]
