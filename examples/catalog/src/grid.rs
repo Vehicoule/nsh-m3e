@@ -114,10 +114,10 @@ pub const DIVIDER_SPACE: Points = Points(96.0);
 /// Material.
 pub const DIVIDER_GUTTER: Points = Points(16.0);
 
-/// The size of the viewport the catalog is opened in, width and height: the three grids and their margins. The
-/// buttons' grid is the widest: 8 columns of 320 points, where the icon buttons' grid has 12 of 200 and the switches'
-/// 4 of 96. The icon buttons' grid leaves a strip on its right, below the buttons' rows, where the dividers' column
-/// is.
+/// The size of the viewport the catalog is opened in, width and height: the three grids and their margins, and the
+/// progress indicators' column if it needed more. The buttons' grid is the widest: 8 columns of 320 points, where the
+/// icon buttons' grid has 12 of 200 and the switches' 4 of 96. The icon buttons' grid leaves a strip on its right, below
+/// the buttons' rows, where the dividers' column is and, below it, the indicators' column, so they ask for no more.
 #[must_use]
 pub fn viewport() -> (Points, Points) {
     let mut width = MARGIN.0 * 2.0;
@@ -132,7 +132,12 @@ pub fn viewport() -> (Points, Points) {
             }
         }
     }
-    (Points(width), Points(height))
+    // The progress indicators' strip lies inside the icon buttons' grid's right margin, so they change nothing of it.
+    let (progress_right, progress_bottom) = crate::progress::extent();
+    (
+        Points(width.max(progress_right.0)),
+        Points(height.max(progress_bottom.0)),
+    )
 }
 
 /// The top of the icon buttons' grid: below the buttons' rows, each followed by its gap.

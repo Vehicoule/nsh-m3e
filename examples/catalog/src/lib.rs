@@ -1,17 +1,27 @@
 //! The catalog: every component of `nsh-m3e` in each of its states, for the visual checks of ADR 0013: the buttons,
-//! the icon buttons, the switches, the checkboxes, the dividers and the floating action buttons.
+//! the icon buttons, the switches, the checkboxes, the dividers, the floating action buttons and the linear progress
+//! indicators.
 //!
 //! `nsh test` opens it on NSH's hosts (`button.test.tsx`, `switch.test.tsx`, `checkbox.test.tsx` and `fab.test.tsx`,
 //! beside its `nsh.json`) and saves screenshots of it; `visual-checks` reads the pixels it knows in them, at the places
-//! [`grid`], [`switch`], [`checkbox`] and [`fab`] give.
-//! The catalog is a Rust app (`nsh.json` names its root, [`Catalog`]); nothing in it runs JavaScript.
+//! [`grid`], [`switch`], [`checkbox`], [`fab`] and [`progress`] give. The catalog is a Rust app (`nsh.json` names its
+//! root, [`Catalog`]); nothing in it runs JavaScript.
+//!
+//! - [`grid`]: the buttons, one column per style and shape, and the icon buttons on a second grid below them.
+//! - [`switch`]: the switches, on a grid of their own.
+//! - [`checkbox`]: the checkboxes, on a grid of their own.
+//! - [`fab`]: the floating action buttons, in a row of their own.
+//! - [`progress`]: the linear progress indicators, flat and wavy, determinate at several values and indeterminate, in a
+//!   column below the dividers'. They are on the page only when the user asked for less motion, where they
+//!   hold still ([`Catalog`] says why).
 
 pub mod checkbox;
 pub mod fab;
 pub mod grid;
+pub mod progress;
 pub mod switch;
 
-use nsh_core::element::AdaptiveColor;
+use nsh_core::element::{AdaptiveColor, reduce_motion};
 use nsh_core::prelude::*;
 use nsh_m3e::button::button;
 use nsh_m3e::color::ColorScheme;
@@ -21,6 +31,7 @@ use nsh_m3e::icon_button::icon_button;
 use nsh_m3e::material_symbols::outlined;
 
 use crate::grid::{Availability, Cell, DIVIDER_SPACE, DividerCell, IconCell};
+use crate::progress::ProgressCell;
 use crate::switch::SwitchCell;
 
 /// The icon every icon button and FAB of the catalog shows: Material Symbols' `favorite`, filled, whose middle is
@@ -32,8 +43,16 @@ fn native(registry: &mut Registry) {
     registry.register::<Catalog>();
 }
 
-/// Every button, icon button, switch, checkbox, divider and FAB of the catalog at its place on the [`grid`], the
-/// [`switch`] grid, the [`checkbox`] grid and the [`fab`] row, on the scheme's surface color.
+/// Every button, icon button, switch, checkbox, divider, FAB and progress indicator of the catalog at its place on the
+/// [`grid`], the [`switch`] grid, the [`checkbox`] grid, the [`fab`] row and in the [`progress`] column, on the
+/// scheme's surface color.
+///
+/// The progress indicators are there only under reduced motion. Left to themselves they never stop (an indeterminate
+/// one loops, a wave travels), and on the Linux host the screenshots of everything else, taken once the window has
+/// painted what changed, came out one step behind (a hover or the dark appearance not drawn yet) in some of the runs
+/// of the pull request that added them. Under reduced motion they hold still, as the screenshots of their own need
+/// them to be, and nothing on the page moves by itself. The setting is read once, when the page is made: the tests
+/// open the page with it set or not.
 #[component]
 pub fn Catalog() -> impl IntoElement {
     let surface = AdaptiveColor::rgb(
@@ -98,6 +117,11 @@ pub fn Catalog() -> impl IntoElement {
         )
     });
     let page = SwitchCell::all().fold(page, |page, cell| page.child(switch::element(cell)));
+    let page = if reduce_motion() {
+        ProgressCell::all().fold(page, |page, cell| page.child(progress::placed(cell)))
+    } else {
+        page
+    };
     fab::place(checkbox::place(page))
 }
 

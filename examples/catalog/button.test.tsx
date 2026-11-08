@@ -10,6 +10,12 @@
 // Each appearance gets one screenshot at rest, one with the mouse over the small round enabled button of each style,
 // and one with the mouse over the small uniform round enabled icon button of each style. The file names are those
 // `visual-checks` reads (`Shot::file_name`).
+//
+// The linear progress indicators sit in a column below the dividers' (`catalog::progress`), and only for a user who
+// asked for less motion (`reducedMotion`): the indeterminate ones hold their still pose and the waves hold still, so
+// that their pixels are the same at every run, and nothing on the page of the other screenshots moves by itself
+// (`catalog::Catalog` says why). They get a screenshot of their own in each appearance. The file names are those
+// `visual-checks` reads (`ProgressShot::file_name`). This file is the one the visual workflow runs, so they are here.
 import { expect, open, test } from "nsh/test";
 
 // The catalog's viewport (`catalog::grid::viewport`); `visual-checks` refuses a screenshot of another size.
@@ -34,5 +40,13 @@ for (const scheme of ["light", "dark"] as const) {
       await app.hover(`id:icon-${style}-small-uniform-round-enabled`);
       await app.screenshot(`target/visual/${scheme}-hover-icon-${style}.png`);
     }
+  });
+}
+
+for (const scheme of ["light", "dark"] as const) {
+  test(`the progress indicators in ${scheme} appearance`, async () => {
+    const app = await open(".", { ...VIEWPORT, colorScheme: scheme, reducedMotion: true });
+    expect(app.texts()).toContain("Filled");
+    await app.screenshot(`target/visual/progress-${scheme}.png`);
   });
 }
