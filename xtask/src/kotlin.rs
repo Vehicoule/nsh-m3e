@@ -57,7 +57,8 @@ pub(crate) enum Value {
     Key(String),
     /// `inline val X: androidx.compose.ui.graphics.Color` / `get() = PaletteTokens.Neutral98`: the value of another
     /// token, of another object or, written `get() = Primary`, of the same one. The getter's type says what kind of
-    /// value it is.
+    /// value it is. `val X = ShapeTokens.CornerValueSmall`, with no type, names another object's corner size: a
+    /// length.
     Reference(Kind, Reference),
     /// `val X: TextStyle` / `inline get() =` / `DefaultTextStyle.copy(` and the five properties of the type scale
     /// style of the same name, one per line, then `)`: a text style. Boxed: its ten names would make every value
@@ -500,6 +501,15 @@ fn value_expression(expression: &str) -> Result<Value, ParseErrorKind> {
         .and_then(|rest| rest.strip_suffix(')'))
     {
         return Ok(Value::Dp(dp(argument).ok_or_else(unsupported)??));
+    }
+    // `ShapeTokens.CornerValueSmall`: another object's corner size, which Kotlin types from the token it names
+    // (`ConnectedButtonGroupSmallTokens`). It is read as a length; the reference check makes sure it names one. A
+    // number (`4.0`) is not a name.
+    if expression.contains('.')
+        && expression.starts_with(|c: char| c.is_ascii_alphabetic())
+        && let Some(reference) = reference(expression, "")
+    {
+        return Ok(Value::Reference(Kind::Length, reference?));
     }
     let arguments = expression
         .strip_prefix("RoundedCornerShape(")
@@ -1018,6 +1028,29 @@ mod tests {
                 "    inline val C: TextStyle\n        get() = TypographyTokens.LabelLarge\n"
             ),
             ParseErrorKind::Unsupported("get() = TypographyTokens.LabelLarge".into())
+        );
+    }
+
+    #[test]
+    fn an_untyped_reference_names_a_corner_size_of_another_object() {
+        assert_eq!(
+            only_value("    val InnerCornerCornerSize = ShapeTokens.CornerValueSmall\n"),
+            Value::Reference(
+                Kind::Length,
+                Reference {
+                    object: "ShapeTokens".into(),
+                    token: "CornerValueSmall".into(),
+                }
+            )
+        );
+        // A bare name has no object to type it from, and a reference is two Pascal case names.
+        assert_eq!(
+            error_kind("    val Inner = CornerValueSmall\n"),
+            ParseErrorKind::Unsupported("val Inner = CornerValueSmall".into())
+        );
+        assert_eq!(
+            error_kind("    val Inner = shapeTokens.CornerValueSmall\n"),
+            ParseErrorKind::BadName("shapeTokens".into())
         );
     }
 
