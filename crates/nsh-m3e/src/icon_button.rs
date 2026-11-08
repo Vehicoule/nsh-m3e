@@ -90,29 +90,29 @@ pub enum IconButtonShape {
     Square,
 }
 
-/// What a size gives the icon button.
+/// What a size gives the icon button, and the icon toggle button ([`crate::icon_toggle_button`]).
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct SizeSpec {
+pub(crate) struct SizeSpec {
     /// The container's height.
-    height: Points,
+    pub(crate) height: Points,
     /// The icon's side.
-    icon: Points,
+    pub(crate) icon: Points,
     /// The space before and after the icon for each width.
     narrow: (Points, Points),
     uniform: (Points, Points),
     wide: (Points, Points),
     /// The shape at rest when round.
-    round: Shape,
+    pub(crate) round: Shape,
     /// The shape at rest when square.
-    square: Shape,
+    pub(crate) square: Shape,
     /// The shape while pressed, round or square: androidx `IconButtonDefaults.*PressedShape`.
-    pressed: Shape,
+    pub(crate) pressed: Shape,
 }
 
 impl SizeSpec {
     /// The container's width at `width`: the icon and the spaces on each side of it, as androidx
     /// `IconButtonDefaults.*ContainerSize(widthOption)` adds them.
-    fn width(&self, width: IconButtonWidth) -> Points {
+    pub(crate) fn width(&self, width: IconButtonWidth) -> Points {
         let (leading, trailing) = match width {
             IconButtonWidth::Narrow => self.narrow,
             IconButtonWidth::Uniform => self.uniform,
@@ -128,7 +128,7 @@ impl SizeSpec {
 /// DefaultLeadingSpace`, `UniformLeadingSpace + UniformLeadingSpace` for the large size), so this does too. Every
 /// size's leading and trailing spaces are the same in the tokens; `uniform_width_adds_the_leading_space_twice` would
 /// say if that changed.
-fn size_spec(size: IconButtonSize) -> SizeSpec {
+pub(crate) fn size_spec(size: IconButtonSize) -> SizeSpec {
     match size {
         IconButtonSize::ExtraSmall => SizeSpec {
             height: xsmall_icon_button_tokens::CONTAINER_HEIGHT,
@@ -296,12 +296,12 @@ fn style_spec(style: IconButtonStyle) -> StyleSpec {
 /// The outline's width at every size: androidx `outlinedIconButtonVibrantBorder` reads
 /// `SmallIconButtonTokens.OutlinedOutlineWidth` whatever the size, where the large and extra large token files say 2
 /// and 3 (ADR 0012).
-const OUTLINE_WIDTH: Points = small_icon_button_tokens::OUTLINED_OUTLINE_WIDTH;
+pub(crate) const OUTLINE_WIDTH: Points = small_icon_button_tokens::OUTLINED_OUTLINE_WIDTH;
 
 /// How far presses also count around a container of `size`, so that an icon button smaller than [`MIN_TOUCH_TARGET`]
 /// on a side still has a 48-point target there (androidx `minimumInteractiveComponentSize`), without changing its M3
 /// size or the layout (NSH's accessibility guide: extend the touch area with the hit slop, not the size).
-fn touch_slop(size: Size<Points>) -> EdgeInsets {
+pub(crate) fn touch_slop(size: Size<Points>) -> EdgeInsets {
     // Half of what is missing on each side, before and after.
     let missing = |side: Points| px(((MIN_TOUCH_TARGET.0 - side.0) / 2.0).max(0.0));
     let (horizontal, vertical) = (missing(size.width), missing(size.height));
