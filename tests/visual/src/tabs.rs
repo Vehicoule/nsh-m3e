@@ -21,13 +21,10 @@ use super::{Probe, Rgb, Target, faded};
 /// ends. Not a design value: where the check looks.
 const END_INSET: f32 = 4.0;
 
-/// The color of a row's container.
-fn container_role(kind: RowKind) -> ColorRole {
-    match kind {
-        RowKind::Secondary => secondary::CONTAINER_COLOR,
-        _ => primary::CONTAINER_COLOR,
-    }
-}
+/// The color of a row's container: `PrimaryNavigationTabTokens.ContainerColor` and
+/// `SecondaryNavigationTabTokens.ContainerColor`, `Surface` for both rows, which a test pins (so no row has a function of
+/// its own to choose it, where a mutant that picks the other token would read the same color).
+const CONTAINER: ColorRole = primary::CONTAINER_COLOR;
 
 /// The color of the state layer: the row's content color, which androidx's ripple takes (`Tab.kt`, lines 166 and 239:
 /// `ripple(bounded = true, color = selectedContentColor)`; `TabRow.kt`, lines 1016-1021: `primaryContentColor` is
@@ -112,7 +109,7 @@ fn tab_probes(cell: TabCell, state: TabState, scheme: &ColorScheme, hovered: boo
     let band_middle = band_top + 1.0;
     let line = bottom - divider::THICKNESS.0;
     let selected = state == TabState::Selected;
-    let container = Rgb::of(scheme, container_role(kind));
+    let container = Rgb::of(scheme, CONTAINER);
     let indicator = Rgb::of(scheme, primary::ACTIVE_INDICATOR_COLOR);
     // A disabled tab shows no state, whatever the mouse does.
     let hovered = hovered && state != TabState::Disabled;
@@ -256,6 +253,13 @@ mod tests {
     }
 
     #[test]
+    fn both_rows_have_the_same_container() {
+        // The two tokens name one color, the page's: a row's container is read with one constant.
+        assert_eq!(primary::CONTAINER_COLOR, secondary::CONTAINER_COLOR);
+        assert_eq!(CONTAINER, ColorRole::Surface);
+    }
+
+    #[test]
     fn the_row_is_read_at_its_edges_against_the_surface() {
         let cell = TabCell::default();
         let all = probes(cell, &LIGHT, None);
@@ -263,7 +267,7 @@ mod tests {
         let surface = Rgb::of(&LIGHT, ColorRole::Surface);
         let divider = Rgb::of(&LIGHT, divider::COLOR);
         // The row's container is the page's color: its edges are the divider's.
-        assert_eq!(Rgb::of(&LIGHT, container_role(RowKind::Primary)), surface);
+        assert_eq!(Rgb::of(&LIGHT, CONTAINER), surface);
         assert_ne!(divider, surface);
         let at = |what: &str, px: f32, py: f32, expected: Rgb| {
             let probe = named(&all, target, what);
@@ -288,7 +292,7 @@ mod tests {
         for kind in KINDS {
             let cell = cell(kind, Content::Label);
             for scheme in [LIGHT, DARK] {
-                let container = Rgb::of(&scheme, container_role(kind));
+                let container = Rgb::of(&scheme, CONTAINER);
                 let page = Rgb::of(&scheme, ColorRole::Surface);
                 assert_eq!(container, page);
                 for (state, center) in [
@@ -431,7 +435,7 @@ mod tests {
         for kind in KINDS {
             let cell = cell(kind, Content::Icon);
             for scheme in [LIGHT, DARK] {
-                let container = Rgb::of(&scheme, container_role(kind));
+                let container = Rgb::of(&scheme, CONTAINER);
                 let (active, inactive) = icon_roles(kind, false);
                 let (selected, unselected) = (Rgb::of(&scheme, active), Rgb::of(&scheme, inactive));
                 // Two colors of the scheme that differ, so that no tab can pass for another.
@@ -482,7 +486,7 @@ mod tests {
     fn the_state_layer_lies_over_the_container_and_the_icon_of_the_hovered_tab_only() {
         for kind in KINDS {
             let cell = cell(kind, Content::Icon);
-            let container = Rgb::of(&LIGHT, container_role(kind));
+            let container = Rgb::of(&LIGHT, CONTAINER);
             let (active, inactive) = icon_roles(kind, false);
             let (active_hovered, inactive_hovered) = icon_roles(kind, true);
             let (selected_icon, unselected_icon) =
