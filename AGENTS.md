@@ -85,6 +85,8 @@ host's system libraries:
 ```sh
 # under xvfb-run with a screen larger than 2608 x 2688 points; or --target web
 nsh test examples/catalog/button.test.tsx --target linux
+# the text fields' window is taller (2608 x 3000 points), so its screen is
+nsh test examples/catalog/text_field.test.tsx --target linux
 cargo run -p visual-checks --locked -- target/visual
 ```
 

@@ -1,16 +1,18 @@
 //! Checks the known pixels of the catalog's screenshots (ADR 0013): `cargo run -p visual-checks -- <directory>`.
 //!
 //! `nsh test examples/catalog --target <host>` opens the catalog on one of NSH's hosts and saves its screenshots in
-//! `target/visual` (`examples/catalog/button.test.tsx` and `checkbox.test.tsx`). This reads each of them and checks,
-//! for every button and icon button of the catalog, the pixels whose color the tokens give: the container's color
-//! inside it, the outline's on its edge, the surface outside its top left corner, where a rounded corner leaves the
-//! background, and an icon button's icon color in its middle; and for every checkbox, the places [`checkbox`] gives.
+//! `target/visual` (`examples/catalog/button.test.tsx`, `checkbox.test.tsx` and `text_field.test.tsx`). This reads
+//! each of them and checks, for every button and icon button of the catalog, the pixels whose color the tokens give:
+//! the container's color inside it, the outline's on its edge, the surface outside its top left corner, where a
+//! rounded corner leaves the background, and an icon button's icon color in its middle; for every checkbox, the
+//! places [`checkbox`] gives; and for every text field, the places [`text_field`] gives.
 //! Where the antialiasing of an edge, of the label or of the icon's edge makes a color unknown, nothing is checked.
 //!
 //! It is not a `cargo xtask` task: `xtask` must build when the library does not (it regenerates the library's
 //! tokens), so it cannot depend on it, and these checks take every expected color from the library's tokens.
 
 mod checkbox;
+mod text_field;
 
 use std::fmt;
 use std::fs;
@@ -20,6 +22,7 @@ use std::process::ExitCode;
 
 use catalog::checkbox::CheckboxCell;
 use catalog::grid::{self, Availability, Cell, IconCell};
+use catalog::text_field::Cell as TextFieldCell;
 use nsh_core::geometry::Points;
 use nsh_m3e::button::{ButtonShape, ButtonSize, ButtonStyle};
 use nsh_m3e::color::{ColorRole, ColorScheme};
@@ -75,12 +78,13 @@ impl Appearance {
     }
 }
 
-/// A component of the catalog: a button, an icon button or a checkbox.
+/// A component of the catalog: a button, an icon button, a checkbox or a text field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Target {
     Button(Cell),
     IconButton(IconCell),
     Checkbox(CheckboxCell),
+    TextField(TextFieldCell),
 }
 
 impl Target {
@@ -90,6 +94,7 @@ impl Target {
             Self::Button(cell) => cell.test_id(),
             Self::IconButton(cell) => cell.test_id(),
             Self::Checkbox(cell) => cell.test_id(),
+            Self::TextField(cell) => cell.test_id(),
         }
     }
 }
@@ -152,6 +157,8 @@ impl Shot {
             }
             // The buttons' script never hovers a checkbox; the checkbox's own shots are `checkbox::Shot`.
             Some(Target::Checkbox(cell)) => format!("{appearance}-hover-{}.png", cell.test_id()),
+            // Nor a text field; the text fields' own shots are `text_field::Shot`.
+            Some(Target::TextField(cell)) => format!("{appearance}-hover-{}.png", cell.test_id()),
         }
     }
 
@@ -751,6 +758,14 @@ fn run(directory: &Path, out: &mut impl io::Write) -> Result<(), Error> {
             directory,
             &shot.file_name(),
             |image| checkbox::check(image, shot),
+            out,
+        )?;
+    }
+    for shot in text_field::Shot::all() {
+        mismatches += check_file(
+            directory,
+            &shot.file_name(),
+            |image| text_field::check(image, shot),
             out,
         )?;
     }
@@ -1544,6 +1559,17 @@ mod tests {
             )
             .unwrap();
         }
+        // Nor without the text fields'.
+        let mut out = Vec::new();
+        assert!(matches!(run(&directory, &mut out), Err(Error::Read { .. })));
+        for shot in text_field::Shot::all() {
+            let image = text_field::painted(shot, 1);
+            fs::write(
+                directory.join(shot.file_name()),
+                encode_uncompressed(&image),
+            )
+            .unwrap();
+        }
         let mut out = Vec::new();
         assert!(run(&directory, &mut out).is_ok());
         assert!(
@@ -1597,6 +1623,61 @@ mod tests {
             out.contains(&format!("{}: FAILED", dark.file_name())),
             "{out}"
         );
+        assert!(out.contains("dark-rest.png: ok"), "{out}");
+        // Every pixel the run counted is named: two spaces start the line of each.
+        assert_eq!(
+            out.lines().filter(|line| line.starts_with("  ")).count(),
+            counted
+        );
+        fs::remove_dir_all(&directory).unwrap();
+    }
+
+    /// A text field's wrong pixels are counted by the run and named, as the checkbox's are. In a directory of its own,
+    /// as the test above runs beside it.
+    #[test]
+    fn run_counts_the_wrong_pixels_of_a_text_field() {
+        let directory =
+            std::env::temp_dir().join(format!("visual-checks-text-field-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let write = |name: String, image: &Image| {
+            fs::write(directory.join(name), encode_uncompressed(image)).unwrap();
+        };
+        for shot in Shot::all() {
+            write(shot.file_name(), &painted(shot, 1));
+        }
+        for shot in checkbox::Shot::all() {
+            write(shot.file_name(), &checkbox::painted(shot, 1));
+        }
+        for shot in text_field::Shot::all() {
+            write(shot.file_name(), &text_field::painted(shot, 1));
+        }
+        let mut out = Vec::new();
+        assert!(run(&directory, &mut out).is_ok());
+        // A text field's screenshot is wrong: the light one saved as the dark one.
+        let rests: Vec<text_field::Shot> = text_field::Shot::all()
+            .into_iter()
+            .filter(|shot| shot.focused.is_none())
+            .collect();
+        let [light, dark] = rests[..] else {
+            panic!("one text field shot at rest in each appearance: {rests:?}");
+        };
+        fs::copy(
+            directory.join(light.file_name()),
+            directory.join(dark.file_name()),
+        )
+        .unwrap();
+        let mut out = Vec::new();
+        let counted = match run(&directory, &mut out) {
+            Err(Error::Mismatches(count)) => count,
+            other => panic!("the text field's wrong pixels are counted: {other:?}"),
+        };
+        let out = String::from_utf8(out).unwrap();
+        assert!(counted > 0);
+        assert!(
+            out.contains(&format!("{}: FAILED", dark.file_name())),
+            "{out}"
+        );
+        assert!(out.contains(&format!("{}: ok", light.file_name())), "{out}");
         assert!(out.contains("dark-rest.png: ok"), "{out}");
         // Every pixel the run counted is named: two spaces start the line of each.
         assert_eq!(
