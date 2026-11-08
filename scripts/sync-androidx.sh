@@ -22,6 +22,7 @@ components_copy="reference/androidx-material3-components"
 # `components_path` and copied flat: the names under `internal/` do not collide with the others.
 components=(
     Button.kt
+    ColorScheme.kt
     Divider.kt
     IconButton.kt
     IconButtonDefaults.kt
@@ -29,7 +30,10 @@ components=(
     Checkbox.kt
     ComposeMaterial3Flags.kt
     Switch.kt
+    NavigationItem.kt
     ProgressIndicator.kt
+    Ripple.kt
+    ShortNavigationBar.kt
     WavyProgressIndicator.kt
     internal/LinearWavyProgressModifiers.kt
     internal/CircularWavyProgressModifiers.kt

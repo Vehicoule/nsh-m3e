@@ -280,6 +280,31 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
+        file: "NavigationBarHorizontalItemTokens.kt",
+        object: None,
+        doc: &[
+            "The navigation bar item with its icon at the start: its indicator's height and the space before and after \
+             it, and its icon's size.",
+        ],
+    },
+    Source {
+        file: "NavigationBarTokens.kt",
+        object: None,
+        doc: &[
+            "The navigation bar's container (color, elevation, height, shape), its items' colors, indicator shape and \
+             spaces, and its label's type. Colors are roles of the scheme ([`crate::color::ColorRole`]), resolved \
+             against the light or dark [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
+        file: "NavigationBarVerticalItemTokens.kt",
+        object: None,
+        doc: &[
+            "The navigation bar item with its icon on top: its indicator's height and width, the space above and \
+             below its content, and its icon's size.",
+        ],
+    },
+    Source {
         file: "OutlinedButtonTokens.kt",
         object: None,
         doc: &[

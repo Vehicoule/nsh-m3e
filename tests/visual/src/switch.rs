@@ -664,9 +664,9 @@ mod tests {
     #[test]
     fn the_switch_shots_follow_the_button_shots_and_hover_each_hovered_switch() {
         let shots = Shot::all();
-        // The buttons' and icon buttons' 9 shots in each appearance, then the switches' 2.
-        assert_eq!(shots.len(), 2 * 9 + 2 * 2);
-        let hovered: Vec<(Appearance, Option<Target>)> = shots[18..]
+        // The buttons', icon buttons' and navigation bars' 13 shots in each appearance, then the switches' 2.
+        assert_eq!(shots.len(), 2 * 13 + 2 * 2);
+        let hovered: Vec<(Appearance, Option<Target>)> = shots[26..]
             .iter()
             .map(|shot| (shot.appearance, shot.hovered))
             .collect();
@@ -680,7 +680,7 @@ mod tests {
             ]
         );
         // Each file is named by what the mouse is over, as `switch.test.tsx` names it.
-        let names: Vec<String> = shots[18..].iter().map(|shot| shot.file_name()).collect();
+        let names: Vec<String> = shots[26..].iter().map(|shot| shot.file_name()).collect();
         assert_eq!(
             names,
             [
@@ -707,7 +707,7 @@ mod tests {
         };
         // Five pixels of a plain handle's switch, six with an icon: four of each.
         assert_eq!(switches(&rest), 4 * 5 + 4 * 6);
-        for (index, changed) in [(18, 2), (19, 3), (20, 2), (21, 3)] {
+        for (index, changed) in [(26, 2), (27, 3), (28, 2), (29, 3)] {
             let shot = Shot::all()[index];
             let found = shot_probes(shot);
             let base = shot_probes(Shot {

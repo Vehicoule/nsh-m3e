@@ -23,6 +23,8 @@ mod morph;
 #[cfg(test)]
 mod morph_probe;
 pub mod motion;
+pub mod navigation_bar;
+pub mod navigation_item;
 pub mod snackbar;
 pub mod switch;
 mod tint;

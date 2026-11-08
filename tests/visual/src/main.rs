@@ -5,16 +5,18 @@
 //! This reads each of them and checks, for every button and icon button of the catalog, the pixels whose color the
 //! tokens give: the container's color inside it, the outline's on its edge, the surface outside its top left corner,
 //! where a rounded corner leaves the background, and an icon button's icon color in its middle; the switches' are
-//! in [`switch`], every checkbox's at the places [`checkbox`] gives and every FAB's, with its shadow, in [`fab`]; and
-//! for every divider, the line's color from end to end and across its whole thickness, and the surface one point
-//! past each of its ends and sides. Where the antialiasing of an edge, of the label or of the icon's edge makes a
-//! color unknown, nothing is checked.
+//! in [`switch`], every checkbox's at the places [`checkbox`] gives and every FAB's, with its shadow, in [`fab`]; for
+//! every divider, the line's color from end to end and across its whole thickness, and the surface one point past each
+//! of its ends and sides; and for every navigation bar, its edges against the surface, the container's color and each
+//! item's pill, icon and state layer ([`navigation`]). Where the antialiasing of an edge, of the label or of the
+//! icon's edge makes a color unknown, nothing is checked.
 //!
 //! It is not a `cargo xtask` task: `xtask` must build when the library does not (it regenerates the library's
 //! tokens), so it cannot depend on it, and these checks take every expected color from the library's tokens.
 
 mod checkbox;
 mod fab;
+mod navigation;
 
 use std::fmt;
 use std::fs;
@@ -25,12 +27,15 @@ use std::process::ExitCode;
 use catalog::checkbox::CheckboxCell;
 use catalog::fab::FabCell;
 use catalog::grid::{self, Availability, Cell, DividerCell, IconCell};
+use catalog::navigation::{ItemState, NavCell};
 use catalog::switch::SwitchCell;
 use nsh_core::geometry::Points;
 use nsh_m3e::button::{ButtonShape, ButtonSize, ButtonStyle};
 use nsh_m3e::color::{ColorRole, ColorScheme};
 use nsh_m3e::divider::DividerOrientation;
 use nsh_m3e::icon_button::{IconButtonShape, IconButtonSize, IconButtonStyle, IconButtonWidth};
+use nsh_m3e::navigation_bar::NavigationBarArrangement;
+use nsh_m3e::navigation_item::{NavigationItemIconPosition, NavigationItemLabel};
 use nsh_m3e::tokens::Shape;
 use nsh_m3e::tokens::androidx::{
     divider_tokens, filled_button_tokens, filled_icon_button_tokens, filled_tonal_button_tokens,
@@ -84,11 +89,14 @@ impl Appearance {
     }
 }
 
-/// A component of the catalog: a button, an icon button, a switch, a checkbox, a FAB or a divider.
+/// A component of the catalog: a button, an icon button, a switch, a checkbox, a FAB, a divider, a navigation bar or
+/// one of its items.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Target {
     Button(Cell),
     IconButton(IconCell),
+    NavigationBar(NavCell),
+    NavigationItem(NavCell, ItemState),
     Switch(SwitchCell),
     Checkbox(CheckboxCell),
     Fab(FabCell),
@@ -96,17 +104,38 @@ enum Target {
 }
 
 impl Target {
-    /// The test id of the view around it.
+    /// The test id of the view around it; an item's is its bar's and its own label.
     fn test_id(self) -> String {
         match self {
             Self::Button(cell) => cell.test_id(),
             Self::IconButton(cell) => cell.test_id(),
+            Self::NavigationBar(cell) => cell.test_id(),
+            Self::NavigationItem(cell, state) => {
+                format!("{}-{}", cell.test_id(), state.label().to_lowercase())
+            }
             Self::Switch(cell) => cell.test_id(),
             Self::Checkbox(cell) => cell.test_id(),
             Self::Fab(cell) => cell.test_id(),
             Self::Divider(cell) => cell.test_id(),
         }
     }
+}
+
+/// The items the mouse is over in the screenshots, each in its bar: every item of the first bar, whose pill, icon
+/// and state layer are then all read, and the unselected one of the bar with its icons at the start.
+fn hovered_items() -> [Target; 4] {
+    let top = NavCell::default();
+    let start = NavCell::new(
+        NavigationBarArrangement::EqualWeight,
+        NavigationItemIconPosition::Start,
+        NavigationItemLabel::Shown,
+    );
+    [
+        Target::NavigationItem(top, ItemState::Selected),
+        Target::NavigationItem(top, ItemState::Unselected),
+        Target::NavigationItem(top, ItemState::Disabled),
+        Target::NavigationItem(start, ItemState::Unselected),
+    ]
 }
 
 /// One screenshot the test scripts take.
@@ -120,8 +149,8 @@ struct Shot {
 impl Shot {
     /// Every screenshot `examples/catalog/button.test.tsx` takes, in each appearance: the catalog at rest, then the
     /// mouse over the small round enabled button of each style, then over the small uniform round enabled icon
-    /// button of each style; then those `examples/catalog/switch.test.tsx` takes, in each appearance: the mouse over
-    /// each of [`switch::HOVERED`].
+    /// button of each style, then over each of [`hovered_items`]; then those `examples/catalog/switch.test.tsx` takes, in
+    /// each appearance: the mouse over each of [`switch::HOVERED`].
     fn all() -> Vec<Self> {
         Appearance::ALL
             .into_iter()
@@ -148,6 +177,11 @@ impl Shot {
                             Availability::Enabled,
                         ))))
                     }))
+                    .chain(
+                        hovered_items()
+                            .into_iter()
+                            .map(move |item| shot(Some(item))),
+                    )
             })
             .chain(Appearance::ALL.into_iter().flat_map(|appearance| {
                 switch::HOVERED.into_iter().map(move |cell| Self {
@@ -172,6 +206,9 @@ impl Shot {
                     cell.label().to_lowercase()
                 )
             }
+            Some(item @ (Target::NavigationItem(..) | Target::NavigationBar(_))) => {
+                format!("{appearance}-hover-{}.png", item.test_id())
+            }
             // The test id already starts with `switch-`.
             Some(Target::Switch(cell)) => format!("{appearance}-hover-{}.png", cell.test_id()),
             // The buttons' script never hovers a checkbox; the checkbox's own shots are `checkbox::Shot`.
@@ -188,6 +225,14 @@ impl Shot {
     /// Whether the mouse is over `target` in it.
     fn hovers(self, target: Target) -> bool {
         self.hovered == Some(target)
+    }
+
+    /// The item of the navigation bar `cell` the mouse is over in it, if any.
+    fn hovered_item(self, cell: NavCell) -> Option<ItemState> {
+        match self.hovered {
+            Some(Target::NavigationItem(bar, state)) if bar == cell => Some(state),
+            _ => None,
+        }
     }
 }
 
@@ -597,7 +642,8 @@ fn divider_probes(cell: DividerCell, scheme: &ColorScheme) -> Vec<Probe> {
         .collect()
 }
 
-/// The pixels the checks know in `shot`, for every button, icon button, switch and divider of the catalog.
+/// The pixels the checks know in `shot`, for every button, icon button, switch, divider and navigation bar of the
+/// catalog.
 fn shot_probes(shot: Shot) -> Vec<Probe> {
     let scheme = shot.appearance.scheme();
     Cell::all()
@@ -609,6 +655,10 @@ fn shot_probes(shot: Shot) -> Vec<Probe> {
         .chain(
             SwitchCell::all()
                 .flat_map(|cell| switch::probes(cell, &scheme, shot.hovers(Target::Switch(cell)))),
+        )
+        .chain(
+            NavCell::all()
+                .flat_map(|cell| navigation::probes(cell, &scheme, shot.hovered_item(cell))),
         )
         .chain(DividerCell::all().flat_map(|cell| divider_probes(cell, &scheme)))
         .collect()
@@ -1348,12 +1398,23 @@ mod tests {
         assert_eq!(changed.len(), 1);
         assert_eq!(changed[0].target, shot.hovered.unwrap());
         assert_eq!(changed[0].what, "container");
-        let count = |of: fn(&Target) -> bool| rest.iter().filter(|p| of(&p.target)).count();
-        let buttons = count(|target| matches!(target, Target::Button(_)));
-        let icon_buttons = count(|target| matches!(target, Target::IconButton(_)));
-        let switches = count(|target| matches!(target, Target::Switch(_)));
-        let dividers = count(|target| matches!(target, Target::Divider(_)));
-        assert_eq!(rest.len(), buttons + icon_buttons + switches + dividers);
+        let count = |is: fn(&Target) -> bool| rest.iter().filter(|p| is(&p.target)).count();
+        let buttons = count(|t| matches!(t, Target::Button(_)));
+        let icon_buttons = count(|t| matches!(t, Target::IconButton(_)));
+        let switches = count(|t| matches!(t, Target::Switch(_)));
+        let dividers = count(|t| matches!(t, Target::Divider(_)));
+        let navigation =
+            count(|t| matches!(t, Target::NavigationBar(_) | Target::NavigationItem(..)));
+        assert_eq!(
+            rest.len(),
+            buttons + icon_buttons + switches + dividers + navigation
+        );
+        assert_eq!(
+            switches,
+            SwitchCell::all()
+                .map(|c| switch::probes(c, &LIGHT, false).len())
+                .sum::<usize>()
+        );
         assert_eq!(
             buttons,
             Cell::all()
@@ -1372,7 +1433,68 @@ mod tests {
                 .map(|c| icon_probes(c, &LIGHT, false).len())
                 .sum::<usize>()
         );
+        assert_eq!(
+            navigation,
+            NavCell::all()
+                .map(|c| navigation::probes(c, &LIGHT, None).len())
+                .sum::<usize>()
+        );
         assert!(icon_buttons >= IconCell::all().count() * 3);
+        assert!(navigation >= NavCell::all().count() * 8);
+    }
+
+    /// The mouse over a navigation item changes that item's probes and no one else's, and over a disabled item
+    /// nothing changes.
+    #[test]
+    fn a_hovered_navigation_item_changes_only_its_own_probes() {
+        let shots = Shot::all();
+        let rest = shot_probes(shots[0]);
+        let top = NavCell::default();
+        for (index, state, changed) in [
+            (9, ItemState::Selected, ["pill", "icon"]),
+            (10, ItemState::Unselected, ["pill", "icon"]),
+        ] {
+            let shot = shots[index];
+            assert_eq!(shot.hovered, Some(Target::NavigationItem(top, state)));
+            let found = shot_probes(shot);
+            assert_eq!(found.len(), rest.len());
+            let differing: Vec<(Target, &str)> = found
+                .iter()
+                .zip(&rest)
+                .filter(|(a, b)| a != b)
+                .map(|(a, _)| (a.target, a.what))
+                .collect();
+            assert_eq!(
+                differing,
+                changed.map(|what| (Target::NavigationItem(top, state), what)),
+                "{state:?}"
+            );
+        }
+        // Over the disabled one, no state layer: the screenshot is read as at rest.
+        let library = shots[11];
+        assert_eq!(
+            library.hovered,
+            Some(Target::NavigationItem(top, ItemState::Disabled))
+        );
+        assert_eq!(shot_probes(library), rest);
+        // The bar with its icons at the start: the unselected item's pill is read in it, and its icon is not, because
+        // the label's width decides where it is.
+        let start = shots[12];
+        let Some(Target::NavigationItem(bar, ItemState::Unselected)) = start.hovered else {
+            panic!("{start:?}");
+        };
+        assert_eq!(bar.icon_position, NavigationItemIconPosition::Start);
+        let found = shot_probes(start);
+        let differing: Vec<(Target, &str)> = found
+            .iter()
+            .zip(&rest)
+            .filter(|(a, b)| a != b)
+            .map(|(a, _)| (a.target, a.what))
+            .collect();
+        assert_eq!(
+            differing,
+            [(Target::NavigationItem(bar, ItemState::Unselected), "pill")]
+        );
     }
 
     /// The divider `orientation`, `thickness` points thick, of the catalog.
@@ -1501,10 +1623,12 @@ mod tests {
         let shots = Shot::all();
         let rest = of_dividers(shots[0]);
         assert_eq!(rest.len(), 6 * 9);
-        for shot in &shots[1..9] {
+        // The light shots after the rest one: the buttons', the icon buttons' and the navigation items' (13 per
+        // appearance), then the dark rest shot, whose divider colors are the dark ones.
+        for shot in &shots[1..13] {
             assert_eq!(of_dividers(*shot), rest, "{shot:?}");
         }
-        assert_ne!(of_dividers(shots[9]), rest);
+        assert_ne!(of_dividers(shots[13]), rest);
         // No screenshot has the mouse over a divider.
         assert!(
             shots
@@ -1554,6 +1678,15 @@ mod tests {
             Target::IconButton(icon_button).test_id(),
             "icon-tonal-small-uniform-round-enabled"
         );
+        let bar = NavCell::default();
+        assert_eq!(
+            Target::NavigationBar(bar).test_id(),
+            "navigation-equal-top-shown"
+        );
+        assert_eq!(
+            Target::NavigationItem(bar, ItemState::Unselected).test_id(),
+            "navigation-equal-top-shown-search"
+        );
         assert_eq!(
             Target::Divider(DividerCell::default()).test_id(),
             "divider-horizontal-1"
@@ -1575,6 +1708,10 @@ mod tests {
                 "light-hover-icon-tonal.png",
                 "light-hover-icon-outlined.png",
                 "light-hover-icon-standard.png",
+                "light-hover-navigation-equal-top-shown-home.png",
+                "light-hover-navigation-equal-top-shown-search.png",
+                "light-hover-navigation-equal-top-shown-library.png",
+                "light-hover-navigation-equal-start-shown-search.png",
                 "dark-rest.png",
                 "dark-hover-filled.png",
                 "dark-hover-tonal.png",
@@ -1584,6 +1721,10 @@ mod tests {
                 "dark-hover-icon-tonal.png",
                 "dark-hover-icon-outlined.png",
                 "dark-hover-icon-standard.png",
+                "dark-hover-navigation-equal-top-shown-home.png",
+                "dark-hover-navigation-equal-top-shown-search.png",
+                "dark-hover-navigation-equal-top-shown-library.png",
+                "dark-hover-navigation-equal-start-shown-search.png",
                 "light-hover-switch-off-plain-enabled.png",
                 "light-hover-switch-on-icon-enabled.png",
                 "dark-hover-switch-off-plain-enabled.png",
@@ -1592,7 +1733,7 @@ mod tests {
         );
         assert_eq!(Shot::all()[0].appearance.scheme(), LIGHT);
         assert_eq!(
-            Shot::all()[9].appearance.scheme(),
+            Shot::all()[13].appearance.scheme(),
             ColorScheme::BASELINE_DARK
         );
         // The icon buttons hovered are the small uniform round enabled ones.

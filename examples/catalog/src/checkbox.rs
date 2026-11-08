@@ -186,10 +186,10 @@ mod tests {
     #[test]
     fn the_rows_and_columns_are_where_the_layout_says() {
         // The grids above end where the viewport's bottom margin starts: 24 points of margin before the viewport's end,
-        // which is 2,784 points down with the buttons' rows, the icon buttons' and the switches' above.
+        // which is 2,944 points down with the buttons' rows, the icon buttons', the switches' and the navigation bars' above.
         let top_y = Points(grid::viewport().1.0 - MARGIN.0);
         assert_eq!(top(), top_y);
-        assert_eq!(top(), Points(2760.0));
+        assert_eq!(top(), Points(2920.0));
         let first = CheckboxCell::new(CheckboxState::Unchecked, Availability::Enabled);
         assert_eq!(first.origin(), (Points(24.0), top_y));
         // Checked is the second column, 40 points of state layer and 24 of gap further; indeterminate the third.
@@ -217,7 +217,7 @@ mod tests {
         let (width, height) = viewport();
         // The page is as wide as the buttons' grid; the checkboxes' two rows and the margin below them make it 112
         // points taller than the icon buttons' viewport.
-        assert_eq!((width, height), (Points(2608.0), Points(2896.0)));
+        assert_eq!((width, height), (Points(2608.0), Points(3056.0)));
         assert_eq!(width, grid::viewport().0);
         assert_eq!(height.0, grid::viewport().1.0 + 2.0 * (SIDE.0 + ROW_GAP.0));
         let mut bottom = Points(0.0);
