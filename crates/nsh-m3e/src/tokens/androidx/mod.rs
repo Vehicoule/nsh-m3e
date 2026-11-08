@@ -8,6 +8,7 @@
 //! takes; the generator refuses a value that `f32` cannot hold exactly, except a text unit
 //! (`0.1.sp`) or a length (`1.6.dp`), which androidx itself rounds to the nearest `f32`.
 
+pub mod button_group_small_tokens;
 pub mod button_large_tokens;
 pub mod button_medium_tokens;
 pub mod button_small_tokens;
@@ -17,6 +18,7 @@ pub mod checkbox_tokens;
 pub mod circular_progress_indicator_tokens;
 pub mod color_dark_tokens;
 pub mod color_light_tokens;
+pub mod connected_button_group_small_tokens;
 pub mod divider_tokens;
 pub mod elevated_button_tokens;
 pub mod elevation_tokens;

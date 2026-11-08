@@ -31,6 +31,11 @@ struct Source {
 
 const SOURCES: &[Source] = &[
     Source {
+        file: "ButtonGroupSmallTokens.kt",
+        object: None,
+        doc: &["The standard button group's size: its height and the space between its items."],
+    },
+    Source {
         file: "ButtonLargeTokens.kt",
         object: None,
         doc: &[
@@ -100,6 +105,14 @@ const SOURCES: &[Source] = &[
         object: None,
         doc: &[
             "The baseline light color scheme: each color role as a tone of [`super::palette_tokens`].",
+        ],
+    },
+    Source {
+        file: "ConnectedButtonGroupSmallTokens.kt",
+        object: None,
+        doc: &[
+            "The connected button group's size and shapes: its height, the space between its items, its container's \
+             shape and the corners its items round where they meet, at rest and pressed.",
         ],
     },
     Source {
@@ -1171,6 +1184,17 @@ mod tests {
         check_references(&[elevation(), length("ElevationTokens.Level1")]).unwrap();
         assert_eq!(
             bad_kind(&[elevation(), length("ElevationTokens.Opacity")]),
+            kotlin::Kind::Length
+        );
+        // A reference with no type, `val X = ShapeTokens.CornerValueSmall`, names a length too.
+        let untyped = |target: &str| {
+            object(&format!(
+                "internal object ConnectedButtonGroupSmallTokens {{\n    val X = {target}\n}}\n"
+            ))
+        };
+        check_references(&[elevation(), untyped("ElevationTokens.Level1")]).unwrap();
+        assert_eq!(
+            bad_kind(&[elevation(), untyped("ElevationTokens.Opacity")]),
             kotlin::Kind::Length
         );
     }
