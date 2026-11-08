@@ -47,6 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           # The merge commit and its first parent, the base: what the pull request changes.
           fetch-depth: 2
       # The job runs on every pull request, so that its check can be required, but it does its work only when the
@@ -132,15 +133,21 @@ jobs:
         run: |
           mkdir -p target/visual
           if [ "${{ matrix.host }}" = linux ]; then
-            # The screen holds the catalog's window (2608 x 2688 points, `catalog::grid::viewport`); xvfb-run's
+            # The screen holds the catalog's window (2608 x 2784 points, `catalog::grid::viewport`); xvfb-run's
             # default screen is smaller, and a window larger than its screen shows only part of the catalog.
             dbus-run-session -- xvfb-run -a -s "-screen 0 2800x2900x24" nsh test examples/catalog/button.test.tsx --target linux
-            dbus-run-session -- xvfb-run -a -s "-screen 0 2800x2900x24" nsh test examples/catalog/checkbox.test.tsx --target linux
-            # The text fields' window is taller still (2608 x 3000 points, `catalog::text_field::viewport`), so its screen is.
-            dbus-run-session -- xvfb-run -a -s "-screen 0 2800x3100x24" nsh test examples/catalog/text_field.test.tsx --target linux
+            dbus-run-session -- xvfb-run -a -s "-screen 0 2800x2900x24" nsh test examples/catalog/switch.test.tsx --target linux
+            # The checkboxes' window is taller (`catalog::checkbox::viewport`): it has its own, larger screen.
+            dbus-run-session -- xvfb-run -a -s "-screen 0 2800x4000x24" nsh test examples/catalog/checkbox.test.tsx --target linux
+            # The FABs' window is taller still (`catalog::fab::viewport`).
+            dbus-run-session -- xvfb-run -a -s "-screen 0 2800x4000x24" nsh test examples/catalog/fab.test.tsx --target linux
+            # The text fields' window is taller again (`catalog::text_field::viewport`).
+            dbus-run-session -- xvfb-run -a -s "-screen 0 2800x4000x24" nsh test examples/catalog/text_field.test.tsx --target linux
           else
             nsh test examples/catalog/button.test.tsx --target web
+            nsh test examples/catalog/switch.test.tsx --target web
             nsh test examples/catalog/checkbox.test.tsx --target web
+            nsh test examples/catalog/fab.test.tsx --target web
             nsh test examples/catalog/text_field.test.tsx --target web
           fi
         env:

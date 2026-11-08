@@ -1,0 +1,18 @@
+# The license texts in LICENSES/ are copied verbatim, as REUSE requires; CC BY 3.0 spells "MERCHANTIBILITY".
+# reference/ is vendored and never edited by hand, and the Material Symbols modules are generated from it: they keep
+# the icons' own names (`raquetball`, `flourescent`).
+[files]
+extend-exclude = ["LICENSES/", "reference/", "crates/nsh-m3e/src/material_symbols/"]
+
+[default]
+extend-ignore-re = [
+    # ADR 0014 quotes the user's own words, in French.
+    "ba c'est censé",
+    # A test of the token generator misspells a Kotlin name on purpose, to see the generator refuse it.
+    "CornerFul",
+]
+
+[default.extend-words]
+# Test names write a possessive with a bare "s", as an identifier has no apostrophe: `a_switchs_view`, `the_boxs_color`.
+switchs = "switchs"
+boxs = "boxs"

@@ -433,15 +433,15 @@ mod tests {
         let surface = rgb(&LIGHT, ColorRole::Surface);
         let container = rgb(&LIGHT, ColorRole::SurfaceContainerHighest);
         let line = rgb(&LIGHT, ColorRole::OnSurfaceVariant);
-        // The cell's corner is (24, 2776); the container is 56 points high, and the indicator a point of it.
+        // The cell's corner is (24, 3032); the container is 56 points high, and the indicator a point of it.
         assert_eq!(
             probes(cell, &LIGHT, false),
             [
-                at(cell, "outside the corner", 24.0, 2776.0, surface, 0),
-                at(cell, "container", 28.0, 2804.0, container, 0),
-                at(cell, "indicator", 164.0, 2831.0, line, 0),
-                at(cell, "indicator's first row", 164.0, 2831.0, line, 0),
-                at(cell, "above the indicator", 164.0, 2830.0, container, 0),
+                at(cell, "outside the corner", 24.0, 3032.0, surface, 0),
+                at(cell, "container", 28.0, 3060.0, container, 0),
+                at(cell, "indicator", 164.0, 3087.0, line, 0),
+                at(cell, "indicator's first row", 164.0, 3087.0, line, 0),
+                at(cell, "above the indicator", 164.0, 3086.0, container, 0),
             ]
         );
     }
@@ -460,9 +460,9 @@ mod tests {
         assert_eq!(
             found[2..],
             [
-                at(cell, "indicator", 164.0, 2831.0, line, 0),
-                at(cell, "indicator's first row", 164.0, 2830.0, line, 0),
-                at(cell, "above the indicator", 164.0, 2829.0, container, 0),
+                at(cell, "indicator", 164.0, 3087.0, line, 0),
+                at(cell, "indicator's first row", 164.0, 3086.0, line, 0),
+                at(cell, "above the indicator", 164.0, 3085.0, container, 0),
             ]
         );
         // The container and the corner are the same with the focus.
@@ -478,16 +478,16 @@ mod tests {
         );
         let surface = rgb(&LIGHT, ColorRole::Surface);
         let outline = rgb(&LIGHT, ColorRole::Outline);
-        // The cell's corner is (24, 2876); the container is below the 8 points the label sticks out above it.
+        // The cell's corner is (24, 3132); the container is below the 8 points the label sticks out above it.
         assert_eq!(
             probes(cell, &LIGHT, false),
             [
-                at(cell, "outside the corner", 24.0, 2884.0, surface, 0),
-                at(cell, "outline", 32.0, 2884.0, outline, 0),
-                at(cell, "outline's last row", 32.0, 2884.0, outline, 0),
-                at(cell, "inside the outline", 32.0, 2885.0, surface, 0),
+                at(cell, "outside the corner", 24.0, 3140.0, surface, 0),
+                at(cell, "outline", 32.0, 3140.0, outline, 0),
+                at(cell, "outline's last row", 32.0, 3140.0, outline, 0),
+                at(cell, "inside the outline", 32.0, 3141.0, surface, 0),
                 // The label rests, so the outline is not open.
-                at(cell, "notch", 38.0, 2884.0, outline, 0),
+                at(cell, "notch", 38.0, 3140.0, outline, 0),
             ]
         );
         // With the focus the outline is two points thick, in the primary color, and open where the label floats.
@@ -495,11 +495,11 @@ mod tests {
         assert_eq!(
             probes(cell, &LIGHT, true),
             [
-                at(cell, "outside the corner", 24.0, 2884.0, surface, 0),
-                at(cell, "outline", 32.0, 2884.0, primary, 0),
-                at(cell, "outline's last row", 32.0, 2885.0, primary, 0),
-                at(cell, "inside the outline", 32.0, 2886.0, surface, 0),
-                at(cell, "notch", 38.0, 2884.0, surface, 0),
+                at(cell, "outside the corner", 24.0, 3140.0, surface, 0),
+                at(cell, "outline", 32.0, 3140.0, primary, 0),
+                at(cell, "outline's last row", 32.0, 3141.0, primary, 0),
+                at(cell, "inside the outline", 32.0, 3142.0, surface, 0),
+                at(cell, "notch", 38.0, 3140.0, surface, 0),
             ]
         );
     }
@@ -516,7 +516,7 @@ mod tests {
             (notch.x, notch.y, notch.expected),
             (
                 Points(984.0 + 14.0),
-                Points(2884.0),
+                Points(3140.0),
                 rgb(&LIGHT, ColorRole::Surface)
             )
         );
@@ -589,7 +589,7 @@ mod tests {
             };
             assert_eq!(
                 named(&found, "indicator"),
-                at(cell, "indicator", middle, 2831.0, line, tolerance),
+                at(cell, "indicator", middle, 3087.0, line, tolerance),
                 "{what}"
             );
             assert_eq!(
@@ -598,7 +598,7 @@ mod tests {
                     cell,
                     "indicator's first row",
                     middle,
-                    2831.0 - (thickness - 1.0),
+                    3087.0 - (thickness - 1.0),
                     line,
                     tolerance
                 ),
@@ -610,7 +610,7 @@ mod tests {
                     cell,
                     "above the indicator",
                     middle,
-                    2831.0 - thickness,
+                    3087.0 - thickness,
                     container,
                     0
                 ),
@@ -642,7 +642,7 @@ mod tests {
             };
             assert_eq!(
                 named(&found, "outline"),
-                at(cell, "outline", edge, 2884.0, line, tolerance),
+                at(cell, "outline", edge, 3140.0, line, tolerance),
                 "{what}"
             );
             assert_eq!(
@@ -651,7 +651,7 @@ mod tests {
                     cell,
                     "outline's last row",
                     edge,
-                    2884.0 + thickness - 1.0,
+                    3140.0 + thickness - 1.0,
                     line,
                     tolerance
                 ),
@@ -663,7 +663,7 @@ mod tests {
                     cell,
                     "inside the outline",
                     edge,
-                    2884.0 + thickness,
+                    3140.0 + thickness,
                     surface,
                     0
                 ),
@@ -733,8 +733,8 @@ mod tests {
             };
             // The container's top: 8 points into the cell for the outlined field, which the label sticks out above.
             let top = match style {
-                TextFieldStyle::Outlined => 2876.0 + 8.0,
-                _ => 2776.0,
+                TextFieldStyle::Outlined => 3132.0 + 8.0,
+                _ => 3032.0,
             };
             for (status, focused, leading, trailing, opacity) in table {
                 let cell = cell(style, Content::Rich, status);
@@ -985,7 +985,7 @@ mod tests {
         assert_eq!(
             found[0].to_string(),
             format!(
-                "text-field-filled-plain-enabled indicator at (164, 2831) points: expected {} (± 0), found {resting}",
+                "text-field-filled-plain-enabled indicator at (164, 3087) points: expected {} (± 0), found {resting}",
                 wanted.expected
             )
         );

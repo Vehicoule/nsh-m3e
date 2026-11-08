@@ -3,7 +3,7 @@
 // `target/visual`; `cargo run -p visual-checks -- target/visual` checks their known pixels. `nsh test` takes a test only
 // inside its app, so this file is beside the catalog's `nsh.json`.
 //
-// The catalog shows every style, content and status of the text field in two rows below the checkboxes' grid. Each
+// The catalog shows every style, content and status of the text field in two rows below the FABs' row. Each
 // appearance gets one screenshot at rest, then one with the focus in the plain enabled and in the rich error text
 // field of each style, the focus moving from one field to the next. The file names are those `visual-checks` reads
 // (`text_field::Shot::file_name`).
@@ -11,7 +11,7 @@ import { expect, open, test } from "nsh/test";
 
 // The catalog's viewport with the text fields' rows (`catalog::text_field::viewport`); the rows are below the grids
 // the other test files open, so this viewport is taller. `visual-checks` refuses a screenshot of another size.
-const VIEWPORT = { width: 2608, height: 3000 };
+const VIEWPORT = { width: 2608, height: 3256 };
 
 const STYLES = ["filled", "outlined"];
 

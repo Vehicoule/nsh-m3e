@@ -1,20 +1,20 @@
 //! Where the catalog puts each text field, so that the visual checks know where to read its pixels.
 //!
-//! The text fields sit below the checkboxes' grid (see [`crate::checkbox`]), in two rows: the filled fields above the
+//! The text fields sit below the FABs' row (see [`crate::fab`]), in two rows: the filled fields above the
 //! outlined ones. Each row has one column per status, first for the plain fields (empty, so that the label rests over
 //! the text), then for the rich ones (a value, a leading and a trailing icon, so that the label floats). Every field has
 //! supporting text. Each field's top left corner is at a fixed place, whatever its style.
 //!
-//! The grid's top is where the checkboxes' viewport ends, so this grid is the last block of the page, and [`viewport`]
-//! is the page's size with it. `button.test.tsx` and `checkbox.test.tsx` open the page at the viewports that stop above
-//! this grid; `text_field.test.tsx` opens it at [`viewport`].
+//! The grid's top is where the FABs' row ends, a gap below it, so this grid is the last block of the page, and
+//! [`viewport`] is the page's size with it. `button.test.tsx`, `switch.test.tsx`, `checkbox.test.tsx` and `fab.test.tsx`
+//! open the page at the viewports that stop above this grid; `text_field.test.tsx` opens it at [`viewport`].
 
 use nsh_core::geometry::Points;
 use nsh_core::prelude::*;
 use nsh_m3e::text_field::{TextFieldStatus, TextFieldStyle, text_field};
 
 use crate::ICON;
-use crate::checkbox;
+use crate::fab;
 use crate::grid::{self, COLUMN_WIDTH, MARGIN, ROW_GAP};
 
 /// Every style, in the order of the rows.
@@ -62,11 +62,15 @@ pub const FIELD_WIDTH: Points = Points(280.0);
 /// every field fits.
 pub const CELL_HEIGHT: Points = Points(84.0);
 
-/// The top of the text fields' rows: where the checkboxes' viewport ends, less its bottom margin, which a row gap
-/// follows the checkboxes' last row with.
+/// The space between the FABs' row and the text fields' rows: past the reach of the highest FAB's shadow, which is 20
+/// points below it (ADR 0018). A layout value of the catalog, not of Material.
+pub const GAP: Points = Points(48.0);
+
+/// The top of the text fields' rows: where the FABs' row ends, a gap below it (the bottom margin of [`fab::viewport`]
+/// starts where the row and its row gap end).
 #[must_use]
 pub fn top() -> Points {
-    Points(checkbox::viewport().1.0 - MARGIN.0)
+    Points(fab::viewport().1.0 - MARGIN.0 + GAP.0)
 }
 
 /// The bottom of the text fields' rows: below the last row, which is followed by its gap.
@@ -212,6 +216,7 @@ mod tests {
 
     use super::*;
     use crate::Catalog;
+    use crate::checkbox;
 
     /// The text field test script, `text_field.test.tsx`, which opens the catalog at [`viewport`] and takes the
     /// screenshots `visual-checks` reads.
@@ -247,51 +252,52 @@ mod tests {
             Content::Plain,
             TextFieldStatus::Enabled,
         );
-        // Below the checkboxes' viewport of 2,800 points, less the margin the viewport ends with.
-        assert_eq!(top(), Points(2776.0));
-        assert_eq!(first.origin(), (Points(24.0), Points(2776.0)));
+        // The FABs' row ends at the margin before the FABs' viewport does; the text fields start a gap below it.
+        assert_eq!(top(), Points(fab::viewport().1.0 - 24.0 + 48.0));
+        assert_eq!(top(), Points(3032.0));
+        assert_eq!(first.origin(), (Points(24.0), Points(3032.0)));
         // Error is the second column of a content, disabled the third.
         let error = Cell {
             status: TextFieldStatus::Error,
             ..first
         };
-        assert_eq!(error.origin(), (Points(344.0), Points(2776.0)));
+        assert_eq!(error.origin(), (Points(344.0), Points(3032.0)));
         let disabled = Cell {
             status: TextFieldStatus::Disabled,
             ..first
         };
-        assert_eq!(disabled.origin(), (Points(664.0), Points(2776.0)));
+        assert_eq!(disabled.origin(), (Points(664.0), Points(3032.0)));
         // Rich is the second content, after the three plain statuses.
         let rich = Cell {
             content: Content::Rich,
             ..first
         };
-        assert_eq!(rich.origin(), (Points(984.0), Points(2776.0)));
+        assert_eq!(rich.origin(), (Points(984.0), Points(3032.0)));
         // Outlined is the second row, below the first one (84 points and the gap).
         let outlined = Cell {
             style: TextFieldStyle::Outlined,
             ..first
         };
-        assert_eq!(outlined.origin(), (Points(24.0), Points(2876.0)));
+        assert_eq!(outlined.origin(), (Points(24.0), Points(3132.0)));
         let last = Cell::new(
             TextFieldStyle::Outlined,
             Content::Rich,
             TextFieldStatus::Disabled,
         );
-        assert_eq!(last.origin(), (Points(1624.0), Points(2876.0)));
-        assert_eq!(bottom(), Points(2976.0));
+        assert_eq!(last.origin(), (Points(1624.0), Points(3132.0)));
+        assert_eq!(bottom(), Points(3232.0));
     }
 
     #[test]
     fn the_viewport_holds_the_text_fields_and_the_grids_above() {
         let (width, height) = viewport();
-        // The page is as wide as the buttons' grid; the text fields' two rows and the margin below them make it 200
-        // points taller than the checkboxes' viewport.
-        assert_eq!((width, height), (Points(2608.0), Points(3000.0)));
+        // The page is as wide as the buttons' grid; the text fields' two rows, the gap above them and the margin below
+        // them make it 248 points taller than the FABs' viewport.
+        assert_eq!((width, height), (Points(2608.0), Points(3256.0)));
         assert_eq!(width, grid::viewport().0);
         assert_eq!(
             height.0,
-            checkbox::viewport().1.0 + 2.0 * (CELL_HEIGHT.0 + ROW_GAP.0)
+            fab::viewport().1.0 + GAP.0 + 2.0 * (CELL_HEIGHT.0 + ROW_GAP.0)
         );
         for cell in Cell::all() {
             let (x, y) = cell.origin();
@@ -299,7 +305,7 @@ mod tests {
             assert!(x.0 + FIELD_WIDTH.0 < x.0 + COLUMN_WIDTH.0, "{cell:?}");
             assert!(x.0 >= MARGIN.0, "{cell:?}");
             assert!(x.0 + COLUMN_WIDTH.0 <= width.0 - MARGIN.0, "{cell:?}");
-            // Below every checkbox, and a row gap clear of it.
+            // Below every FAB, a gap clear of it.
             assert!(y.0 >= top().0, "{cell:?}");
             assert!(
                 y.0 + CELL_HEIGHT.0 <= height.0 - MARGIN.0 - ROW_GAP.0,
@@ -308,6 +314,10 @@ mod tests {
         }
         // The last row and its gap end at the margin, as the other grids'.
         assert_eq!(bottom().0 + MARGIN.0, height.0);
+        // A gap or more below every FAB: the highest FAB's shadow reaches 20 points below it (ADR 0018).
+        for cell in fab::FabCell::all() {
+            assert!(cell.origin().1.0 + cell.frame().1.0 + GAP.0 <= top().0);
+        }
         // No text field takes the place of a button, an icon button or a checkbox.
         for cell in grid::Cell::all() {
             assert!(cell.origin().1.0 + grid::height(cell.size).0 <= top().0);

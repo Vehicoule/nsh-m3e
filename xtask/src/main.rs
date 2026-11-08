@@ -31,6 +31,11 @@ struct Source {
 
 const SOURCES: &[Source] = &[
     Source {
+        file: "ButtonGroupSmallTokens.kt",
+        object: None,
+        doc: &["The standard button group's size: its height and the space between its items."],
+    },
+    Source {
         file: "ButtonLargeTokens.kt",
         object: None,
         doc: &[
@@ -103,6 +108,22 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
+        file: "ConnectedButtonGroupSmallTokens.kt",
+        object: None,
+        doc: &[
+            "The connected button group's size and shapes: its height, the space between its items, its container's \
+             shape and the corners its items round where they meet, at rest and pressed.",
+        ],
+    },
+    Source {
+        file: "DividerTokens.kt",
+        object: None,
+        doc: &[
+            "The divider's color and thickness. The color is a role of the scheme ([`crate::color::ColorRole`]), \
+             resolved against the light or dark [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
         file: "ElevatedButtonTokens.kt",
         object: None,
         doc: &[
@@ -125,6 +146,59 @@ const SOURCES: &[Source] = &[
             "The springs of the Expressive motion scheme: a stiffness and a damping *ratio* each, at unit mass. NSH's \
              `Spring` takes a damping *coefficient*: use these through [`crate::motion::SpringToken`], which \
              converts them (ADR 0004).",
+        ],
+    },
+    Source {
+        file: "FabBaselineTokens.kt",
+        object: None,
+        doc: &[
+            "The floating action button's size: its container's height and width, its shape and its icon's size.",
+        ],
+    },
+    Source {
+        file: "FabLargeTokens.kt",
+        object: None,
+        doc: &[
+            "The large floating action button's size: its container's height and width, its shape and its icon's \
+             size.",
+            "androidx's `FloatingActionButton.kt` does not read `ICON_SIZE`: it writes 36 in \
+             `FloatingActionButtonDefaults.LargeIconSize`, under \"FabLargeTokens.IconSize is incorrect\" (ADR 0012).",
+        ],
+    },
+    Source {
+        file: "FabMediumTokens.kt",
+        object: None,
+        doc: &[
+            "The medium floating action button's size: its container's height and width and its icon's size.",
+            "The file has no container shape: androidx comments it out (\"TODO: uncomment when \
+             ShapeKeyTokens.CornerLargeIncreased is available\"), and `FloatingActionButton.kt` takes \
+             `ShapeDefaults.LargeIncreased` instead (ADR 0012).",
+        ],
+    },
+    Source {
+        file: "FabPrimaryContainerTokens.kt",
+        object: None,
+        doc: &[
+            "The primary container floating action button's container and icon colors, and its container's \
+             elevation, in each state. Colors are roles of the scheme ([`crate::color::ColorRole`]), resolved \
+             against the light or dark [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
+        file: "FabSecondaryContainerTokens.kt",
+        object: None,
+        doc: &[
+            "The secondary container floating action button's container and icon colors, and its container's \
+             elevation, in each state. Colors are roles of the scheme ([`crate::color::ColorRole`]), resolved \
+             against the light or dark [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
+        file: "FabSmallTokens.kt",
+        object: None,
+        doc: &[
+            "The small floating action button's size: its container's height and width, its shape and its icon's \
+             size.",
         ],
     },
     Source {
@@ -295,6 +369,15 @@ const SOURCES: &[Source] = &[
         doc: &[
             "The opacities of the state layer: a layer of the content's color drawn over a component while it is \
              hovered, focused, pressed or dragged.",
+        ],
+    },
+    Source {
+        file: "SwitchTokens.kt",
+        object: None,
+        doc: &[
+            "The switch's track, handle and icon: their sizes, and their colors in each state, selected and unselected, \
+             enabled and disabled. Colors are roles of the scheme ([`crate::color::ColorRole`]), resolved against the \
+             light or dark [`crate::color::ColorScheme`].",
         ],
     },
     Source {
@@ -1175,6 +1258,17 @@ mod tests {
         check_references(&[elevation(), length("ElevationTokens.Level1")]).unwrap();
         assert_eq!(
             bad_kind(&[elevation(), length("ElevationTokens.Opacity")]),
+            kotlin::Kind::Length
+        );
+        // A reference with no type, `val X = ShapeTokens.CornerValueSmall`, names a length too.
+        let untyped = |target: &str| {
+            object(&format!(
+                "internal object ConnectedButtonGroupSmallTokens {{\n    val X = {target}\n}}\n"
+            ))
+        };
+        check_references(&[elevation(), untyped("ElevationTokens.Level1")]).unwrap();
+        assert_eq!(
+            bad_kind(&[elevation(), untyped("ElevationTokens.Opacity")]),
             kotlin::Kind::Length
         );
     }
