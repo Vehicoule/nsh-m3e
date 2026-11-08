@@ -1,6 +1,6 @@
 # 0020. Draw the loading indicator's morphing shapes as one canvas of cubics whose points are animated values
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-07
 - Deciders: the user
 
@@ -249,7 +249,8 @@ Both need the port tested with the cases of androidx's own tests (`CubicTest`, `
 
 ## Decision
 
-Proposed, not chosen: **A1 with B2**. The user decides; this ADR changes to Accepted with their choice.
+Chosen by the user on 2026-11-08: **A1 with B2**, and, for the four choices below, the recommended option of each
+(1(b), 2(a), 3(a) and 4), as well as the still pose under reduce motion described in Consequences.
 
 - **A1** is the only option that morphs exactly while the engine stays idle. It keeps ADR 0010's check 3 and "nothing
   animates for nothing" true, and the animation runs at the screen's rate with no engine work per frame. Option 2 sends
@@ -281,16 +282,16 @@ function or constant of the component, so changing it later is local.
 
 ## Consequences
 
-- **This ADR changes no code.** The component and its generator come in their own pull requests, after the user's
-  choice.
+- **This ADR changes no code.** The component and its generator come in their own pull requests.
 - **Reduce motion.** `docs/app-requirements.md` (Motion) replaces motion with short fades, and androidx's indicator has
-  none (not found, above). A fade does not fit a loop that never ends, so the proposal, in force until the user decides
-  otherwise, is a still pose: androidx's first frame, taken from the animation's own initial values, the first morph at
-  progress 0, target angle 90 and global rotation 0 (`LoadingIndicator.kt` l.398-401), which is `SoftBurst` turned by
-  90°. It is drawn by the same builder with constants, so the mount starts no animation and `Graph::is_animating()` is
-  false. The busy semantics stay (`progressSemantics()`, l.465). One function builds the pose, so replacing it is
-  local. The visual checks run with `reducedMotion: true` ([ADR 0013](0013-visual-checks-on-nsh-hosts.md)) and so get
-  this still picture; they read only the token colors of the shape and the container.
+  none (not found, above). A fade does not fit a loop that never ends, so, as the user chose on 2026-11-08 for every
+  indeterminate indicator and looping motion of the progress family, the indicator shows a still pose: androidx's first
+  frame, taken from the animation's own initial values, the first morph at progress 0, target angle 90 and global
+  rotation 0 (`LoadingIndicator.kt` l.398-401), which is `SoftBurst` turned by 90°. It is drawn by the same builder
+  with constants, so the mount starts no animation and `Graph::is_animating()` is false. The busy semantics stay
+  (`progressSemantics()`, l.465). One function builds the pose, so replacing it is local. The visual checks run with
+  `reducedMotion: true` ([ADR 0013](0013-visual-checks-on-nsh-hosts.md)) and so get this still picture; they read only
+  the token colors of the shape and the container.
 - **ADR 0010's checks, adapted for option 1** (the user accepts them with this ADR):
   1. *Parameters.* There is no spring driver. The literals ζ = 0.6 and k = 200 (l.407-408) go through ADR 0004's
      conversion, and the table's samples equal the closed form of that spring exactly.
