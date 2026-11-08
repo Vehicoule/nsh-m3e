@@ -23,6 +23,7 @@ components_copy="reference/androidx-material3-components"
 components=(
     Button.kt
     ColorScheme.kt
+    Divider.kt
     IconButton.kt
     IconButtonDefaults.kt
     NavigationItem.kt
@@ -36,7 +37,6 @@ components=(
     internal/LinearWavyProgressModifiers.kt
     internal/CircularWavyProgressModifiers.kt
     Snackbar.kt
-    ComposeMaterial3Flags.kt
     ToggleButton.kt
 )
 
