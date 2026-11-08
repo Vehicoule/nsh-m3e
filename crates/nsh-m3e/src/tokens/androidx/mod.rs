@@ -6,13 +6,14 @@
 //!
 //! Each constant names its androidx token in its documentation. Numbers are `f32`, the type NSH
 //! takes; the generator refuses a value that `f32` cannot hold exactly, except a text unit
-//! (`0.1.sp`), which androidx itself rounds to the nearest `f32`.
+//! (`0.1.sp`) or a length (`1.6.dp`), which androidx itself rounds to the nearest `f32`.
 
 pub mod button_large_tokens;
 pub mod button_medium_tokens;
 pub mod button_small_tokens;
 pub mod button_xlarge_tokens;
 pub mod button_xsmall_tokens;
+pub mod circular_progress_indicator_tokens;
 pub mod color_dark_tokens;
 pub mod color_light_tokens;
 pub mod elevated_button_tokens;
@@ -23,6 +24,7 @@ pub mod filled_icon_button_tokens;
 pub mod filled_tonal_button_tokens;
 pub mod filled_tonal_icon_button_tokens;
 pub mod large_icon_button_tokens;
+pub mod linear_progress_indicator_tokens;
 pub mod medium_icon_button_tokens;
 pub mod motion_tokens;
 pub mod navigation_bar_horizontal_item_tokens;
@@ -31,6 +33,7 @@ pub mod navigation_bar_vertical_item_tokens;
 pub mod outlined_button_tokens;
 pub mod outlined_icon_button_tokens;
 pub mod palette_tokens;
+pub mod progress_indicator_tokens;
 pub mod shape_tokens;
 pub mod small_icon_button_tokens;
 pub mod standard_icon_button_tokens;

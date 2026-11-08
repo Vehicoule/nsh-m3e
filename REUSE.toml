@@ -63,6 +63,12 @@ SPDX-FileCopyrightText = "Google"
 SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
+path = "reference/material-web/**"
+precedence = "override"
+SPDX-FileCopyrightText = "Google LLC"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
 path = "reference/rust/google-rust-style-guide.md"
 precedence = "override"
 SPDX-FileCopyrightText = "Google"
