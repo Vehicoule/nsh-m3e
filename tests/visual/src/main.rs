@@ -665,8 +665,11 @@ fn progress_probes(cell: ProgressCell, scheme: &ColorScheme) -> Vec<Probe> {
         if let Some(at) = read_at(cap, head, crossing) {
             found.push(probe("line", at, line));
         }
-        if track_start < end {
-            found.push(probe("gap", head + spacing / 2.0, surface));
+        // The gap runs from the line's cap to the track's cap, or to the stop's edge where the track has no length; it
+        // has no width where those meet, as at 95 % of the catalog's indicators.
+        let (gap_from, gap_to) = (head + cap, track_start.min(end) - cap);
+        if gap_from < gap_to {
+            found.push(probe("gap", f32::midpoint(gap_from, gap_to), surface));
         }
     }
     // Where the track has no length (it starts at the stop), `read_at` finds no place inside it.

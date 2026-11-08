@@ -41,6 +41,7 @@
 //! [ADR 0012]: https://github.com/Vehicoule/nsh-m3e/blob/main/docs/adr/0012-follow-androidx-components-where-tokens-are-wrong.md
 
 use std::cell::Cell;
+use std::cmp::Ordering;
 use std::f32::consts::TAU;
 
 use nsh_core::canvas::{CanvasOp, LineCap, Num, PathOp};
@@ -155,22 +156,22 @@ impl Value {
         self.plus(Self::Fixed(k))
     }
 
-    /// Modulo `m`, never below 0, as the animation graph takes a modulo.
+    /// Modulo `m`, never below 0, as the animation graph takes a modulo. Where a tiny negative number rounds up to `m`
+    /// the result is `m` here and 0 there; the wave is the same at both (its curve is continuous from one wave to the
+    /// next).
     fn modulo(self, m: f32) -> Self {
         match self {
-            Self::Fixed(x) => Self::Fixed(if m == 0.0 { 0.0 } else { ((x % m) + m) % m }),
+            Self::Fixed(x) => Self::Fixed(x.rem_euclid(m)),
             Self::Moving(x) => Self::Moving(x.modulo(m)),
         }
     }
 
-    /// Held between `low` and `high` (androidx `fastCoerceIn`); where `high` is not above `low`, `high`.
+    /// Held between `low` and `high` (androidx `fastCoerceIn`), where `low` is not above `high`. Where they are the
+    /// same the graph holds the number there: a range of one point reads as that point.
     fn clamped(self, low: f32, high: f32) -> Self {
         match self {
             Self::Fixed(x) => Self::Fixed(held(x, low, high)),
-            Self::Moving(x) if high > low => {
-                Self::Moving(x.interpolate(&[low, high], &[low, high]))
-            }
-            Self::Moving(_) => Self::Fixed(high),
+            Self::Moving(x) => Self::Moving(x.interpolate(&[low, high], &[low, high])),
         }
     }
 
@@ -208,10 +209,7 @@ impl Value {
 
     /// 1 where this is above `other`, 0 where it is not.
     fn gt(self, other: Self) -> Self {
-        match (self, other) {
-            (Self::Fixed(a), Self::Fixed(b)) => Self::Fixed(f32::from(a > b)),
-            _ => self.minus(other).positive(),
-        }
+        self.minus(other).positive()
     }
 
     /// 1 where this is below `other`, 0 where it is not.
@@ -227,8 +225,9 @@ impl Value {
     /// `then` where the gate is 1, `otherwise` where it is 0: androidx's `if`.
     fn select(gate: Self, then: Self, otherwise: Self) -> Self {
         match gate {
+            // A fixed gate is 0 or 1, so anything above 0 is 1.
             Self::Fixed(g) => {
-                if g > 0.5 {
+                if g > 0.0 {
                     then
                 } else {
                     otherwise
@@ -283,13 +282,13 @@ impl Wave {
     /// linear in the curve's parameter, `t = v`, and y is `2 · crest · t · (1 - t)`. The next half wave bends the
     /// other way.
     pub(super) fn height(self, v: f32) -> f32 {
-        let (t, sign) = if v < 1.0 { (v, 1.0) } else { (v - 1.0, -1.0) };
+        let (t, sign) = half_wave(v);
         sign * 2.0 * self.crest * t * (1.0 - t)
     }
 
     /// The slope of the wave of amplitude 1, at `v` on the wave's own scale (the height's derivative along x).
     pub(super) fn slope(self, v: f32) -> f32 {
-        let (t, sign) = if v < 1.0 { (v, 1.0) } else { (v - 1.0, -1.0) };
+        let (t, sign) = half_wave(v);
         sign * 2.0 * self.crest * (1.0 - 2.0 * t) / self.half()
     }
 
@@ -297,6 +296,14 @@ impl Wave {
     fn scale(self, x: Value) -> Value {
         x.scaled(2.0 / self.length).modulo(2.0)
     }
+}
+
+/// Which half wave `v` is in, on the wave's own scale, and where in it: how far along it (0 to 1), and which way it bends
+/// (1 for the first, -1 for the next, and 1 again from 2). Where two half waves meet, at a whole `v`, the next one
+/// starts; the curves are the same height and slope there, so the choice shows nowhere.
+fn half_wave(v: f32) -> (f32, f32) {
+    let index = v.floor();
+    (v - index, 1.0 - 2.0 * (index % 2.0))
 }
 
 /// How high the wave is above the indicator's middle and how steeply it goes, under a point of a window.
@@ -402,10 +409,16 @@ pub(super) struct Layout {
 /// stroke, but nothing where the indicator is narrower than it is tall (`LinearWavyProgressModifiers.kt`, lines 826 to
 /// 835). Both strokes are round.
 pub(super) fn cap_width(width: f32) -> f32 {
+    cap_width_of(width, INDICATOR_THICKNESS, TRACK_THICKNESS)
+}
+
+/// [`cap_width`] for strokes `indicator` and `track` points thick. The tokens make both 4, so each is half of the
+/// other's as well; the arguments let a test tell them apart.
+pub(super) fn cap_width_of(width: f32, indicator: f32, track: f32) -> f32 {
     if HEIGHT.0 > width {
         0.0
     } else {
-        (INDICATOR_THICKNESS / 2.0).max(TRACK_THICKNESS / 2.0)
+        (indicator / 2.0).max(track / 2.0)
     }
 }
 
@@ -419,11 +432,11 @@ pub(super) fn cap_width(width: f32) -> f32 {
 pub(super) fn layout(pairs: &[(Value, Value)], width: f32) -> Layout {
     let c = cap_width(width);
     let far = width - c;
-    // No number of the track is above the end of the track and the widest a line and its gap reach past it. The bound
-    // only gives the graph's tables a range to hold the numbers in: a piece is drawn only where it starts above where
-    // it ends, inside the track, so what lies above `far` is never drawn.
-    let ceiling = width + 2.0 * (GAP + 2.0 * c) + 1.0;
-    let floor = -(GAP + 2.0 * c) - 1.0;
+    // The bounds only give the graph's tables a range to hold the numbers in. A piece is drawn only where it starts
+    // above where it ends, inside the track, so a number of the track is never drawn above `far`; and a head is never
+    // below 0, so what `at_most` holds is never below `-c`.
+    let ceiling = far;
+    let floor = -c;
     let mut layout = Layout::default();
     let mut next_end = Value::Fixed(far);
     let mut at = next_end;
@@ -638,7 +651,8 @@ fn quads(painter: Painter, wave: Wave, amplitude: Value, width: f32) -> Painter 
     let mut painter = painter.begin_path().move_to(0.0, 0.0);
     let half = wave.half();
     let reach = width + wave.length * 2.0;
-    if half > 0.0 && reach.is_finite() {
+    // A wave is never 0 long (the tokens' wavelengths), so the loop ends where the reach is a number.
+    if reach.is_finite() {
         let up = painter.num(amplitude.scaled(wave.crest));
         let down = painter.num(amplitude.scaled(-wave.crest));
         let (mut anchor, mut control) = (half, half / 2.0);
@@ -749,7 +763,11 @@ impl Waving {
         match was {
             Some(was) if was.to_bits() == target.to_bits() => {}
             Some(was) if plays => {
-                let curve = if target > was { GROW } else { SHRINK };
+                // A target that is the same as the amplitude was dealt with above.
+                let curve = match target.total_cmp(&was) {
+                    Ordering::Greater => GROW,
+                    Ordering::Less | Ordering::Equal => SHRINK,
+                };
                 let _ = self
                     .amplitude
                     .timing_with(target, Timing::new(AMPLITUDE_MS, easing(curve)));

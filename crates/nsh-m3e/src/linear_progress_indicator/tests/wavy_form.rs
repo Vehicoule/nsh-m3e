@@ -5,8 +5,8 @@
 use super::super::wavy::{
     AMPLITUDE_MS, DETERMINATE_WAVELENGTH, FLAT_AT_OR_ABOVE, FLAT_AT_OR_BELOW, GAP, HEIGHT,
     HEIGHT_STEPS, INDETERMINATE_WAVELENGTH, INDICATOR_THICKNESS, Layout, Piece, STOP_SIZE,
-    TRACK_THICKNESS, TRAVEL_MS, Travel, Wave, amplitude_at, cap_width, half_plane, has_waves,
-    layout, stop, stop_of, target, travel,
+    TRACK_THICKNESS, TRAVEL_MS, Travel, Wave, amplitude_at, cap_width, cap_width_of, half_plane,
+    has_waves, layout, stop, stop_of, target, travel,
 };
 use nsh_core::animation::{Composite, Driver};
 
@@ -629,6 +629,85 @@ fn an_indicator_narrower_than_it_is_tall_keeps_no_room_for_caps() {
     let (track, line) = drawn_pieces(&determinate_layout(0.5, 100.0));
     assert_pieces(&track, &[(98.0, 58.0)], "100 wide, track");
     assert_pieces(&line, &[(2.0, 50.0)], "100 wide, line");
+}
+
+#[test]
+fn the_caps_reach_half_the_thicker_stroke() {
+    // `max(stroke.width / 2, trackStroke.width / 2)` (`LinearWavyProgressModifiers.kt`, line 832): the tokens make the
+    // strokes 4 points both, so it is told here with strokes of two widths, either way round; and none where the
+    // indicator is narrower than it is tall.
+    let reach =
+        |width: f32, indicator: f32, track: f32| cap_width_of(width, indicator, track).to_bits();
+    assert_eq!(reach(240.0, 4.0, 4.0), 2.0_f32.to_bits());
+    assert_eq!(reach(240.0, 6.0, 2.0), 3.0_f32.to_bits());
+    assert_eq!(reach(240.0, 2.0, 6.0), 3.0_f32.to_bits());
+    assert_eq!(reach(9.0, 6.0, 2.0), 0.0_f32.to_bits());
+}
+
+#[test]
+fn a_track_that_would_end_where_it_starts_is_not_drawn() {
+    // Width 20: a cap of 2, so the track runs from 18 to 2. Half done, the head is at 10, the gap 4 and the spacing
+    // 4 + 2 + 2 = 8, so the track would start at 10 + 8 = 18, where it ends: `nextEndTrackOffset > ...` is strict, so it
+    // is not drawn. What is left of the track after the line, from the tail 0 less the spacing, held at the cap,
+    // is a dot at the cap's width: no length, and not above it, so not drawn either.
+    let (track, line) = drawn_pieces(&determinate_layout(0.5, 20.0));
+    assert_eq!(track, vec![]);
+    assert_pieces(&line, &[(2.0, 10.0)], "20 wide");
+    // A hair less, a head of 9.98: the spacing is the same 8, the track starts at 17.98, and it is there, 0.02 long.
+    let (track, _) = drawn_pieces(&determinate_layout(0.499, 20.0));
+    assert_pieces(&track, &[(18.0, 17.98)], "20 wide, a hair less");
+}
+
+#[test]
+fn a_line_whose_head_is_not_past_its_tail_does_not_move_the_track_off_it() {
+    // `if (barHead > barTail)` moves the track's end to the line's tail less the spacing: a line of no length does
+    // not, and neither does a line that goes backwards. Width 240, a line from 0.5 to 0.5: head and tail at 120, the
+    // gap 4, the spacing 8, the track from 238 to 128 and, from there, to the cap at 2.
+    let pairs = |start: f32, end: f32| [(Value::Fixed(start), Value::Fixed(end))];
+    let (track, lines) = drawn_pieces(&layout(&pairs(0.5, 0.5), 240.0));
+    assert_pieces(&track, &[(238.0, 128.0), (128.0, 2.0)], "no length, track");
+    assert_pieces(&lines, &[], "no length, lines");
+    // From 0.5 to 0.25: the head is at 60, the tail at 120, the track from 238 to 68 and from there to 2; and the
+    // line is drawn, from its tail to its head.
+    let (track, lines) = drawn_pieces(&layout(&pairs(0.5, 0.25), 240.0));
+    assert_pieces(&track, &[(238.0, 68.0), (68.0, 2.0)], "backwards, track");
+    assert_pieces(&lines, &[(120.0, 60.0)], "backwards, lines");
+}
+
+#[test]
+fn an_indicator_with_no_room_for_caps_keeps_no_room_for_them_in_the_spacing() {
+    // Width 8: no caps (0 points), so the track runs from 8 to 0. A quarter done, the head is at 2, the gap 2 and the
+    // spacing 2 + 0 (the line is visible, and its two caps are 0 wide), so the track starts at 2 + 2 = 4: it is drawn
+    // from 8 to 4. The line is from 0 to 2, and what is left of the track is not above the cap, which is 0.
+    let (track, line) = drawn_pieces(&determinate_layout(0.25, 8.0));
+    assert_pieces(&track, &[(8.0, 4.0)], "8 wide, track");
+    assert_pieces(&line, &[(0.0, 2.0)], "8 wide, line");
+}
+
+#[test]
+fn the_path_of_the_wave_goes_as_far_as_the_indicator_and_two_wavelengths_more() {
+    // `while (anchorX <= width + wavelength * 2)`, a curve at each half wave (`LinearWavyProgressModifiers.kt`, lines
+    // 864 to 867). Width 240 and a wave 40 long: anchors at 20, 40, ..., 320, 16 curves. Indeterminate, a wave 20 long:
+    // anchors at 10, 20, ..., 280, 28. Width 100 and 40: 20, ..., 180, 9.
+    for (config, curves, what) in [
+        (wavy_at(0.5), 16, "240 wide, 40 long"),
+        (wavy_indeterminate(), 28, "240 wide, 20 long"),
+        (
+            Config {
+                width: Points(100.0),
+                ..wavy_at(0.5)
+            },
+            9,
+            "100 wide, 40 long",
+        ),
+    ] {
+        let (mounted, replay) = mounted_with_graph(config);
+        let lines = decoded_by(&mounted, mounted.indicator, &replay);
+        assert!(!lines.chains.is_empty(), "{what}");
+        for chain in &lines.chains {
+            assert_eq!(chain.curves.len(), curves, "{what}");
+        }
+    }
 }
 
 #[test]

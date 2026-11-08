@@ -451,9 +451,11 @@ mod tests {
             let (label, value) = &bars[&indicator];
             assert_eq!(label.as_deref(), Some(cell.label().as_str()), "{cell:?}");
             let value = value.as_ref().unwrap();
-            let now = match cell.progress() {
-                Progress::Determinate(fraction) => Some(fraction.0),
-                _ => None,
+            // From the reading, not from `cell.progress()` that gave the indicator its progress: the two would
+            // agree on whatever it returned.
+            let now = match cell.reading {
+                Reading::Determinate(percent) => Some(f32::from(percent) / 100.0),
+                Reading::Indeterminate => None,
             };
             assert_eq!(
                 (value.min, value.max, value.now),

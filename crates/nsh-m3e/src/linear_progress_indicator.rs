@@ -432,10 +432,10 @@ fn nonzero(x: &AnimatedNode) -> AnimatedNode {
         .interpolate(&[0.0, ZERO_RAMP * ZERO_RAMP], &[0.0, 1.0])
 }
 
-/// "if (head > 0) head + gapSizeFraction else 0f" of a head that moves: 0 at 0, the gap once it is past the ramp
-/// (`gap + ZERO_RAMP` is the gap to `f32`), and the gap past the head from there.
+/// "if (head > 0) head + gapSizeFraction else 0f" of a head that moves: 0 at 0, the gap once it is past the ramp (the
+/// head `ZERO_RAMP` past 0 has the gap added to it, which is the gap to `f32`), and the gap past the head from there.
 fn lead(head: &AnimatedNode, gap: f32) -> AnimatedNode {
-    head.interpolate(&[0.0, ZERO_RAMP, 1.0], &[0.0, gap + ZERO_RAMP, gap + 1.0])
+    head.interpolate(&[0.0, ZERO_RAMP, 1.0], &[0.0, gap, gap + 1.0])
 }
 
 /// "if (tail < 1f) tail - gapSizeFraction else 1f" of a tail that moves.
@@ -492,15 +492,11 @@ impl Geometry {
             Cap::Round => {
                 let inset = height / 2.0;
                 let (near, far) = (inset, width - inset);
-                if far > near {
-                    // Held between the insets, in fractions, and mapped to them in points: `held(fraction * width)`.
-                    let (low, high) = (inset / width, 1.0 - inset / width);
-                    let out = if mirrored { [far, near] } else { [near, far] };
-                    moving.interpolate(&[low, high], &out)
-                } else {
-                    // As wide as it is tall: both insets are the middle.
-                    return Value::Fixed(near);
-                }
+                // Held between the insets, in fractions, and mapped to them in points: `held(fraction * width)`. As wide
+                // as it is tall both insets are the middle, and the graph holds the number there.
+                let (low, high) = (inset / width, 1.0 - inset / width);
+                let out = if mirrored { [far, near] } else { [near, far] };
+                moving.interpolate(&[low, high], &out)
             }
         })
     }
@@ -1189,6 +1185,28 @@ mod tests {
             line(0.0, f32::INFINITY, 100.0, 4.0, true).map(|l| (l.from, l.to)),
             Some((2.0, 98.0))
         );
+    }
+
+    #[test]
+    fn a_line_with_an_end_or_a_size_that_is_not_finite_draws_nothing() {
+        // A butt line (narrower than it is tall) takes its ends as the fractions give them, so a fraction that is
+        // infinite or not a number is an end that is, at either end of the line.
+        assert_eq!(line(0.0, f32::INFINITY, 3.0, 4.0, true), None);
+        assert_eq!(line(f32::NEG_INFINITY, 0.5, 3.0, 4.0, true), None);
+        assert_eq!(line(0.0, f32::NAN, 3.0, 4.0, true), None);
+        assert_eq!(line(f32::NAN, 0.5, 3.0, 4.0, true), None);
+        // The same line with ends that are numbers is drawn.
+        assert_eq!(
+            line(0.0, 0.5, 3.0, 4.0, true).map(|l| (l.from, l.to, l.cap)),
+            Some((0.0, 1.5, Cap::Butt))
+        );
+        // An infinite height with a finite width: the ends are numbers (butt, as it is taller than wide), the size is
+        // not.
+        assert_eq!(line(0.0, 0.5, 100.0, f32::INFINITY, true), None);
+        assert_eq!(line(0.0, 0.5, 100.0, f32::NAN, true), None);
+        // And an infinite width.
+        assert_eq!(line(0.0, 0.5, f32::INFINITY, 4.0, true), None);
+        assert_eq!(line(0.0, 0.5, f32::NAN, 4.0, true), None);
     }
 
     #[test]
@@ -2066,6 +2084,15 @@ mod tests {
         assert!(ease(SWEEP_EASING, 0.9) > 0.6);
     }
 
+    /// Where the curve's time at the parameter the bisection tries is exactly the time asked for, it keeps the lower
+    /// half (`<`, not `<=`). The closed form above cannot tell the two rules apart, since they differ by a few units in
+    /// the last place of the result, so this pins the result to its bits: it is what `ease` gave when this was written
+    /// (the same time asked for, 0.0625, gives 0.0021616826 with the other rule).
+    #[test]
+    fn the_bisection_keeps_the_lower_half_where_the_curve_passes_exactly_through_the_time() {
+        assert_eq!(ease(SWEEP_EASING, 0.0625).to_bits(), 0x3b0d_aaff);
+    }
+
     #[test]
     fn a_sweep_is_0_until_its_delay_and_1_from_its_end() {
         for (sweep, (name, delay, duration)) in SWEEP_CONSTS.into_iter().zip(SWEEPS) {
@@ -2260,6 +2287,37 @@ mod tests {
             let at = drawn_lines(course(0.5, 0.5, 0.25, 0.25), width, true);
             assert_eq!((at[1], at[3]), (None, None), "{width} wide, heads at tails");
         }
+    }
+
+    #[test]
+    fn androidxs_conditions_are_strict_at_their_thresholds_for_butt_lines_too() {
+        // A butt line of no length is drawn (androidx calls `drawLine` with it), so a condition that held one step
+        // too far would show here as a stroke of no length; with round caps it shows as nothing. A butt indicator
+        // 10 points wide and 12 tall with a gap of 2 has a gap of 2/10, as the `f32` the geometry computes.
+        let gap = 2.0_f32 / 10.0;
+        let strokes = |at: Course<f32>| {
+            let drawn = indeterminate(at, 10.0, 12.0, 2.0, true);
+            [drawn.track_before, drawn.track_between, drawn.track_after]
+        };
+        // The track before line 1 is drawn while the head is below 1 - gap: at it, not, and below it, it is.
+        let at = strokes(course(1.0 - gap, 0.5, 0.0, 0.0));
+        assert_eq!(at[0], None, "head 1 at 1 - gap");
+        let below = strokes(course(0.75, 0.5, 0.0, 0.0));
+        let line = below[0].expect("track before line 1, head 1 below 1 - gap");
+        assert_eq!(line.cap, Cap::Butt);
+        assert!(near(line.from, (0.75 + gap) * 10.0) && near(line.to, 10.0));
+        // The track between the lines is drawn while the first tail is above the gap: at it, not, above it, it is.
+        let at = strokes(course(0.5, gap, 0.0, 0.5));
+        assert_eq!(at[1], None, "tail 1 at the gap");
+        let above = strokes(course(0.5, 0.5, 0.0, 0.5));
+        let line = above[1].expect("track between, tail 1 above the gap");
+        assert!(near(line.from, 0.0) && near(line.to, (0.5 - gap) * 10.0));
+        // The track after line 2 is drawn while the second tail is above the gap: at it, not, above it, it is.
+        let at = strokes(course(0.5, 0.5, 0.0, gap));
+        assert_eq!(at[2], None, "tail 2 at the gap");
+        let above = strokes(course(0.5, 0.5, 0.0, 0.5));
+        let line = above[2].expect("track after line 2, tail 2 above the gap");
+        assert!(near(line.from, 0.0) && near(line.to, (0.5 - gap) * 10.0));
     }
 
     #[test]
