@@ -20,5 +20,6 @@ mod morph;
 #[cfg(test)]
 mod morph_probe;
 pub mod motion;
+pub mod snackbar;
 mod tint;
 pub mod tokens;
