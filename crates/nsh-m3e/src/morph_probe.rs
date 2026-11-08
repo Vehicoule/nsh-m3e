@@ -69,9 +69,15 @@ pub(crate) fn paths(drawing: &Drawing, replay: &Replay) -> Vec<Vec<Step>> {
 /// A rectangle `inset` points inside a container of `size`, its corners rounded by `radius`, as ADR 0011 traces
 /// it: clockwise from the end of the top left corner, a line and a quarter circle for each side.
 pub(crate) fn rounded_rectangle(size: Size<Points>, inset: f32, radius: f32) -> Vec<Step> {
+    rounded_sides(size, inset, [radius, radius])
+}
+
+/// [`rounded_rectangle`] with its left corners rounded by the first of `[left, right]` and its right corners by the
+/// second.
+pub(crate) fn rounded_sides(size: Size<Points>, inset: f32, [l, r]: [f32; 2]) -> Vec<Step> {
     let (left, top) = (inset, inset);
     let (right, bottom) = (size.width.0 - inset, size.height.0 - inset);
-    let quarter = |x, y, start: f32| Step::Arc {
+    let quarter = |x, y, radius, start: f32| Step::Arc {
         x,
         y,
         radius,
@@ -80,15 +86,15 @@ pub(crate) fn rounded_rectangle(size: Size<Points>, inset: f32, radius: f32) -> 
         ccw: false,
     };
     vec![
-        Step::Move(left + radius, top),
-        Step::Line(right - radius, top),
-        quarter(right - radius, top + radius, -FRAC_PI_2),
-        Step::Line(right, bottom - radius),
-        quarter(right - radius, bottom - radius, 0.0),
-        Step::Line(left + radius, bottom),
-        quarter(left + radius, bottom - radius, FRAC_PI_2),
-        Step::Line(left, top + radius),
-        quarter(left + radius, top + radius, PI),
+        Step::Move(left + l, top),
+        Step::Line(right - r, top),
+        quarter(right - r, top + r, r, -FRAC_PI_2),
+        Step::Line(right, bottom - r),
+        quarter(right - r, bottom - r, r, 0.0),
+        Step::Line(left + l, bottom),
+        quarter(left + l, bottom - l, l, FRAC_PI_2),
+        Step::Line(left, top + l),
+        quarter(left + l, top + l, l, PI),
         Step::Close,
     ]
 }
