@@ -5,8 +5,10 @@
 //! This reads each of them and checks, for every button and icon button of the catalog, the pixels whose color the
 //! tokens give: the container's color inside it, the outline's on its edge, the surface outside its top left corner,
 //! where a rounded corner leaves the background, and an icon button's icon color in its middle; the switches' are
-//! in [`switch`], every checkbox's at the places [`checkbox`] gives and every FAB's, with its shadow, in [`fab`].
-//! Where the antialiasing of an edge, of the label or of the icon's edge makes a color unknown, nothing is checked.
+//! in [`switch`], every checkbox's at the places [`checkbox`] gives and every FAB's, with its shadow, in [`fab`]; and
+//! for every divider, the line's color from end to end and across its whole thickness, and the surface one point
+//! past each of its ends and sides. Where the antialiasing of an edge, of the label or of the icon's edge makes a
+//! color unknown, nothing is checked.
 //!
 //! It is not a `cargo xtask` task: `xtask` must build when the library does not (it regenerates the library's
 //! tokens), so it cannot depend on it, and these checks take every expected color from the library's tokens.
@@ -22,15 +24,16 @@ use std::process::ExitCode;
 
 use catalog::checkbox::CheckboxCell;
 use catalog::fab::FabCell;
-use catalog::grid::{self, Availability, Cell, IconCell};
+use catalog::grid::{self, Availability, Cell, DividerCell, IconCell};
 use catalog::switch::SwitchCell;
 use nsh_core::geometry::Points;
 use nsh_m3e::button::{ButtonShape, ButtonSize, ButtonStyle};
 use nsh_m3e::color::{ColorRole, ColorScheme};
+use nsh_m3e::divider::DividerOrientation;
 use nsh_m3e::icon_button::{IconButtonShape, IconButtonSize, IconButtonStyle, IconButtonWidth};
 use nsh_m3e::tokens::Shape;
 use nsh_m3e::tokens::androidx::{
-    filled_button_tokens, filled_icon_button_tokens, filled_tonal_button_tokens,
+    divider_tokens, filled_button_tokens, filled_icon_button_tokens, filled_tonal_button_tokens,
     filled_tonal_icon_button_tokens, large_icon_button_tokens, medium_icon_button_tokens,
     outlined_button_tokens, outlined_icon_button_tokens, small_icon_button_tokens,
     standard_icon_button_tokens, state_tokens, xlarge_icon_button_tokens,
@@ -81,7 +84,7 @@ impl Appearance {
     }
 }
 
-/// A component of the catalog: a button, an icon button, a switch, a checkbox or a FAB.
+/// A component of the catalog: a button, an icon button, a switch, a checkbox, a FAB or a divider.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Target {
     Button(Cell),
@@ -89,6 +92,7 @@ enum Target {
     Switch(SwitchCell),
     Checkbox(CheckboxCell),
     Fab(FabCell),
+    Divider(DividerCell),
 }
 
 impl Target {
@@ -100,6 +104,7 @@ impl Target {
             Self::Switch(cell) => cell.test_id(),
             Self::Checkbox(cell) => cell.test_id(),
             Self::Fab(cell) => cell.test_id(),
+            Self::Divider(cell) => cell.test_id(),
         }
     }
 }
@@ -173,6 +178,10 @@ impl Shot {
             Some(Target::Checkbox(cell)) => format!("{appearance}-hover-{}.png", cell.test_id()),
             // Nor a FAB: the FAB's own shots are `fab::Shot`.
             Some(Target::Fab(cell)) => format!("{appearance}-hover-{}.png", cell.test_id()),
+            // No screenshot has the mouse over a divider: it has no hover state, and the shots do not hover it.
+            Some(Target::Divider(cell)) => {
+                format!("{appearance}-hover-{}.png", cell.test_id())
+            }
         }
     }
 
@@ -541,7 +550,54 @@ fn icon_probes(cell: IconCell, scheme: &ColorScheme, hovered: bool) -> Vec<Probe
     probes
 }
 
-/// The pixels the checks know in `shot`, for every button, icon button and switch of the catalog.
+/// The pixels the checks know for the divider `cell` in a screenshot in `scheme`: the line in the token's color along
+/// its whole length and across its whole thickness, and the surface one point past each end and each side of it.
+///
+/// A divider is one fill of a box whose edges are on whole points, so at a whole scale no pixel of it is antialiased,
+/// and every probe is exact. It has no hover state, so the mouse over it or not changes nothing.
+fn divider_probes(cell: DividerCell, scheme: &ColorScheme) -> Vec<Probe> {
+    let target = Target::Divider(cell);
+    let (x, y) = cell.origin();
+    let surface = Rgb::of(scheme, ColorRole::Surface);
+    let line = Rgb::of(scheme, divider_tokens::COLOR);
+    let (length, thickness) = (grid::DIVIDER_SPACE.0, cell.thickness.0);
+    // The middle of the line's length, and the pixel row or column nearest the middle of its thickness: a whole number
+    // of points from its start and its first side, both of which are whole numbers.
+    let middle = (length / 2.0).floor();
+    let center = (thickness / 2.0).floor();
+    // What each probe reads: where along the line and across it, in points from its start and from its first side.
+    let places = [
+        ("line's middle", middle, center, line),
+        ("line's first side", middle, 0.0, line),
+        ("line's last side", middle, thickness - 1.0, line),
+        ("surface before the line", middle, -1.0, surface),
+        ("surface after the line", middle, thickness, surface),
+        ("line's start", 0.0, center, line),
+        ("line's end", length - 1.0, center, line),
+        ("surface before the line's start", -1.0, center, surface),
+        ("surface past the line's end", length, center, surface),
+    ];
+    places
+        .into_iter()
+        .map(|(what, along, across, expected)| {
+            // A horizontal line runs along x and is thick along y; a vertical one is the other way round.
+            let (dx, dy) = match cell.orientation {
+                DividerOrientation::Vertical => (across, along),
+                _ => (along, across),
+            };
+            Probe {
+                target,
+                what,
+                x: Points(x.0 + dx),
+                y: Points(y.0 + dy),
+                expected,
+                tolerance: 0,
+            }
+        })
+        .collect()
+}
+
+/// The pixels the checks know in `shot`, for every button, icon button, switch and divider of the catalog.
 fn shot_probes(shot: Shot) -> Vec<Probe> {
     let scheme = shot.appearance.scheme();
     Cell::all()
@@ -554,6 +610,7 @@ fn shot_probes(shot: Shot) -> Vec<Probe> {
             SwitchCell::all()
                 .flat_map(|cell| switch::probes(cell, &scheme, shot.hovers(Target::Switch(cell)))),
         )
+        .chain(DividerCell::all().flat_map(|cell| divider_probes(cell, &scheme)))
         .collect()
 }
 
@@ -1291,18 +1348,22 @@ mod tests {
         assert_eq!(changed.len(), 1);
         assert_eq!(changed[0].target, shot.hovered.unwrap());
         assert_eq!(changed[0].what, "container");
-        let buttons = rest
-            .iter()
-            .filter(|p| matches!(p.target, Target::Button(_)))
-            .count();
-        let icon_buttons = rest
-            .iter()
-            .filter(|p| matches!(p.target, Target::IconButton(_)))
-            .count();
+        let count = |of: fn(&Target) -> bool| rest.iter().filter(|p| of(&p.target)).count();
+        let buttons = count(|target| matches!(target, Target::Button(_)));
+        let icon_buttons = count(|target| matches!(target, Target::IconButton(_)));
+        let switches = count(|target| matches!(target, Target::Switch(_)));
+        let dividers = count(|target| matches!(target, Target::Divider(_)));
+        assert_eq!(rest.len(), buttons + icon_buttons + switches + dividers);
         assert_eq!(
             buttons,
             Cell::all()
                 .map(|c| probes(c, &LIGHT, false).len())
+                .sum::<usize>()
+        );
+        assert_eq!(
+            dividers,
+            DividerCell::all()
+                .map(|c| divider_probes(c, &LIGHT).len())
                 .sum::<usize>()
         );
         assert_eq!(
@@ -1314,6 +1375,176 @@ mod tests {
         assert!(icon_buttons >= IconCell::all().count() * 3);
     }
 
+    /// The divider `orientation`, `thickness` points thick, of the catalog.
+    fn divider_cell(orientation: DividerOrientation, thickness: f32) -> DividerCell {
+        DividerCell::new(orientation, Points(thickness))
+    }
+
+    /// What `divider_probes` reads, as (what, x, y, whether the line is expected there), in points.
+    fn read(cell: DividerCell, scheme: &ColorScheme) -> Vec<(&'static str, f32, f32, bool)> {
+        let line = Rgb::of(scheme, ColorRole::OutlineVariant);
+        divider_probes(cell, scheme)
+            .into_iter()
+            .map(|probe| (probe.what, probe.x.0, probe.y.0, probe.expected == line))
+            .collect()
+    }
+
+    #[test]
+    fn divider_probes_read_the_line_from_end_to_end_and_the_surface_past_it() {
+        use DividerOrientation::{Horizontal, Vertical};
+        // The one-point horizontal line at (2440, 904), 96 points long: its one row is its middle, first and last.
+        assert_eq!(
+            read(divider_cell(Horizontal, 1.0), &LIGHT),
+            [
+                ("line's middle", 2488.0, 904.0, true),
+                ("line's first side", 2488.0, 904.0, true),
+                ("line's last side", 2488.0, 904.0, true),
+                ("surface before the line", 2488.0, 903.0, false),
+                ("surface after the line", 2488.0, 905.0, false),
+                ("line's start", 2440.0, 904.0, true),
+                ("line's end", 2535.0, 904.0, true),
+                ("surface before the line's start", 2439.0, 904.0, false),
+                ("surface past the line's end", 2536.0, 904.0, false),
+            ]
+        );
+        // The two-point one at (2440, 1016): its middle is the second row.
+        assert_eq!(
+            read(divider_cell(Horizontal, 2.0), &LIGHT),
+            [
+                ("line's middle", 2488.0, 1017.0, true),
+                ("line's first side", 2488.0, 1016.0, true),
+                ("line's last side", 2488.0, 1017.0, true),
+                ("surface before the line", 2488.0, 1015.0, false),
+                ("surface after the line", 2488.0, 1018.0, false),
+                ("line's start", 2440.0, 1017.0, true),
+                ("line's end", 2535.0, 1017.0, true),
+                ("surface before the line's start", 2439.0, 1017.0, false),
+                ("surface past the line's end", 2536.0, 1017.0, false),
+            ]
+        );
+        // The four-point vertical one at (2440, 1464): the same, turned. Its middle is the third column.
+        assert_eq!(
+            read(divider_cell(Vertical, 4.0), &LIGHT),
+            [
+                ("line's middle", 2442.0, 1512.0, true),
+                ("line's first side", 2440.0, 1512.0, true),
+                ("line's last side", 2443.0, 1512.0, true),
+                ("surface before the line", 2439.0, 1512.0, false),
+                ("surface after the line", 2444.0, 1512.0, false),
+                ("line's start", 2442.0, 1464.0, true),
+                ("line's end", 2442.0, 1559.0, true),
+                ("surface before the line's start", 2442.0, 1463.0, false),
+                ("surface past the line's end", 2442.0, 1560.0, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_probe_expects_the_line_exactly_where_the_line_is() {
+        for cell in DividerCell::all() {
+            let (x, y) = cell.origin();
+            let (width, height) = cell.frame();
+            let found = divider_probes(cell, &LIGHT);
+            assert_eq!(found.len(), 9, "{cell:?}");
+            let mut lines = 0;
+            for probe in &found {
+                // The line is the box of its frame at its origin; a probe is inside it or one point outside.
+                let inside = (x.0..x.0 + width.0).contains(&probe.x.0)
+                    && (y.0..y.0 + height.0).contains(&probe.y.0);
+                let expected = if inside {
+                    lines += 1;
+                    Rgb::of(&LIGHT, ColorRole::OutlineVariant)
+                } else {
+                    Rgb::of(&LIGHT, ColorRole::Surface)
+                };
+                assert_eq!(probe.expected, expected, "{cell:?} {}", probe.what);
+                assert_eq!(probe.tolerance, 0, "{cell:?} {}", probe.what);
+                assert_eq!(probe.target, Target::Divider(cell));
+                // Whole points, so that a probe reads one pixel of a whole scale and no edge between two.
+                assert!(probe.x.0.fract() == 0.0 && probe.x.0 > 0.0, "{probe:?}");
+                assert!(probe.y.0.fract() == 0.0 && probe.y.0 > 0.0, "{probe:?}");
+            }
+            assert_eq!(lines, 5, "{cell:?}");
+            // Each side of the line and each end is read, one point outside.
+            let reads =
+                |at: fn(&Probe) -> f32, edge: f32| found.iter().any(|p| (at(p) - edge).abs() < 0.5);
+            assert!(reads(|p| p.x.0, x.0 - 1.0), "{cell:?}");
+            assert!(reads(|p| p.x.0, x.0 + width.0), "{cell:?}");
+            assert!(reads(|p| p.y.0, y.0 - 1.0), "{cell:?}");
+            assert!(reads(|p| p.y.0, y.0 + height.0), "{cell:?}");
+            // And the line's last point on each of them.
+            assert!(reads(|p| p.x.0, x.0 + width.0 - 1.0), "{cell:?}");
+            assert!(reads(|p| p.y.0, y.0 + height.0 - 1.0), "{cell:?}");
+        }
+    }
+
+    #[test]
+    fn the_line_is_the_outline_variant_of_each_appearance_and_no_mouse_changes_it() {
+        let dark = ColorScheme::BASELINE_DARK;
+        let cell = DividerCell::default();
+        let light_line = divider_probes(cell, &LIGHT)[0].expected;
+        let dark_line = divider_probes(cell, &dark)[0].expected;
+        assert_eq!(light_line, Rgb::of(&LIGHT, ColorRole::OutlineVariant));
+        assert_eq!(dark_line, Rgb::of(&dark, ColorRole::OutlineVariant));
+        assert_ne!(light_line, dark_line);
+        assert_eq!(
+            divider_probes(cell, &dark)[3].expected,
+            Rgb::of(&dark, ColorRole::Surface)
+        );
+        // A divider has no hover state: whatever the mouse is over, its probes are the same.
+        let of_dividers = |shot: Shot| -> Vec<Probe> {
+            shot_probes(shot)
+                .into_iter()
+                .filter(|probe| matches!(probe.target, Target::Divider(_)))
+                .collect()
+        };
+        let shots = Shot::all();
+        let rest = of_dividers(shots[0]);
+        assert_eq!(rest.len(), 6 * 9);
+        for shot in &shots[1..9] {
+            assert_eq!(of_dividers(*shot), rest, "{shot:?}");
+        }
+        assert_ne!(of_dividers(shots[9]), rest);
+        // No screenshot has the mouse over a divider.
+        assert!(
+            shots
+                .iter()
+                .all(|shot| !matches!(shot.hovered, Some(Target::Divider(_))))
+        );
+    }
+
+    #[test]
+    fn a_line_one_point_short_or_long_is_found_and_named() {
+        let shot = Shot::all()[0];
+        let cell = divider_cell(DividerOrientation::Horizontal, 1.0);
+        let probes = divider_probes(cell, &LIGHT);
+        let [end, past] = [probes[6], probes[8]];
+        assert_eq!(
+            (end.what, past.what),
+            ("line's end", "surface past the line's end")
+        );
+        for (probe, wrong) in [
+            (end, Rgb::of(&LIGHT, ColorRole::Surface)),
+            (past, Rgb::of(&LIGHT, ColorRole::OutlineVariant)),
+        ] {
+            let mut image = painted(shot, 1);
+            let (x, y) = pixel_of(&probe, 1);
+            let start = ((y * image.width + x) * 4) as usize;
+            image.rgba[start..start + 3].copy_from_slice(&wrong.0);
+            let found = check(&image, shot).unwrap();
+            assert_eq!(found.len(), 1);
+            assert_eq!(found[0].probe, probe);
+            assert_eq!(found[0].found, Some(wrong));
+            assert_eq!(
+                found[0].to_string(),
+                format!(
+                    "divider-horizontal-1 {} at ({}, {}) points: expected {} (± 0), found {wrong}",
+                    probe.what, probe.x.0, probe.y.0, probe.expected
+                )
+            );
+        }
+    }
+
     #[test]
     fn a_target_is_named_by_its_test_id() {
         let button = cell(ButtonStyle::Text, Availability::Disabled);
@@ -1322,6 +1553,10 @@ mod tests {
         assert_eq!(
             Target::IconButton(icon_button).test_id(),
             "icon-tonal-small-uniform-round-enabled"
+        );
+        assert_eq!(
+            Target::Divider(DividerCell::default()).test_id(),
+            "divider-horizontal-1"
         );
     }
 
