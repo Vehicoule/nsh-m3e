@@ -4,9 +4,10 @@
 //! `target/visual` (`examples/catalog/button.test.tsx`). This reads each of them and checks, for every button, icon
 //! button and FAB of the catalog, the pixels whose color the tokens give: the container's color inside it, the
 //! outline's on its edge, the surface outside its top left corner, where a rounded corner leaves the background, and
-//! an icon button's or FAB's icon color in its middle. A FAB's corner is read from inside the container and its
-//! surface from beside it, never at the box's corner: a shadow lies there. Where the antialiasing of an edge, of the
-//! label or of the icon's edge makes a color unknown, nothing is checked.
+//! an icon button's or FAB's icon color in its middle. A FAB casts a shadow (ADR 0018), so its corner is read from
+//! inside the container, never at the box's corner, and its surface beyond the shadow's reach; the shadow itself is
+//! read just below the container, where it must be darker than the surface, and darker still at the hover level. Where
+//! the antialiasing of an edge, of the label or of the icon's edge makes a color unknown, nothing is checked.
 //!
 //! It is not a `cargo xtask` task: `xtask` must build when the library does not (it regenerates the library's
 //! tokens), so it cannot depend on it, and these checks take every expected color from the library's tokens.
@@ -18,10 +19,12 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use catalog::grid::{self, Availability, Cell, FabCell, IconCell};
+use nsh_core::BoxShadow;
 use nsh_core::geometry::Points;
 use nsh_m3e::button::{ButtonShape, ButtonSize, ButtonStyle};
 use nsh_m3e::color::{ColorRole, ColorScheme};
-use nsh_m3e::fab::{FabSize, FabStyle};
+use nsh_m3e::elevation::Elevation;
+use nsh_m3e::fab::{FabSize, FabState, FabStyle};
 use nsh_m3e::icon_button::{IconButtonShape, IconButtonSize, IconButtonStyle, IconButtonWidth};
 use nsh_m3e::tokens::Shape;
 use nsh_m3e::tokens::androidx::{
@@ -199,6 +202,19 @@ impl Rgb {
             .iter()
             .zip(other.0)
             .all(|(a, b)| a.abs_diff(b) <= tolerance)
+    }
+}
+
+impl Rgb {
+    /// Whether every channel is lower than `other`'s.
+    fn darker_in_every_channel(self, other: Self) -> bool {
+        self.0.iter().zip(other.0).all(|(a, b)| *a < b)
+    }
+
+    /// Whether no channel is higher than `other`'s and the three together are lower.
+    fn darker_overall(self, other: Self) -> bool {
+        let sum = |color: Self| color.0.iter().map(|c| u16::from(*c)).sum::<u16>();
+        self.0.iter().zip(other.0).all(|(a, b)| *a <= b) && sum(self) < sum(other)
     }
 }
 
@@ -581,11 +597,54 @@ fn fab_corner_radius(cell: FabCell) -> Points {
 /// which spreads over about a point. Not a design value: where the check looks.
 const ARC_MARGIN: f32 = 1.0;
 
-/// How far from the container's left edge, at mid height, the surface is read beside a FAB: the middle of the
-/// narrowest gap between two FABs of the catalog (the largest FAB, 96 points, in its 128-point column), and a
-/// column's margin is wider. A catalog layout choice, where the check looks, not a measured shadow reach: no
-/// shadow is drawn yet, and the change that draws it checks this distance against the shadow's.
-const FAB_SURFACE_DISTANCE: Points = Points(16.0);
+/// How far past the nominal reach of a FAB's shadows the surface is read. The shadow is a Gaussian whose standard
+/// deviation is half its blur (`BoxShadow::blur`): 5 points for the highest level's ambient layer (level 4, blur 10).
+/// The reach is the spread plus the blur, so it ends 2 standard deviations past the shadow's box (the spread's edge),
+/// and a point 8 past the reach is 18 points, 3.6 standard deviations, past that edge, where the shadow is under
+/// 0.02 % of its opacity. Worked out from the shadow's definition, not measured on a host. Not a design value: where
+/// the check looks.
+const SHADOW_TAIL: Points = Points(8.0);
+
+/// How far below a FAB's container its shadow is read: inside the reach of every level a FAB has (level 3 reaches 15
+/// points below, level 4 reaches 20), close enough to the container that the levels differ most. Not a design value:
+/// where the check looks.
+const SHADOW_BELOW: Points = Points(2.0);
+
+/// How far the shadows of `level` reach past a container, to the sides and below it, in points: the largest, over its
+/// layers, of the offset, spread and blur that point that way (ADR 0018 gives 11 and 15 for level 3, 14 and 20 for
+/// level 4). `BoxShadow::blur` is twice the Gaussian's standard deviation, so the shadow is nothing past it.
+fn shadow_reach(level: Elevation) -> (Points, Points) {
+    let layers: [BoxShadow; 2] = level.shadows();
+    let side = layers
+        .iter()
+        .map(|l| l.offset_x.0.abs() + l.spread.0 + l.blur.0)
+        .fold(0.0, f32::max);
+    let below = layers
+        .iter()
+        .map(|l| l.offset_y.0 + l.spread.0 + l.blur.0)
+        .fold(0.0, f32::max);
+    (Points(side), Points(below))
+}
+
+/// The highest level a FAB of `style` sits at, in any state: the one whose shadows reach furthest.
+fn highest_level(style: FabStyle) -> Elevation {
+    [
+        FabState::Rest,
+        FabState::Hovered,
+        FabState::Focused,
+        FabState::Pressed,
+    ]
+    .into_iter()
+    .map(|state| style.level(state))
+    .max()
+    .unwrap_or(Elevation::Level0)
+}
+
+/// How far from the container's left edge, at mid height, the surface is read beside the FAB `cell`: past the reach
+/// of its highest level's shadows to the sides, by [`SHADOW_TAIL`]. The catalog's FAB columns leave room for it.
+fn surface_distance(cell: FabCell) -> Points {
+    Points(shadow_reach(highest_level(cell.style)).0.0 + SHADOW_TAIL.0)
+}
 
 /// The first whole number of points, counted from a container's corner along both edges, whose pixel is inside the
 /// arc of a corner of `radius` by at least [`ARC_MARGIN`]. The pixel `n` points along each edge has its middle at
@@ -603,8 +662,8 @@ fn inside_the_arc(radius: Points) -> Points {
 ///
 /// None is read at the box's corner or next to the container's edge: a shadow (ADR 0018) is drawn around the container
 /// and below it, and reaches those places. The container is drawn over its shadow, so what is read inside it is the
-/// same with one. The surface is read [`FAB_SURFACE_DISTANCE`] away, which a shadow may reach too: the change that
-/// draws it checks that distance against the shadow's.
+/// same with one. The surface is read [`surface_distance`] away, past the reach of the shadows; [`shot_shadows`] reads
+/// the shadow.
 fn fab_probes(cell: FabCell, scheme: &ColorScheme, hovered: bool) -> Vec<Probe> {
     let target = Target::Fab(cell);
     let (x, y) = cell.origin();
@@ -625,12 +684,12 @@ fn fab_probes(cell: FabCell, scheme: &ColorScheme, hovered: bool) -> Vec<Probe> 
             expected: container,
             tolerance: container_tolerance,
         },
-        // Beside the container, in the gap to the next FAB or the margin: the surface, and nothing drawn around the
-        // container.
+        // Beside the container, past the reach of its shadows, in the gap to the next FAB or the margin: the surface,
+        // and nothing drawn around the container.
         Probe {
             target,
             what: "surface beside it",
-            x: Points(x.0 - FAB_SURFACE_DISTANCE.0),
+            x: Points(x.0 - surface_distance(cell).0),
             y: middle.1,
             expected: Rgb::of(scheme, ColorRole::Surface),
             tolerance: 0,
@@ -655,6 +714,71 @@ fn fab_probes(cell: FabCell, scheme: &ColorScheme, hovered: bool) -> Vec<Probe> 
             tolerance: 0,
         },
     ]
+}
+
+/// What a shadow's pixel is compared with.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Than {
+    /// A color the pixel is darker than in every channel: the shadow over the surface.
+    Color(Rgb),
+    /// The pixel at this point of the same screenshot: a higher level's shadow over a lower level's, where the two
+    /// differ by a few levels of a channel, so the check is that no channel is lighter and the three together are
+    /// darker.
+    Pixel(Points, Points),
+}
+
+/// A pixel in the shadow of a FAB, which must be darker than what it is compared with (ADR 0018).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Shadow {
+    target: Target,
+    what: &'static str,
+    x: Points,
+    y: Points,
+    than: Than,
+}
+
+/// Where the shadow below the FAB `cell` is read: the middle of its width, [`SHADOW_BELOW`] below the container.
+fn below(cell: FabCell) -> (Points, Points) {
+    let (x, y) = cell.origin();
+    let (width, height) = cell.frame();
+    (
+        Points(x.0 + width.0 / 2.0),
+        Points(y.0 + height.0 + SHADOW_BELOW.0),
+    )
+}
+
+/// The pixels in the shadows of the FABs of `shot`: below each container the pixel is darker than the surface, and
+/// below the FAB the mouse is over, it is darker than below the same-sized FAB of the other style, which is at rest in
+/// the same screenshot and so one level lower. The pixel below a container is not the container's: it lies outside
+/// it, so it depends on the shadow and the surface alone, whatever the style.
+fn shot_shadows(shot: Shot) -> Vec<Shadow> {
+    let scheme = shot.appearance.scheme();
+    let surface = Rgb::of(&scheme, ColorRole::Surface);
+    let mut shadows = Vec::new();
+    for cell in FabCell::all() {
+        let (x, y) = below(cell);
+        let target = Target::Fab(cell);
+        shadows.push(Shadow {
+            target,
+            what: "shadow below it",
+            x,
+            y,
+            than: Than::Color(surface),
+        });
+        if shot.hovers(target) {
+            for other in FabCell::all().filter(|o| o.size == cell.size && o.style != cell.style) {
+                let (other_x, other_y) = below(other);
+                shadows.push(Shadow {
+                    target,
+                    what: "shadow below it, hovered",
+                    x,
+                    y,
+                    than: Than::Pixel(other_x, other_y),
+                });
+            }
+        }
+    }
+    shadows
 }
 
 /// The pixels the checks know in `shot`, for every button, icon button and FAB of the catalog.
@@ -803,6 +927,73 @@ impl fmt::Display for Mismatch {
     }
 }
 
+/// What a shadow found when it was not darker than what it is compared with.
+#[derive(Debug, Clone, PartialEq)]
+struct ShadowMismatch {
+    probe: Shadow,
+    found: Option<Rgb>,
+    /// The color it was compared with, if the image has one.
+    reference: Option<Rgb>,
+}
+
+impl fmt::Display for ShadowMismatch {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let probe = &self.probe;
+        write!(
+            f,
+            "{} {} at ({}, {}) points: expected darker than ",
+            probe.target.test_id(),
+            probe.what,
+            probe.x.0,
+            probe.y.0,
+        )?;
+        match (probe.than, self.reference) {
+            (Than::Color(color), _) => write!(f, "{color}")?,
+            (Than::Pixel(x, y), Some(color)) => {
+                write!(f, "{color} (the pixel at ({}, {}))", x.0, y.0)?;
+            }
+            (Than::Pixel(x, y), None) => {
+                write!(f, "the pixel at ({}, {}), which is not there", x.0, y.0)?;
+            }
+        }
+        match self.found {
+            Some(found) => write!(f, ", found {found}"),
+            None => write!(f, ", found no pixel"),
+        }
+    }
+}
+
+/// Every shadow of `shot` that `image` does not show.
+fn check_shadows(image: &Image, shot: Shot) -> Result<Vec<ShadowMismatch>, String> {
+    let scale = image.scale()?;
+    let at = |x: Points, y: Points| image.pixel(points_to_u32(x) * scale, points_to_u32(y) * scale);
+    Ok(shot_shadows(shot)
+        .into_iter()
+        .filter_map(|probe| {
+            let found = at(probe.x, probe.y);
+            let (reference, darker) = match (probe.than, found) {
+                (Than::Color(color), found) => (
+                    Some(color),
+                    found.is_some_and(|found| found.darker_in_every_channel(color)),
+                ),
+                (Than::Pixel(x, y), found) => {
+                    let reference = at(x, y);
+                    let darker = match (found, reference) {
+                        (Some(found), Some(reference)) => found.darker_overall(reference),
+                        _ => false,
+                    };
+                    (reference, darker)
+                }
+            };
+            (!darker).then_some(ShadowMismatch {
+                probe,
+                found,
+                reference,
+            })
+        })
+        .collect())
+}
+
 /// Every probe of `shot` that `image` does not match.
 fn check(image: &Image, shot: Shot) -> Result<Vec<Mismatch>, String> {
     let scale = image.scale()?;
@@ -856,16 +1047,27 @@ fn run(directory: &Path, out: &mut impl io::Write) -> Result<(), Error> {
             path: path.clone(),
             message,
         })?;
+        let shadows = check_shadows(&image, shot).map_err(|message| Error::Image {
+            path: path.clone(),
+            message,
+        })?;
         let _ = writeln!(
             out,
             "{}: {}",
             path.display(),
-            if found.is_empty() { "ok" } else { "FAILED" }
+            if found.is_empty() && shadows.is_empty() {
+                "ok"
+            } else {
+                "FAILED"
+            }
         );
         for mismatch in &found {
             let _ = writeln!(out, "  {mismatch}");
         }
-        mismatches += found.len();
+        for mismatch in &shadows {
+            let _ = writeln!(out, "  {mismatch}");
+        }
+        mismatches += found.len() + shadows.len();
     }
     if mismatches == 0 {
         Ok(())
@@ -915,16 +1117,35 @@ mod tests {
         )
     }
 
-    /// The catalog painted as the tokens say, at `scale`: every probe of `shot` holds its expected color, and the
-    /// rest a color no probe expects.
+    /// `color` with each channel multiplied by `numerator / denominator`.
+    fn shaded(color: Rgb, numerator: u16, denominator: u16) -> Rgb {
+        Rgb(color
+            .0
+            .map(|c| u8::try_from(u16::from(c) * numerator / denominator).unwrap_or(c)))
+    }
+
+    /// The catalog painted as the tokens say, at `scale`: every probe of `shot` holds its expected color, a pixel in
+    /// a shadow is the surface a quarter darker (half as light below the FAB the mouse is over, which is a level
+    /// higher), and the rest a color no probe expects.
     fn painted(shot: Shot, scale: u32) -> Image {
         let (width, height) = grid::viewport();
         let (width, height) = (points_to_u32(width) * scale, points_to_u32(height) * scale);
         let mut rgba = [1, 2, 3, 255].repeat((width * height) as usize);
-        for probe in shot_probes(shot) {
-            let (x, y) = pixel_of(&probe, scale);
+        let mut paint = |x: Points, y: Points, color: Rgb| {
+            let (x, y) = (points_to_u32(x) * scale, points_to_u32(y) * scale);
             let start = ((y * width + x) * 4) as usize;
-            rgba[start..start + 3].copy_from_slice(&probe.expected.0);
+            rgba[start..start + 3].copy_from_slice(&color.0);
+        };
+        for probe in shot_probes(shot) {
+            paint(probe.x, probe.y, probe.expected);
+        }
+        let surface = Rgb::of(&shot.appearance.scheme(), ColorRole::Surface);
+        let shadows = shot_shadows(shot);
+        for shadow in shadows.iter().filter(|s| matches!(s.than, Than::Color(_))) {
+            paint(shadow.x, shadow.y, shaded(surface, 3, 4));
+        }
+        for shadow in shadows.iter().filter(|s| matches!(s.than, Than::Pixel(..))) {
+            paint(shadow.x, shadow.y, shaded(surface, 1, 2));
         }
         Image {
             width,
@@ -1495,7 +1716,7 @@ mod tests {
                 found[1].expected,
                 found[1].tolerance
             ),
-            (Points(x.0 - 16.0), Points(y.0 + 20.0), surface, 0)
+            (Points(x.0 - 22.0), Points(y.0 + 20.0), surface, 0)
         );
         assert_eq!(
             (
@@ -1525,7 +1746,7 @@ mod tests {
         );
         assert_eq!(
             (found[1].x, found[1].y),
-            (Points(x.0 - 16.0), Points(y.0 + 48.0))
+            (Points(x.0 - 22.0), Points(y.0 + 48.0))
         );
         assert_eq!(
             (found[2].x, found[2].y),
@@ -1569,14 +1790,18 @@ mod tests {
                     probe.what
                 );
             }
+            // The surface is past the reach of every FAB's shadows, its own included: outside each box grown by the
+            // reach of the highest level, to the sides, above (as far as the sides, which is more than the shadow
+            // reaches there) and below.
             let surface = found[1];
             for &(other, other_left, other_top, other_right, other_bottom) in &frames {
+                let (side, below) = shadow_reach(highest_level(other.style));
                 assert!(
-                    !(surface.x.0 >= other_left
-                        && surface.x.0 <= other_right
-                        && surface.y.0 >= other_top
-                        && surface.y.0 <= other_bottom),
-                    "{cell:?}'s surface is inside {other:?}"
+                    surface.x.0 < other_left - side.0
+                        || surface.x.0 > other_right + side.0
+                        || surface.y.0 < other_top - side.0
+                        || surface.y.0 > other_bottom + below.0,
+                    "{cell:?}'s surface is in the shadow of {other:?}"
                 );
             }
             // The container is read before the icon, whose box starts at ((side - icon) / 2).
@@ -1589,14 +1814,142 @@ mod tests {
             };
             assert!(found[0].x.0 - left < (side.0 - icon) / 2.0, "{cell:?}");
         }
-        // Half the narrowest gap between two FABs, and the margin: the surface is read in the middle of the gap.
+        // The surface is read less far from a FAB than half the narrowest gap between two, and than the margin: the
+        // gap and the margin are wide enough for the shadows' reach and the tail.
         let widest = grid::FAB_SIZES
             .into_iter()
             .map(|size| grid::fab_frame(size).0.0)
             .fold(0.0_f32, f32::max);
         assert_eq!(widest, 96.0);
-        assert!(FAB_SURFACE_DISTANCE.0 * 2.0 <= grid::FAB_COLUMN_WIDTH.0 - widest);
-        const { assert!(FAB_SURFACE_DISTANCE.0 <= grid::MARGIN.0) };
+        for cell in FabCell::all() {
+            let distance = surface_distance(cell).0;
+            assert!(
+                distance * 2.0 <= grid::FAB_COLUMN_WIDTH.0 - widest,
+                "{cell:?}"
+            );
+            assert!(distance <= grid::MARGIN.0, "{cell:?}");
+        }
+    }
+
+    #[test]
+    fn the_shadows_reach_what_adr_0018_says_and_the_surface_is_read_past_it() {
+        let reach = |level| {
+            let (side, below) = shadow_reach(level);
+            (side.0, below.0)
+        };
+        // ADR 0018: level 3 reaches 11 points to the sides (spread 3, blur 8) and 15 below (plus the 4-point offset);
+        // level 4, 14 and 20.
+        assert_eq!(reach(Elevation::Level3), (11.0, 15.0));
+        assert_eq!(reach(Elevation::Level4), (14.0, 20.0));
+        // Nothing reaches at level 0; every level reaches further than the one before it.
+        assert_eq!(reach(Elevation::Level0), (0.0, 0.0));
+        for pair in Elevation::ALL.windows(2) {
+            let (lower, higher) = (reach(pair[0]), reach(pair[1]));
+            assert!(higher.0 >= lower.0 && higher.1 >= lower.1, "{pair:?}");
+        }
+        // The FAB's highest level is the hovered one, and the surface is read 8 points past its reach.
+        for style in [FabStyle::PrimaryContainer, FabStyle::SecondaryContainer] {
+            assert_eq!(highest_level(style), Elevation::Level4);
+            for size in grid::FAB_SIZES {
+                assert_eq!(surface_distance(fab_cell(style, size)), Points(22.0));
+            }
+        }
+        // Inside the reach below, at every level a FAB has, and not at the container's edge.
+        const { assert!(SHADOW_BELOW.0 > 0.0) };
+        assert!(SHADOW_BELOW.0 < reach(Elevation::Level3).1);
+    }
+
+    #[test]
+    fn the_shadow_is_read_below_the_middle_of_each_container() {
+        let small = fab_cell(FabStyle::PrimaryContainer, FabSize::Small);
+        let (x, y) = small.origin();
+        assert_eq!(below(small), (Points(x.0 + 20.0), Points(y.0 + 42.0)));
+        let large = fab_cell(FabStyle::SecondaryContainer, FabSize::Large);
+        let (x, y) = large.origin();
+        assert_eq!(below(large), (Points(x.0 + 48.0), Points(y.0 + 98.0)));
+        // Below the box, never over it or another FAB's: no container or other probe shares the pixel.
+        let all: Vec<FabCell> = FabCell::all().collect();
+        for cell in &all {
+            let (px, py) = below(*cell);
+            let (x, y) = cell.origin();
+            let (width, height) = cell.frame();
+            assert!(py.0 > y.0 + height.0, "{cell:?}");
+            assert!(px.0 > x.0 && px.0 < x.0 + width.0, "{cell:?}");
+            for other in &all {
+                let ((ox, oy), (ow, oh)) = (other.origin(), other.frame());
+                let (ox, oy, ow, oh) = (ox.0, oy.0, ow.0, oh.0);
+                assert!(
+                    !(px.0 >= ox && px.0 <= ox + ow && py.0 >= oy && py.0 <= oy + oh),
+                    "{cell:?} {other:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_shot_reads_a_shadow_below_every_fab_and_a_higher_one_below_the_hovered() {
+        let rest = shot_shadows(Shot::all()[0]);
+        assert_eq!(rest.len(), FabCell::all().count());
+        assert!(rest.iter().all(|s| s.what == "shadow below it"));
+        let surface = Rgb::of(&LIGHT, ColorRole::Surface);
+        assert!(rest.iter().all(|s| s.than == Than::Color(surface)));
+        assert!(rest.iter().all(|s| matches!(s.target, Target::Fab(_))));
+        // The first FAB hovered: the second style's baseline is the one at rest to compare with.
+        let shot = Shot::all()[9];
+        let hovered = fab_cell(FabStyle::PrimaryContainer, FabSize::Baseline);
+        let other = fab_cell(FabStyle::SecondaryContainer, FabSize::Baseline);
+        assert_eq!(shot.hovered, Some(Target::Fab(hovered)));
+        let found = shot_shadows(shot);
+        assert_eq!(found.len(), rest.len() + 1);
+        // The same reads as at rest, and one more, for the hovered FAB.
+        let base: Vec<Shadow> = found
+            .iter()
+            .filter(|s| s.what == "shadow below it")
+            .copied()
+            .collect();
+        assert_eq!(base.len(), rest.len());
+        for (a, b) in base.iter().zip(&rest) {
+            assert_eq!((a.target, a.x, a.y), (b.target, b.x, b.y));
+        }
+        let extras: Vec<Shadow> = found
+            .iter()
+            .filter(|s| s.what == "shadow below it, hovered")
+            .copied()
+            .collect();
+        let [extra] = extras[..] else {
+            panic!("one more read for the hovered FAB: {extras:?}");
+        };
+        assert_eq!(extra.target, Target::Fab(hovered));
+        assert_eq!((extra.x, extra.y), below(hovered));
+        let (other_x, other_y) = below(other);
+        assert_eq!(extra.than, Than::Pixel(other_x, other_y));
+        // No shot but the hover ones has any.
+        for shot in Shot::all() {
+            let count = shot_shadows(shot)
+                .iter()
+                .filter(|s| s.what == "shadow below it, hovered")
+                .count();
+            assert_eq!(
+                count,
+                usize::from(shot.hovered.is_some_and(|t| matches!(t, Target::Fab(_)))),
+                "{shot:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn darker_is_every_channel_or_overall() {
+        let color = Rgb([10, 20, 30]);
+        assert!(Rgb([9, 19, 29]).darker_in_every_channel(color));
+        assert!(!Rgb([9, 20, 29]).darker_in_every_channel(color));
+        assert!(!Rgb([9, 19, 31]).darker_in_every_channel(color));
+        assert!(!color.darker_in_every_channel(color));
+        // Overall: none higher and the sum lower; one channel may stay.
+        assert!(Rgb([10, 19, 30]).darker_overall(color));
+        assert!(Rgb([9, 19, 29]).darker_overall(color));
+        assert!(!color.darker_overall(color));
+        assert!(!Rgb([9, 19, 31]).darker_overall(color));
+        assert!(!Rgb([11, 18, 30]).darker_overall(color));
     }
 
     #[test]
@@ -1645,6 +1998,65 @@ mod tests {
             Rgb([surface.0[0] - 1, surface.0[1], surface.0[2]]),
         );
         assert_eq!(wrong.len(), 1);
+    }
+
+    #[test]
+    fn a_fab_with_no_shadow_or_the_same_shadow_hovered_fails_where_it_is_wrong() {
+        let hovered = fab_cell(FabStyle::PrimaryContainer, FabSize::Baseline);
+        let (x, y) = below(hovered);
+        let surface = Rgb::of(&LIGHT, ColorRole::Surface);
+        let put = |image: &mut Image, x: Points, y: Points, color: Rgb| {
+            let start = ((points_to_u32(y) * image.width + points_to_u32(x)) * 4) as usize;
+            image.rgba[start..start + 3].copy_from_slice(&color.0);
+        };
+        // At rest: a FAB with no shadow shows the surface below it, which is not darker than the surface.
+        let rest = Shot::all()[0];
+        let mut image = painted(rest, 1);
+        assert_eq!(check_shadows(&image, rest), Ok(Vec::new()));
+        put(&mut image, x, y, surface);
+        let found = check_shadows(&image, rest).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].probe.target, Target::Fab(hovered));
+        assert_eq!(found[0].found, Some(surface));
+        assert_eq!(
+            found[0].to_string(),
+            format!(
+                "fab-primary-container-baseline shadow below it at ({}, {}) points: expected darker than {surface}, found {surface}",
+                x.0, y.0
+            )
+        );
+        // One channel not darker is no shadow either.
+        let mut image = painted(rest, 1);
+        put(&mut image, x, y, Rgb([surface.0[0], 1, 1]));
+        assert_eq!(check_shadows(&image, rest).unwrap().len(), 1);
+        // Hovered: the FAB under the mouse casts the same shadow as its neighbor at rest, so the level did not rise.
+        let shot = Shot::all()[9];
+        let (other_x, other_y) = below(fab_cell(FabStyle::SecondaryContainer, FabSize::Baseline));
+        let mut image = painted(shot, 1);
+        assert_eq!(check_shadows(&image, shot), Ok(Vec::new()));
+        put(&mut image, x, y, shaded(surface, 3, 4));
+        let found = check_shadows(&image, shot).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].probe.what, "shadow below it, hovered");
+        assert_eq!(found[0].probe.than, Than::Pixel(other_x, other_y));
+        assert_eq!(found[0].reference, Some(shaded(surface, 3, 4)));
+        // A lighter shadow than the neighbor's, a level lower, fails too.
+        put(&mut image, x, y, shaded(surface, 7, 8));
+        assert_eq!(check_shadows(&image, shot).unwrap().len(), 1);
+        // And the rest of the image is not what is read: the shadows of the other FABs are unchanged.
+        assert!(
+            check_shadows(&image, shot)
+                .unwrap()
+                .iter()
+                .all(|m| m.probe.target == Target::Fab(hovered))
+        );
+        // An image of another size is refused, as for the colors.
+        let small = Image {
+            width: 1,
+            height: 1,
+            rgba: vec![0; 4],
+        };
+        assert!(check_shadows(&small, rest).is_err());
     }
 
     #[test]

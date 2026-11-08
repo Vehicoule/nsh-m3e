@@ -106,13 +106,14 @@ pub const FAB_SIZES: [FabSize; 4] = [
     FabSize::Large,
 ];
 
-/// The width of a FAB column: more than the largest FAB (96 points), so that two FABs have surface between them. A
-/// layout value of the catalog, not of Material.
-pub const FAB_COLUMN_WIDTH: Points = Points(128.0);
+/// The width of a FAB column: more than the largest FAB (96 points) by 48, so that two FABs have surface between
+/// them, past the reach of their shadows (14 points to the sides at the highest level, ADR 0018) on both sides of the
+/// middle of the gap, where the visual checks read it. A layout value of the catalog, not of Material.
+pub const FAB_COLUMN_WIDTH: Points = Points(144.0);
 
 /// The size of the viewport the catalog is opened in, width and height: the three grids and their margins. The
 /// buttons' grid is the wider: 8 columns of 320 points, where the icon buttons' grid has 12 of 200 and the FABs' 8 of
-/// 128.
+/// 144.
 #[must_use]
 pub fn viewport() -> (Points, Points) {
     let mut width = MARGIN.0 * 2.0;
@@ -680,7 +681,7 @@ mod tests {
     #[test]
     fn the_viewport_holds_the_grids_and_their_margins() {
         let (width, height) = viewport();
-        // The buttons' 8 columns of 320 points are wider than the icon buttons' 12 of 200 and the FABs' 8 of 128; below
+        // The buttons' 8 columns of 320 points are wider than the icon buttons' 12 of 200 and the FABs' 8 of 144; below
         // the buttons' 880 points of rows, the icon buttons' 1,760, and the FABs' 96 with their gap.
         assert_eq!((width, height), (Points(2608.0), Points(2800.0)));
         for cell in Cell::all() {
@@ -961,19 +962,19 @@ mod tests {
         assert_eq!(fab_top(), Points(2664.0));
         let first = FabCell::new(FabStyle::PrimaryContainer, FabSize::Small);
         assert_eq!(first.origin(), (Points(24.0), Points(2664.0)));
-        // The sizes are the columns of a style, 128 points apart; the second style starts after the fourth size.
+        // The sizes are the columns of a style, 144 points apart; the second style starts after the fourth size.
         let baseline = FabCell {
             size: FabSize::Baseline,
             ..first
         };
-        assert_eq!(baseline.origin(), (Points(152.0), Points(2664.0)));
+        assert_eq!(baseline.origin(), (Points(168.0), Points(2664.0)));
         let secondary = FabCell {
             style: FabStyle::SecondaryContainer,
             ..first
         };
-        assert_eq!(secondary.origin(), (Points(536.0), Points(2664.0)));
+        assert_eq!(secondary.origin(), (Points(600.0), Points(2664.0)));
         let last = FabCell::new(FabStyle::SecondaryContainer, FabSize::Large);
-        assert_eq!(last.origin(), (Points(920.0), Points(2664.0)));
+        assert_eq!(last.origin(), (Points(1032.0), Points(2664.0)));
     }
 
     #[test]
