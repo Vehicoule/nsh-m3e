@@ -1,18 +1,20 @@
 //! Checks the known pixels of the catalog's screenshots (ADR 0013): `cargo run -p visual-checks -- <directory>`.
 //!
 //! `nsh test examples/catalog --target <host>` opens the catalog on one of NSH's hosts and saves its screenshots in
-//! `target/visual` (`examples/catalog/button.test.tsx`, `switch.test.tsx` and `checkbox.test.tsx`). This reads
-//! each of them and checks, for every button and icon button of the catalog, the pixels whose color the tokens
-//! give: the container's color inside it, the outline's on its edge, the surface outside its top left corner,
+//! `target/visual` (`examples/catalog/button.test.tsx`, `switch.test.tsx`, `checkbox.test.tsx` and `fab.test.tsx`).
+//! This reads each of them and checks, for every button and icon button of the catalog, the pixels whose color the
+//! tokens give: the container's color inside it, the outline's on its edge, the surface outside its top left corner,
 //! where a rounded corner leaves the background, and an icon button's icon color in its middle; the switches' are
-//! in [`switch`] and every checkbox's at the places [`checkbox`] gives; and for every divider, the line's color from
-//! end to end and across its whole thickness, and the surface one point past each of its ends and sides. Where the
-//! antialiasing of an edge, of the label or of the icon's edge makes a color unknown, nothing is checked.
+//! in [`switch`], every checkbox's at the places [`checkbox`] gives and every FAB's, with its shadow, in [`fab`]; and
+//! for every divider, the line's color from end to end and across its whole thickness, and the surface one point
+//! past each of its ends and sides. Where the antialiasing of an edge, of the label or of the icon's edge makes a
+//! color unknown, nothing is checked.
 //!
 //! It is not a `cargo xtask` task: `xtask` must build when the library does not (it regenerates the library's
 //! tokens), so it cannot depend on it, and these checks take every expected color from the library's tokens.
 
 mod checkbox;
+mod fab;
 
 use std::fmt;
 use std::fs;
@@ -21,6 +23,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use catalog::checkbox::CheckboxCell;
+use catalog::fab::FabCell;
 use catalog::grid::{self, Availability, Cell, DividerCell, IconCell};
 use catalog::switch::SwitchCell;
 use nsh_core::geometry::Points;
@@ -81,13 +84,14 @@ impl Appearance {
     }
 }
 
-/// A component of the catalog: a button, an icon button, a switch, a checkbox or a divider.
+/// A component of the catalog: a button, an icon button, a switch, a checkbox, a FAB or a divider.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Target {
     Button(Cell),
     IconButton(IconCell),
     Switch(SwitchCell),
     Checkbox(CheckboxCell),
+    Fab(FabCell),
     Divider(DividerCell),
 }
 
@@ -99,6 +103,7 @@ impl Target {
             Self::IconButton(cell) => cell.test_id(),
             Self::Switch(cell) => cell.test_id(),
             Self::Checkbox(cell) => cell.test_id(),
+            Self::Fab(cell) => cell.test_id(),
             Self::Divider(cell) => cell.test_id(),
         }
     }
@@ -171,6 +176,8 @@ impl Shot {
             Some(Target::Switch(cell)) => format!("{appearance}-hover-{}.png", cell.test_id()),
             // The buttons' script never hovers a checkbox; the checkbox's own shots are `checkbox::Shot`.
             Some(Target::Checkbox(cell)) => format!("{appearance}-hover-{}.png", cell.test_id()),
+            // Nor a FAB: the FAB's own shots are `fab::Shot`.
+            Some(Target::Fab(cell)) => format!("{appearance}-hover-{}.png", cell.test_id()),
             // No screenshot has the mouse over a divider: it has no hover state, and the shots do not hover it.
             Some(Target::Divider(cell)) => {
                 format!("{appearance}-hover-{}.png", cell.test_id())
@@ -779,11 +786,12 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {}
 
 /// Reads `directory`'s screenshot `name` and checks it with `check`, writing what it finds to `out`; how many pixels
-/// were not what was expected.
-fn check_file(
+/// were not what was expected. What `check` finds is whatever prints as one line: a pixel that is not the token's
+/// color ([`Mismatch`]) or a line of text, as [`fab::check`] gives, which reads shadows as well.
+fn check_file<M: fmt::Display>(
     directory: &Path,
     name: &str,
-    check: impl FnOnce(&Image) -> Result<Vec<Mismatch>, String>,
+    check: impl FnOnce(&Image) -> Result<Vec<M>, String>,
     out: &mut impl io::Write,
 ) -> Result<usize, Error> {
     let path = directory.join(name);
@@ -826,6 +834,14 @@ fn run(directory: &Path, out: &mut impl io::Write) -> Result<(), Error> {
             directory,
             &shot.file_name(),
             |image| checkbox::check(image, shot),
+            out,
+        )?;
+    }
+    for shot in fab::Shot::all() {
+        mismatches += check_file(
+            directory,
+            &shot.file_name(),
+            |image| fab::check(image, shot),
             out,
         )?;
     }
@@ -1779,89 +1795,112 @@ mod tests {
         ));
     }
 
+    /// Saves `image` as `name` in `directory`.
+    fn save(directory: &Path, name: &str, image: &Image) {
+        fs::write(directory.join(name), encode_uncompressed(image)).unwrap();
+    }
+
+    /// Runs the checks on `directory`: what they printed and the error they ended with, if any.
+    fn run_in(directory: &Path) -> (String, Result<(), Error>) {
+        let mut out = Vec::new();
+        let result = run(directory, &mut out);
+        (String::from_utf8(out).unwrap(), result)
+    }
+
+    /// The count of the wrong pixels `run` ended with, and what it printed, where every pixel it counted is named:
+    /// two spaces start the line of each.
+    fn counted_in(directory: &Path) -> (usize, String) {
+        let (out, result) = run_in(directory);
+        let Err(Error::Mismatches(count)) = result else {
+            panic!("wrong pixels are counted: {result:?}");
+        };
+        assert!(count > 0);
+        assert_eq!(
+            out.lines().filter(|line| line.starts_with("  ")).count(),
+            count
+        );
+        (count, out)
+    }
+
     #[test]
     fn run_reports_missing_and_wrong_screenshots() {
         let directory = std::env::temp_dir().join(format!("visual-checks-{}", std::process::id()));
         fs::create_dir_all(&directory).unwrap();
-        let mut out = Vec::new();
-        assert!(matches!(run(&directory, &mut out), Err(Error::Read { .. })));
+        assert!(matches!(run_in(&directory).1, Err(Error::Read { .. })));
         for shot in Shot::all() {
-            let image = painted(shot, 1);
-            fs::write(
-                directory.join(shot.file_name()),
-                encode_uncompressed(&image),
-            )
-            .unwrap();
+            save(&directory, &shot.file_name(), &painted(shot, 1));
         }
-        // Without the checkbox's screenshots, the run reads the first one it lacks.
-        let mut out = Vec::new();
-        assert!(matches!(run(&directory, &mut out), Err(Error::Read { .. })));
+        // Without the checkbox's screenshots, the run reads the first one it lacks; then without the FAB's.
+        assert!(matches!(run_in(&directory).1, Err(Error::Read { .. })));
         for shot in checkbox::Shot::all() {
-            let image = checkbox::painted(shot, 1);
-            fs::write(
-                directory.join(shot.file_name()),
-                encode_uncompressed(&image),
-            )
-            .unwrap();
+            save(&directory, &shot.file_name(), &checkbox::painted(shot, 1));
         }
-        let mut out = Vec::new();
-        assert!(run(&directory, &mut out).is_ok());
-        assert!(
-            String::from_utf8(out)
-                .unwrap()
-                .contains("light-rest.png: ok")
-        );
+        assert!(matches!(run_in(&directory).1, Err(Error::Read { .. })));
+        for shot in fab::Shot::all() {
+            save(&directory, &shot.file_name(), &fab::painted(shot, 1));
+        }
+        let (out, result) = run_in(&directory);
+        assert!(result.is_ok());
+        assert!(out.contains("light-rest.png: ok"));
         // The light screenshot saved as the dark one.
         fs::copy(
             directory.join("light-rest.png"),
             directory.join("dark-rest.png"),
         )
         .unwrap();
-        let mut out = Vec::new();
-        assert!(matches!(run(&directory, &mut out), Err(Error::Mismatches(n)) if n > 0));
-        assert!(
-            String::from_utf8(out)
-                .unwrap()
-                .contains("dark-rest.png: FAILED")
-        );
+        let (_, out) = counted_in(&directory);
+        assert!(out.contains("dark-rest.png: FAILED"));
         // The catalog's screenshot is right again, and a checkbox's is wrong: the light one saved as the dark one.
         let dark_rest = Shot::all()
             .into_iter()
             .find(|shot| shot.file_name() == "dark-rest.png")
             .unwrap();
-        fs::write(
-            directory.join(dark_rest.file_name()),
-            encode_uncompressed(&painted(dark_rest, 1)),
-        )
-        .unwrap();
+        save(&directory, &dark_rest.file_name(), &painted(dark_rest, 1));
         let rests: Vec<checkbox::Shot> = checkbox::Shot::all()
             .into_iter()
             .filter(|shot| shot.hovered.is_none())
             .collect();
-        let [light, dark] = rests[..] else {
+        let [light, dark_checkbox] = rests[..] else {
             panic!("one checkbox shot at rest in each appearance: {rests:?}");
         };
         fs::copy(
             directory.join(light.file_name()),
-            directory.join(dark.file_name()),
+            directory.join(dark_checkbox.file_name()),
         )
         .unwrap();
-        let mut out = Vec::new();
-        let counted = match run(&directory, &mut out) {
-            Err(Error::Mismatches(count)) => count,
-            other => panic!("the checkbox's wrong pixels are counted: {other:?}"),
-        };
-        let out = String::from_utf8(out).unwrap();
-        assert!(counted > 0);
+        let (_, out) = counted_in(&directory);
         assert!(
-            out.contains(&format!("{}: FAILED", dark.file_name())),
+            out.contains(&format!("{}: FAILED", dark_checkbox.file_name())),
             "{out}"
         );
         assert!(out.contains("dark-rest.png: ok"), "{out}");
-        // Every pixel the run counted is named: two spaces start the line of each.
-        assert_eq!(
-            out.lines().filter(|line| line.starts_with("  ")).count(),
-            counted
+        // The checkbox's screenshot is right again, and a FAB's is wrong, in its pixels and its shadows: the light one
+        // saved as the dark one.
+        save(
+            &directory,
+            &dark_checkbox.file_name(),
+            &checkbox::painted(dark_checkbox, 1),
+        );
+        let rests: Vec<fab::Shot> = fab::Shot::all()
+            .into_iter()
+            .filter(|shot| shot.hovered.is_none())
+            .collect();
+        let [light, dark_fab] = rests[..] else {
+            panic!("one FAB shot at rest in each appearance: {rests:?}");
+        };
+        fs::copy(
+            directory.join(light.file_name()),
+            directory.join(dark_fab.file_name()),
+        )
+        .unwrap();
+        let (_, out) = counted_in(&directory);
+        assert!(
+            out.contains(&format!("{}: FAILED", dark_fab.file_name())),
+            "{out}"
+        );
+        assert!(
+            out.contains(&format!("{}: ok", dark_checkbox.file_name())),
+            "{out}"
         );
         fs::remove_dir_all(&directory).unwrap();
     }
