@@ -10,9 +10,9 @@
 import { expect, open, test } from "nsh/test";
 
 // The viewport the radio buttons' screenshots are taken in (`catalog::radio::viewport`): the page with the radio buttons'
-// block, which lies below the switches and the checkboxes, and a margin below it. `visual-checks` refuses a screenshot
+// block, which lies below the switches, the checkboxes and the FABs, and a margin below it. `visual-checks` refuses a screenshot
 // of another size.
-const VIEWPORT = { width: 2608, height: 3024 };
+const VIEWPORT = { width: 2608, height: 3136 };
 
 const HOVERED = ["unselected-enabled", "selected-enabled", "unselected-disabled"];
 

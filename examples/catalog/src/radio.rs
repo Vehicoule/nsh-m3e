@@ -1,7 +1,7 @@
 //! Where the catalog puts each radio button, so that the visual checks know where to read its pixels.
 //!
 //! The radio buttons sit in a block of their own below the other blocks of the page (the grids of [`crate::grid`], the
-//! switches and the checkboxes): one column per selection, one row per availability, the enabled row above the
+//! switches, the checkboxes and the FABs): one column per selection, one row per availability, the enabled row above the
 //! disabled one. Each radio button's top left corner is at a fixed place.
 //!
 //! [`crate::grid::viewport`] stays the viewport of the buttons' screenshots (`button.test.tsx`), and `radio.test.tsx`
@@ -12,7 +12,7 @@ use nsh_core::geometry::Points;
 use nsh_core::prelude::*;
 use nsh_m3e::radio::{FRAME, radio};
 
-use crate::checkbox;
+use crate::fab;
 use crate::grid::{self, AVAILABILITIES, Availability, MARGIN};
 
 /// Whether a radio button in the catalog is selected.
@@ -40,11 +40,11 @@ pub const ROW_GAP: Points = Points(32.0);
 /// The test id of the view that holds the block, which the tests name.
 pub const BLOCK_TEST_ID: &str = "radios";
 
-/// The top of the block: a margin below the checkboxes' viewport, which is the last block before this one, so below
-/// every button, icon button, switch and checkbox.
+/// The top of the block: a margin below the FABs' viewport, which is the last block before this one, so below every
+/// button, icon button, switch, checkbox and FAB.
 #[must_use]
 pub fn top() -> Points {
-    Points(checkbox::viewport().1.0 + MARGIN.0)
+    Points(fab::viewport().1.0 + MARGIN.0)
 }
 
 /// The height of the block: the rows of radio buttons and the gaps between them.
@@ -197,6 +197,7 @@ mod tests {
 
     use super::*;
     use crate::Catalog;
+    use crate::checkbox;
     use crate::grid::{Cell as ButtonCell, IconCell};
 
     #[test]
@@ -225,32 +226,32 @@ mod tests {
     #[test]
     fn the_rows_and_columns_are_where_the_layout_says() {
         let first = Cell::new(Selection::Unselected, Availability::Enabled);
-        // A margin of 24 points below the checkboxes' viewport: 2,896 points.
-        assert_eq!(top(), Points(2920.0));
+        // A margin of 24 points below the FABs' viewport: 3,008 points.
+        assert_eq!(top(), Points(3032.0));
         assert_eq!(first.position(), (Points(24.0), Points(0.0)));
-        assert_eq!(first.origin(), (Points(24.0), Points(2920.0)));
+        assert_eq!(first.origin(), (Points(24.0), Points(3032.0)));
         // Selected is the second column, 64 points on.
         let selected = Cell {
             selection: Selection::Selected,
             ..first
         };
-        assert_eq!(selected.origin(), (Points(88.0), Points(2920.0)));
+        assert_eq!(selected.origin(), (Points(88.0), Points(3032.0)));
         // Disabled is the second row: a radio button's 24 points and the 32-point gap below the first.
         let disabled = Cell {
             availability: Availability::Disabled,
             ..first
         };
-        assert_eq!(disabled.origin(), (Points(24.0), Points(2976.0)));
+        assert_eq!(disabled.origin(), (Points(24.0), Points(3088.0)));
         // Two rows of 24 points and the gap between them.
         assert_eq!(block_height(), Points(80.0));
     }
 
     #[test]
-    fn the_viewport_holds_the_block_below_the_checkboxes_viewport_and_a_margin() {
+    fn the_viewport_holds_the_block_below_the_fabs_viewport_and_a_margin() {
         let (width, height) = viewport();
-        // The page's width, and the checkboxes' 2,896 points of height with a margin of 24, the block's 80 and a
-        // margin of 24.
-        assert_eq!((width, height), (Points(2608.0), Points(3024.0)));
+        // The page's width, and the FABs' 3,008 points of height with a margin of 24, the block's 80 and a margin of
+        // 24.
+        assert_eq!((width, height), (Points(2608.0), Points(3136.0)));
         assert_eq!(width, grid::viewport().0);
         // The buttons' own screenshots keep their viewport.
         assert_eq!(grid::viewport(), (Points(2608.0), Points(2784.0)));
@@ -258,8 +259,8 @@ mod tests {
             let (x, y) = cell.origin();
             assert!(x.0 >= MARGIN.0, "{cell:?}");
             assert!(x.0 + FRAME.0 <= width.0 - MARGIN.0, "{cell:?}");
-            // Under the checkboxes' viewport, so below every button, icon button, switch and checkbox.
-            assert!(y.0 >= checkbox::viewport().1.0, "{cell:?}");
+            // Under the FABs' viewport, so below every button, icon button, switch, checkbox and FAB.
+            assert!(y.0 >= fab::viewport().1.0, "{cell:?}");
             assert!(y.0 + FRAME.0 <= height.0 - MARGIN.0, "{cell:?}");
         }
         // The last row ends at the margin.
@@ -274,6 +275,9 @@ mod tests {
         }
         for cell in checkbox::CheckboxCell::all() {
             assert!(cell.origin().1.0 + checkbox::SIDE.0 <= top().0);
+        }
+        for cell in fab::FabCell::all() {
+            assert!(cell.origin().1.0 + fab::frame(cell.size).1.0 <= top().0);
         }
     }
 

@@ -1,12 +1,13 @@
 //! The catalog: every component of `nsh-m3e` in each of its states, for the visual checks of ADR 0013: the buttons,
-//! the icon buttons, the switches, the checkboxes, the radio buttons and the dividers.
+//! the icon buttons, the switches, the checkboxes, the radio buttons, the dividers and the floating action buttons.
 //!
-//! `nsh test` opens it on NSH's hosts (`button.test.tsx`, `switch.test.tsx`, `checkbox.test.tsx` and
-//! `radio.test.tsx`, beside its `nsh.json`) and saves screenshots of it; `visual-checks` reads the pixels it knows in
-//! them, at the places [`grid`], [`switch`], [`checkbox`] and [`radio`] give.
+//! `nsh test` opens it on NSH's hosts (`button.test.tsx`, `switch.test.tsx`, `checkbox.test.tsx`, `radio.test.tsx` and
+//! `fab.test.tsx`, beside its `nsh.json`) and saves screenshots of it; `visual-checks` reads the pixels it knows in them,
+//! at the places [`grid`], [`switch`], [`checkbox`], [`radio`] and [`fab`] give.
 //! The catalog is a Rust app (`nsh.json` names its root, [`Catalog`]); nothing in it runs JavaScript.
 
 pub mod checkbox;
+pub mod fab;
 pub mod grid;
 pub mod radio;
 pub mod switch;
@@ -23,8 +24,8 @@ use nsh_m3e::material_symbols::outlined;
 use crate::grid::{Availability, Cell, DIVIDER_SPACE, DividerCell, IconCell};
 use crate::switch::SwitchCell;
 
-/// The icon every icon button of the catalog shows: Material Symbols' `favorite`, filled, whose middle is filled, so
-/// that the visual checks read the icon's color there.
+/// The icon every icon button and FAB of the catalog shows: Material Symbols' `favorite`, filled, whose middle is
+/// filled, so that the visual checks read the icon's color there.
 pub const ICON: Icon = outlined::filled::FAVORITE;
 
 #[native_module("catalog/native")]
@@ -32,8 +33,9 @@ fn native(registry: &mut Registry) {
     registry.register::<Catalog>();
 }
 
-/// Every button, icon button, switch, checkbox, radio button and divider of the catalog at its place on the [`grid`],
-/// the [`switch`] grid, the [`checkbox`] grid and the [`radio`] block, on the scheme's surface color.
+/// Every button, icon button, switch, checkbox, radio button, divider and FAB of the catalog at its place on the
+/// [`grid`], the [`switch`] grid, the [`checkbox`] grid, the [`fab`] row and the [`radio`] block, on the scheme's
+/// surface color.
 #[component]
 pub fn Catalog() -> impl IntoElement {
     let surface = AdaptiveColor::rgb(
@@ -98,7 +100,7 @@ pub fn Catalog() -> impl IntoElement {
         )
     });
     let page = SwitchCell::all().fold(page, |page, cell| page.child(switch::element(cell)));
-    checkbox::place(page).child(radio::block())
+    fab::place(checkbox::place(page)).child(radio::block())
 }
 
 #[cfg(test)]
@@ -159,9 +161,10 @@ mod tests {
                 _ => {}
             }
         }
+        // The FABs are buttons for screen readers too.
         assert_eq!(
             disabled.len(),
-            Cell::all().count() + IconCell::all().count()
+            Cell::all().count() + IconCell::all().count() + fab::FabCell::all().count()
         );
         let child_of = |id: NodeId| {
             parents

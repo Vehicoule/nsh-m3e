@@ -14,6 +14,7 @@ pub mod checkbox;
 pub mod color;
 pub mod divider;
 pub mod elevation;
+pub mod fab;
 pub mod icon;
 pub mod icon_button;
 pub mod icon_toggle_button;

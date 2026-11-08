@@ -696,12 +696,12 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].probe, wanted);
         assert_eq!(found[0].found, Some(Rgb::of(&LIGHT, ColorRole::Surface)));
-        // The first radio button's box starts at the grid's margin (24) and the block at 2920; its middle is 12 points in,
+        // The first radio button's box starts at the grid's margin (24) and the block at 3032; its middle is 12 points in,
         // and the probe is 14 points right of the middle (the ring's 10, then 4).
         assert_eq!(
             found[0].to_string(),
             format!(
-                "radio-unselected-enabled in the state layer at (50, 2932) points: expected {} (± 2), found {}",
+                "radio-unselected-enabled in the state layer at (50, 3044) points: expected {} (± 2), found {}",
                 wanted.expected,
                 Rgb::of(&LIGHT, ColorRole::Surface)
             )
