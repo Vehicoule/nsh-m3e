@@ -115,9 +115,15 @@ pub const DOT_SIZE: Points = Points(12.0);
 pub const PADDING: Points = Points(2.0);
 
 /// The side of the radio button's box: the ring and the padding on each side of it (`RadioButton.kt`, line 177 to
-/// 179), a sum of the padding twice and not `2.0 * PADDING.0`: with 2 points of padding both are 4, which no test
-/// could tell apart. The state layer overflows it, and presses reach past it ([`Radio`]).
-pub const FRAME: Points = Points(radio_button_tokens::ICON_SIZE.0 + PADDING.0 + PADDING.0);
+/// 179). The state layer overflows it, and presses reach past it ([`Radio`]).
+pub const FRAME: Points = frame_of(radio_button_tokens::ICON_SIZE, PADDING);
+
+/// The side of a box that holds a ring `ring` across with `padding` on each side of it. A function of its own because
+/// with the real padding of 2 points its sum and its product are both 4, so no test of [`FRAME`] can tell a sum from
+/// a product; the test of this function gives it a padding where they differ.
+const fn frame_of(ring: Points, padding: Points) -> Points {
+    Points(ring.0 + padding.0 + padding.0)
+}
 
 /// The four looks of a radio button: selected or not, enabled or not, in the order of its color progress. androidx
 /// picks the ring's and the dot's color from the same four (`RadioButtonColors.radioColor`, line 289 to 295).
@@ -1671,6 +1677,9 @@ mod tests {
         assert_eq!(radio_button_tokens::ICON_SIZE, Points(20.0));
         assert_eq!(radio_button_tokens::STATE_LAYER_SIZE, Points(40.0));
         assert_eq!(FRAME, Points(24.0));
+        // Padding on each side, whatever its size: with 3 points the sum and the product differ.
+        assert_eq!(frame_of(Points(20.0), Points(3.0)), Points(26.0));
+        assert_eq!(frame_of(Points(20.0), Points(0.0)), Points(20.0));
         // The box: the icon, padded, centered.
         assert!(cites(
             RADIO_BUTTON_KT,
