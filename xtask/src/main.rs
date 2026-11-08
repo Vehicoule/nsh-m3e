@@ -71,6 +71,16 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
+        file: "CheckboxTokens.kt",
+        object: None,
+        doc: &[
+            "The checkbox's box (its size, corner shape and outline widths), its mark's size, its state layer's size \
+             and shape, and its colors in each state, selected and unselected, enabled, disabled and with an error. \
+             Colors are roles of the scheme ([`crate::color::ColorRole`]), resolved against the light or dark \
+             [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
         file: "CircularProgressIndicatorTokens.kt",
         object: None,
         doc: &[
@@ -247,6 +257,15 @@ const SOURCES: &[Source] = &[
             "The small icon button's size: its container's height, its icon's size, its leading and trailing \
              space for each width (narrow, default and wide), its shapes (round, square, pressed and selected) and \
              its outline's width.",
+        ],
+    },
+    Source {
+        file: "SnackbarTokens.kt",
+        object: None,
+        doc: &[
+            "The snackbar: its container's color, shape and elevation, the colors and type styles of its supporting \
+             text, its action's label and its icon, and its heights with one and two lines of text. Colors are \
+             roles of the scheme ([`crate::color::ColorRole`]).",
         ],
     },
     Source {
