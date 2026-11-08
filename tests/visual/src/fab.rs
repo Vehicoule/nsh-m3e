@@ -62,19 +62,19 @@ impl Shot {
 
 impl Rgb {
     /// Whether every channel is lower than `other`'s.
-    fn darker_in_every_channel(self, other: Self) -> bool {
+    pub(crate) fn darker_in_every_channel(self, other: Self) -> bool {
         self.0.iter().zip(other.0).all(|(a, b)| *a < b)
     }
 
     /// Whether no channel is higher than `other`'s and the three together are lower.
-    fn darker_overall(self, other: Self) -> bool {
+    pub(crate) fn darker_overall(self, other: Self) -> bool {
         let sum = |color: Self| color.0.iter().map(|c| u16::from(*c)).sum::<u16>();
         self.0.iter().zip(other.0).all(|(a, b)| *a <= b) && sum(self) < sum(other)
     }
 }
 
 /// The container's color role of a FAB of `style`, and its icon's, which its state layer takes too.
-fn fab_roles(style: FabStyle) -> (ColorRole, ColorRole) {
+pub(crate) fn fab_roles(style: FabStyle) -> (ColorRole, ColorRole) {
     match style {
         FabStyle::PrimaryContainer => (
             fab_primary_container_tokens::CONTAINER_COLOR,
@@ -93,7 +93,13 @@ fn fab_roles(style: FabStyle) -> (ColorRole, ColorRole) {
 /// The container's color of the FAB `cell` and its tolerance, with the mouse over it or not: the icon's color laid
 /// over it at the hover opacity of the state layer.
 fn fab_container(cell: FabCell, scheme: &ColorScheme, hovered: bool) -> (Rgb, u8) {
-    let (container, icon) = fab_roles(cell.style);
+    style_container(cell.style, scheme, hovered)
+}
+
+/// The container's color of a FAB of `style`, and its tolerance, with the mouse over it or not: what
+/// [`fab_container`] says for every FAB of a style, which the extended FAB shares.
+pub(crate) fn style_container(style: FabStyle, scheme: &ColorScheme, hovered: bool) -> (Rgb, u8) {
+    let (container, icon) = fab_roles(style);
     let rest = Rgb::of(scheme, container);
     if hovered {
         faded(scheme, icon, state_tokens::HOVER_STATE_LAYER_OPACITY, rest)
@@ -122,7 +128,7 @@ fn fab_corner_radius(cell: FabCell) -> Points {
 /// The radius of the corners of `shape` on a box whose shorter side is `side`: no more than half of it, which is the
 /// radius of a circle shape. A square shape, or none, has no radius. Apart from [`fab_corner_radius`] so that a
 /// test can give it the shapes no FAB token has (a circle) and a radius larger than the box.
-fn corner_radius(shape: Option<Shape>, side: Points) -> Points {
+pub(crate) fn corner_radius(shape: Option<Shape>, side: Points) -> Points {
     let half = side.0 / 2.0;
     match shape {
         Some(Shape::Circle) => Points(half),
@@ -142,17 +148,17 @@ const ARC_MARGIN: f32 = 1.0;
 /// and a point 8 past the reach is 18 points, 3.6 standard deviations, past that edge, where the shadow is under
 /// 0.02 % of its opacity. Worked out from the shadow's definition, not measured on a host. Not a design value: where
 /// the check looks.
-const SHADOW_TAIL: Points = Points(8.0);
+pub(crate) const SHADOW_TAIL: Points = Points(8.0);
 
 /// How far below a FAB's container its shadow is read: inside the reach of every level a FAB has (level 3 reaches 15
 /// points below, level 4 reaches 20), close enough to the container that the levels differ most. Not a design value:
 /// where the check looks.
-const SHADOW_BELOW: Points = Points(2.0);
+pub(crate) const SHADOW_BELOW: Points = Points(2.0);
 
 /// How far the shadows of `level` reach past a container, to the sides and below it, in points: the largest, over its
 /// layers, of the offset, spread and blur that point that way (ADR 0018 gives 11 and 15 for level 3, 14 and 20 for
 /// level 4). `BoxShadow::blur` is twice the Gaussian's standard deviation, so the shadow is nothing past it.
-fn shadow_reach(level: Elevation) -> (Points, Points) {
+pub(crate) fn shadow_reach(level: Elevation) -> (Points, Points) {
     let layers: [BoxShadow; 2] = level.shadows();
     let side = layers
         .iter()
@@ -166,7 +172,7 @@ fn shadow_reach(level: Elevation) -> (Points, Points) {
 }
 
 /// The highest level a FAB of `style` sits at, in any state: the one whose shadows reach furthest.
-fn highest_level(style: FabStyle) -> Elevation {
+pub(crate) fn highest_level(style: FabStyle) -> Elevation {
     [
         FabState::Rest,
         FabState::Hovered,
@@ -182,14 +188,20 @@ fn highest_level(style: FabStyle) -> Elevation {
 /// How far from the container's left edge, at mid height, the surface is read beside the FAB `cell`: past the reach
 /// of its highest level's shadows to the sides, by [`SHADOW_TAIL`]. The catalog's FAB columns leave room for it.
 fn surface_distance(cell: FabCell) -> Points {
-    Points(shadow_reach(highest_level(cell.style)).0.0 + SHADOW_TAIL.0)
+    style_surface_distance(cell.style)
+}
+
+/// How far from a container's left edge the surface is read beside a FAB of `style`: [`surface_distance`] for every FAB
+/// of a style, which the extended FAB shares.
+pub(crate) fn style_surface_distance(style: FabStyle) -> Points {
+    Points(shadow_reach(highest_level(style)).0.0 + SHADOW_TAIL.0)
 }
 
 /// The first whole number of points, counted from a container's corner along both edges, whose pixel is inside the
 /// arc of a corner of `radius` by at least [`ARC_MARGIN`]. The pixel `n` points along each edge has its middle at
 /// `n + 0.5`, which is `(radius - n - 0.5) * sqrt(2)` points from the arc's center `(radius, radius)`, so it is
 /// `radius` less that distance inside the arc.
-fn inside_the_arc(radius: Points) -> Points {
+pub(crate) fn inside_the_arc(radius: Points) -> Points {
     let inside = |n: u16| {
         let along = f32::from(n) + 0.5;
         radius.0 - (radius.0 - along) * std::f32::consts::SQRT_2 >= ARC_MARGIN
@@ -257,7 +269,7 @@ fn fab_probes(cell: FabCell, scheme: &ColorScheme, hovered: bool) -> Vec<Probe> 
 
 /// What a shadow's pixel is compared with.
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum Than {
+pub(crate) enum Than {
     /// A color the pixel is darker than in every channel: the shadow over the surface.
     Color(Rgb),
     /// The pixel at this point of the same screenshot: a higher level's shadow over a lower level's, where the two
@@ -268,12 +280,12 @@ enum Than {
 
 /// A pixel in the shadow of a FAB, which must be darker than what it is compared with (ADR 0018).
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct Shadow {
-    target: Target,
-    what: &'static str,
-    x: Points,
-    y: Points,
-    than: Than,
+pub(crate) struct Shadow {
+    pub(crate) target: Target,
+    pub(crate) what: &'static str,
+    pub(crate) x: Points,
+    pub(crate) y: Points,
+    pub(crate) than: Than,
 }
 
 /// Where the shadow below the FAB `cell` is read: the middle of its width, [`SHADOW_BELOW`] below the container.
@@ -330,11 +342,11 @@ fn shot_probes(shot: Shot) -> Vec<Probe> {
 
 /// What a shadow found when it was not darker than what it is compared with.
 #[derive(Debug, Clone, PartialEq)]
-struct ShadowMismatch {
-    probe: Shadow,
-    found: Option<Rgb>,
+pub(crate) struct ShadowMismatch {
+    pub(crate) probe: Shadow,
+    pub(crate) found: Option<Rgb>,
     /// The color it was compared with, if the image has one.
-    reference: Option<Rgb>,
+    pub(crate) reference: Option<Rgb>,
 }
 
 impl fmt::Display for ShadowMismatch {
@@ -366,9 +378,20 @@ impl fmt::Display for ShadowMismatch {
 
 /// Every shadow of `shot` that `image` does not show.
 fn check_shadows(image: &Image, shot: Shot) -> Result<Vec<ShadowMismatch>, String> {
-    let scale = image.scale_in(catalog::fab::viewport())?;
+    check_shadow_reads(image, catalog::fab::viewport(), shot_shadows(shot))
+}
+
+/// Every one of `reads` that `image`, a screenshot of a catalog opened at `viewport`, does not show; an error if the
+/// image is not of that viewport at a whole scale. What [`check_shadows`] does for the FABs, which the extended FAB
+/// shares.
+pub(crate) fn check_shadow_reads(
+    image: &Image,
+    viewport: (Points, Points),
+    reads: Vec<Shadow>,
+) -> Result<Vec<ShadowMismatch>, String> {
+    let scale = image.scale_in(viewport)?;
     let at = |x: Points, y: Points| image.pixel(points_to_u32(x) * scale, points_to_u32(y) * scale);
-    Ok(shot_shadows(shot)
+    Ok(reads
         .into_iter()
         .filter_map(|probe| {
             let found = at(probe.x, probe.y);
@@ -456,7 +479,7 @@ pub(crate) fn painted(shot: Shot, scale: u32) -> Image {
 
 /// `color` with each channel multiplied by `numerator / denominator`.
 #[cfg(test)]
-fn shaded(color: Rgb, numerator: u16, denominator: u16) -> Rgb {
+pub(crate) fn shaded(color: Rgb, numerator: u16, denominator: u16) -> Rgb {
     Rgb(color
         .0
         .map(|c| u8::try_from(u16::from(c) * numerator / denominator).unwrap_or(c)))
