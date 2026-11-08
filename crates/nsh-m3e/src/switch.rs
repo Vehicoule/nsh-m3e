@@ -241,10 +241,6 @@ impl Condition {
             (true, true) => Self::DisabledChecked,
         }
     }
-
-    fn is_disabled(self) -> bool {
-        matches!(self, Self::DisabledUnchecked | Self::DisabledChecked)
-    }
 }
 
 /// What a condition gives the switch's parts: androidx's `SwitchColors` for it (`SwitchDefaults.defaultSwitchColors`,
@@ -315,13 +311,16 @@ fn colors(condition: Condition) -> Colors {
     }
 }
 
-/// The color of `tint` in `condition`. A disabled switch's colors are the token's color at its opacity composited over
-/// the scheme's surface, so they are opaque: `.copy(alpha = …).compositeOver(surface)` (`Switch.kt` lines 426-467).
-/// Composited in each appearance, over that appearance's surface.
-fn paint(tint: Option<Tint>, condition: Condition) -> AdaptiveColor {
+/// The color of `tint`, composited over the scheme's surface. A disabled switch's colors are the token's color at its
+/// opacity composited over the surface, so they are opaque: `.copy(alpha = …).compositeOver(surface)` (`Switch.kt`
+/// lines 426-467). An enabled switch's are the token's color as it is, and every one of them is opaque (a test says
+/// so), so compositing it over the surface gives it back (`Hsla::blend` returns an opaque color unchanged): one path
+/// for both, with no branch on the condition that nothing could tell apart. Composited in each appearance, over that
+/// appearance's surface.
+fn paint(tint: Option<Tint>) -> AdaptiveColor {
     match tint {
         None => AdaptiveColor::TRANSPARENT,
-        Some(tint) if condition.is_disabled() => {
+        Some(tint) => {
             let surface = role_color(ColorRole::Surface);
             let color = tint_color(Some(tint));
             AdaptiveColor::new(
@@ -329,7 +328,6 @@ fn paint(tint: Option<Tint>, condition: Condition) -> AdaptiveColor {
                 surface.dark.blend(color.dark),
             )
         }
-        Some(tint) => tint_color(Some(tint)),
     }
 }
 
@@ -439,9 +437,9 @@ pub fn Switch(props: SwitchProps, cx: Scope<SwitchEvent>) -> impl IntoElement {
             s.w(switch_tokens::TRACK_WIDTH)
                 .h(switch_tokens::TRACK_HEIGHT)
                 .rounded_full()
-                .bg(move || paint(Some(colors(condition()).track), condition()))
+                .bg(move || paint(Some(colors(condition()).track)))
                 .border(move || outline_width(condition()))
-                .border_color(move || paint(colors(condition()).outline, condition()))
+                .border_color(move || paint(colors(condition()).outline))
         })
         // Its handle is the view below: this one is not laid out.
         .thumb_style(Styled::hidden)
@@ -453,7 +451,7 @@ pub fn Switch(props: SwitchProps, cx: Scope<SwitchEvent>) -> impl IntoElement {
                 .top(px(track_top - half_base))
                 .size(BASE_DIAMETER)
                 .rounded_full()
-                .bg(move || paint(Some(colors(condition()).thumb), condition()))
+                .bg(move || paint(Some(colors(condition()).thumb)))
                 .bind_translate_x(&motion.center.add(-half_base))
                 .bind_scale(&motion.scale),
         )
@@ -468,7 +466,7 @@ pub fn Switch(props: SwitchProps, cx: Scope<SwitchEvent>) -> impl IntoElement {
             .top(px(track_top - ICON_SIZE.0 / 2.0))
             .w(ICON_SIZE)
             .h(ICON_SIZE)
-            .fill_color(move || paint(Some(colors(condition()).icon), condition()))
+            .fill_color(move || paint(Some(colors(condition()).icon)))
             .bind_translate_x(&motion.center.add(-ICON_SIZE.0 / 2.0))
             .style_with(move |s| {
                 if props.icon.with(Option::is_none) {
@@ -1959,5 +1957,45 @@ mod tests {
             SWITCH_KT,
             &["uncheckedBorderColor = fromToken(SwitchTokens.UnselectedTrackOutlineColor),"]
         ));
+    }
+
+    /// `paint` composites every color over the surface, which leaves an opaque one as it is: only the disabled
+    /// colors are translucent tokens (`Switch.kt` lines 426-467). An enabled color that is not opaque would be
+    /// composited here and not in androidx.
+    #[test]
+    fn every_enabled_color_is_opaque_and_every_disabled_one_is_a_token_at_an_opacity() {
+        for condition in [Condition::Unchecked, Condition::Checked] {
+            let colors = colors(condition);
+            let tints = [
+                Some(colors.thumb),
+                Some(colors.icon),
+                Some(colors.track),
+                colors.outline,
+            ];
+            for tint in tints.into_iter().flatten() {
+                assert_eq!(
+                    tint.opacity.to_bits(),
+                    1.0f32.to_bits(),
+                    "{condition:?}: {tint:?}"
+                );
+            }
+        }
+        for condition in [Condition::DisabledUnchecked, Condition::DisabledChecked] {
+            let colors = colors(condition);
+            let translucent = [
+                Some(colors.thumb),
+                Some(colors.icon),
+                Some(colors.track),
+                colors.outline,
+            ]
+            .into_iter()
+            .flatten()
+            .filter(|tint| tint.opacity.to_bits() != 1.0f32.to_bits())
+            .count();
+            assert!(
+                translucent > 0,
+                "{condition:?}: a disabled switch has colors at an opacity"
+            );
+        }
     }
 }
