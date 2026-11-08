@@ -1,6 +1,6 @@
 # 0021. Choose how a button group widens the item a finger presses
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-08
 - Deciders: the user
 
@@ -72,9 +72,10 @@ So androidx's own way, a layout per frame, is not open to this library, and NSH'
 
 ## Decision
 
-Proposed: option 1, leave the widening out and ask NSH for a stiffness-based layout spring, because it ships both groups
-now with every value from androidx and no new rule. Option 3 is the fallback if NSH declines, since it keeps M3E's
-springs exact.
+Accepted by the user on 2026-11-08: option 1. The button groups leave the widening out for now, and NSH is asked, in a
+pull request to NSH, for a layout spring that takes a stiffness and a damping coefficient. It ships both groups now with
+every value from androidx and no new rule. The widening comes in its own pull request once NSH has that spring. Option 3
+is the fallback if NSH declines, since it keeps M3E's springs exact.
 
 ## Consequences
 
