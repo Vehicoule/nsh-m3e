@@ -5,7 +5,7 @@
 //
 // The catalog shows every size, style, shape and availability of the button on a grid, and every size, width,
 // style, shape and availability of the icon button on a second grid below it, and every size and style of the FAB in
-// a row below that.
+// a row below that, to the right of the checkboxes' grid (`checkbox.test.tsx`).
 // Each appearance gets one screenshot at rest, one with the mouse over the small round enabled button of each style,
 // one with the mouse over the small uniform round enabled icon button of each style, and one with the mouse over the
 // baseline FAB of each style. The file names are those `visual-checks` reads (`Shot::file_name`).

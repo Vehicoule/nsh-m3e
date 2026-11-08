@@ -25,10 +25,14 @@ components=(
     IconButton.kt
     IconButtonDefaults.kt
     FloatingActionButton.kt
+    Checkbox.kt
+    ComposeMaterial3Flags.kt
     ProgressIndicator.kt
     WavyProgressIndicator.kt
     internal/LinearWavyProgressModifiers.kt
     internal/CircularWavyProgressModifiers.kt
+    Snackbar.kt
+    ComposeMaterial3Flags.kt
 )
 
 root="$(git rev-parse --show-toplevel)"

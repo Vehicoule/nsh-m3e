@@ -20,6 +20,8 @@ use nsh_m3e::tokens::androidx::{
     small_icon_button_tokens, xlarge_icon_button_tokens, xsmall_icon_button_tokens,
 };
 
+use crate::checkbox::{self, CheckboxCell};
+
 /// Every style, in the order of the columns.
 pub const STYLES: [ButtonStyle; 4] = [
     ButtonStyle::Filled,
@@ -111,9 +113,15 @@ pub const FAB_SIZES: [FabSize; 4] = [
 /// middle of the gap, where the visual checks read it. A layout value of the catalog, not of Material.
 pub const FAB_COLUMN_WIDTH: Points = Points(144.0);
 
-/// The size of the viewport the catalog is opened in, width and height: the three grids and their margins. The
-/// buttons' grid is the wider: 8 columns of 320 points, where the icon buttons' grid has 12 of 200 and the FABs' 8 of
-/// 144.
+/// The space between the checkboxes' grid and the FABs' row, which share the page's last band: more than the shadows'
+/// reach to the sides (14 points at the highest level, ADR 0018) and the surface the visual checks read past it, so
+/// that the first FAB has surface on its left too. A layout value of the catalog, not of Material.
+pub const FAB_LEFT_GAP: Points = Points(48.0);
+
+/// The size of the viewport the catalog is opened in, width and height: the grids and their margins. The buttons' grid
+/// is the wider: 8 columns of 320 points, where the icon buttons' grid has 12 of 200. The FABs' row and the checkboxes'
+/// grid ([`crate::checkbox`]) share the last band, side by side, so the FABs add no height to the page: the band is the
+/// height of the tallest FAB (96 points) and a gap, which is also that of the checkboxes' two rows.
 #[must_use]
 pub fn viewport() -> (Points, Points) {
     let mut width = MARGIN.0 * 2.0;
@@ -149,9 +157,10 @@ pub fn icon_top() -> Points {
     Points(top)
 }
 
-/// The top of the FABs' row: below the icon buttons' rows, each followed by its gap.
+/// The top of the page's last band: below the icon buttons' rows, each followed by its gap. The FABs' row and the
+/// checkboxes' grid ([`crate::checkbox`]) both start there, the FABs to the right of the checkboxes ([`fab_left`]).
 #[must_use]
-pub fn fab_top() -> Points {
+pub fn band_top() -> Points {
     let mut top = icon_top().0;
     for _ in AVAILABILITIES {
         for _ in ICON_SHAPES {
@@ -161,6 +170,16 @@ pub fn fab_top() -> Points {
         }
     }
     Points(top)
+}
+
+/// The left edge of the FABs' row: past the right edge of the checkboxes' grid, which stands in the same band, by
+/// [`FAB_LEFT_GAP`].
+#[must_use]
+pub fn fab_left() -> Points {
+    let right = CheckboxCell::all()
+        .map(|cell| cell.origin().0.0 + checkbox::SIDE.0)
+        .fold(0.0, f32::max);
+    Points(right + FAB_LEFT_GAP.0)
 }
 
 /// The width and height of a FAB of `size`: its `ContainerWidth` and `ContainerHeight` tokens, as the FAB takes them.
@@ -592,11 +611,11 @@ impl FabCell {
     pub fn origin(self) -> (Points, Points) {
         let column =
             position(&FAB_STYLES, self.style) * FAB_SIZES.len() + position(&FAB_SIZES, self.size);
-        let mut x = MARGIN.0;
+        let mut x = fab_left().0;
         for _ in 0..column {
             x += FAB_COLUMN_WIDTH.0;
         }
-        (Points(x), fab_top())
+        (Points(x), band_top())
     }
 }
 
@@ -681,8 +700,9 @@ mod tests {
     #[test]
     fn the_viewport_holds_the_grids_and_their_margins() {
         let (width, height) = viewport();
-        // The buttons' 8 columns of 320 points are wider than the icon buttons' 12 of 200 and the FABs' 8 of 144; below
-        // the buttons' 880 points of rows, the icon buttons' 1,760, and the FABs' 96 with their gap.
+        // The buttons' 8 columns of 320 points are wider than the icon buttons' 12 of 200 and, to the right of the
+        // checkboxes, the FABs' 8 of 144; below the buttons' 880 points of rows, the icon buttons' 1,760, and the last
+        // band's 96 (the FABs') with their gap.
         assert_eq!((width, height), (Points(2608.0), Points(2800.0)));
         for cell in Cell::all() {
             let (x, y) = cell.origin();
@@ -700,14 +720,14 @@ mod tests {
             bottom = Points(bottom.0.max(y.0 + cell_height.0));
         }
         // The icon buttons' last row and its gap end where the FABs' row starts.
-        assert_eq!(bottom.0 + ROW_GAP.0, fab_top().0);
+        assert_eq!(bottom.0 + ROW_GAP.0, band_top().0);
         let mut bottom = Points(0.0);
         for cell in FabCell::all() {
             let (x, y) = cell.origin();
             let (cell_width, cell_height) = cell.frame();
             assert!(cell_width.0 < FAB_COLUMN_WIDTH.0, "{cell:?}");
             assert!(x.0 + FAB_COLUMN_WIDTH.0 <= width.0 - MARGIN.0);
-            assert!(y.0 >= fab_top().0);
+            assert!(y.0 >= band_top().0);
             bottom = Points(bottom.0.max(y.0 + cell_height.0));
         }
         // The last row and its gap end at the margin.
@@ -957,24 +977,44 @@ mod tests {
     }
 
     #[test]
-    fn the_fabs_are_in_one_row_below_the_icon_buttons() {
-        // Below the icon buttons: their top, and 24 points of margin and 1,760 of rows and gaps.
-        assert_eq!(fab_top(), Points(2664.0));
+    fn the_fabs_are_in_one_row_below_the_icon_buttons_and_right_of_the_checkboxes() {
+        // The last band is below the icon buttons: their top, and 24 points of margin and 1,760 of rows and gaps.
+        assert_eq!(band_top(), Points(2664.0));
+        // The checkboxes' grid ends at 192 points (three state layers of 40 and two gaps of 24 from the margin); the
+        // FABs start a gap of 48 points past it.
+        assert_eq!(fab_left(), Points(240.0));
         let first = FabCell::new(FabStyle::PrimaryContainer, FabSize::Small);
-        assert_eq!(first.origin(), (Points(24.0), Points(2664.0)));
+        assert_eq!(first.origin(), (Points(240.0), Points(2664.0)));
         // The sizes are the columns of a style, 144 points apart; the second style starts after the fourth size.
         let baseline = FabCell {
             size: FabSize::Baseline,
             ..first
         };
-        assert_eq!(baseline.origin(), (Points(168.0), Points(2664.0)));
+        assert_eq!(baseline.origin(), (Points(384.0), Points(2664.0)));
         let secondary = FabCell {
             style: FabStyle::SecondaryContainer,
             ..first
         };
-        assert_eq!(secondary.origin(), (Points(600.0), Points(2664.0)));
+        assert_eq!(secondary.origin(), (Points(816.0), Points(2664.0)));
         let last = FabCell::new(FabStyle::SecondaryContainer, FabSize::Large);
-        assert_eq!(last.origin(), (Points(1032.0), Points(2664.0)));
+        assert_eq!(last.origin(), (Points(1248.0), Points(2664.0)));
+    }
+
+    #[test]
+    fn every_fab_is_a_gap_right_of_every_checkbox() {
+        // The FABs and the checkboxes stand in the same band, so a FAB's shadow and the surface read past it must not
+        // reach a checkbox: each checkbox ends a whole gap before the FAB's box starts.
+        for fab in FabCell::all() {
+            let (fab_x, fab_y) = fab.origin();
+            assert_eq!(fab_y, band_top(), "{fab:?}");
+            for checkbox in CheckboxCell::all() {
+                let (x, _) = checkbox.origin();
+                assert!(
+                    x.0 + checkbox::SIDE.0 + FAB_LEFT_GAP.0 <= fab_x.0,
+                    "{fab:?} and {checkbox:?}"
+                );
+            }
+        }
     }
 
     #[test]

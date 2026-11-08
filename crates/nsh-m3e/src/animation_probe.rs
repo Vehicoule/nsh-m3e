@@ -11,7 +11,7 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
 use nsh_core::MountItem;
-use nsh_core::animation::{AnimationOp, Driver, Finished, Graph, NodeId};
+use nsh_core::animation::{AnimationOp, AnimationValue, Driver, Finished, Graph, NodeId};
 use nsh_testing::Headless;
 
 /// The rate the replay samples at: the reference devices' display, 120 Hz (`docs/app-requirements.md`, Motion).
@@ -50,6 +50,21 @@ impl Recording {
             .filter(|(name, _)| name == step)
             .map(|(_, item)| item.clone())
             .collect()
+    }
+
+    /// Runs `action` and returns what it gave back with the items the engine sent meanwhile, whatever step they came
+    /// in. Asking a step by its name for "nothing was sent" is not safe: `Headless::run_for` renames the current
+    /// step to `clock.runFor(<ms>)`, so a step named before it stays empty whatever the engine sends.
+    pub(crate) fn during<R>(&self, action: impl FnOnce() -> R) -> (R, Vec<MountItem>) {
+        let before = self.lock().len();
+        let result = action();
+        let sent = self
+            .lock()
+            .iter()
+            .skip(before)
+            .map(|(_, item)| item.clone())
+            .collect();
+        (result, sent)
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Vec<(String, MountItem)>> {
@@ -151,6 +166,15 @@ impl Replay {
     /// canvas slot bound to it draws with.
     pub(crate) fn value(&self, node: NodeId) -> f32 {
         self.graph.eval(node).number()
+    }
+
+    /// The color of `node` now, `0xRRGGBBAA`: what a canvas paint bound to an animated value of colors draws with.
+    /// `None` when the node holds a number.
+    pub(crate) fn color(&self, node: NodeId) -> Option<u32> {
+        match self.graph.eval(node) {
+            AnimationValue::Color(color) => Some(color),
+            AnimationValue::Number(_) => None,
+        }
     }
 
     /// True while an animation runs in the graph.
@@ -381,8 +405,8 @@ mod tests {
         for token in [SpringToken::DefaultSpatial, SpringToken::FastEffects] {
             let (mut app, recording) = start(token);
             app.press("Go").unwrap();
-            app.step("run");
-            app.run_for(Duration::from_millis(1500)).unwrap();
+            let (ran, sent) = recording.during(|| app.run_for(Duration::from_millis(1500)));
+            ran.unwrap();
 
             // One spring, with the token's converted parameters, at the screen's rate.
             let springs = started_springs(&recording.in_step("press(Go)"));
@@ -398,7 +422,7 @@ mod tests {
             assert_eq!(spring.mass.to_bits(), SPRING_MASS.to_bits());
             assert_eq!(spring.frame_rate, None);
             // While it plays, the engine sends nothing: no batch, so no layout either.
-            assert!(recording.in_step("run").is_empty(), "{token:?}");
+            assert!(sent.is_empty(), "{token:?}: {sent:?}");
 
             let mut replay = Replay::default();
             replay.apply(&recording.items());
@@ -435,6 +459,31 @@ mod tests {
             ..spring
         };
         assert!(worst_gap(&samples, 0.0, &standard) > 10.0);
+    }
+
+    #[test]
+    fn what_the_engine_sends_during_an_action_is_what_came_after_it_began_in_any_step() {
+        let (mut app, recording) = start(SpringToken::DefaultSpatial);
+        let mounted = recording.items().len();
+        assert!(mounted > 0);
+
+        // A press sends items: they are returned, and only they, not the mount's.
+        let (pressed, sent) = recording.during(|| app.press("Go"));
+        pressed.unwrap();
+        assert!(!sent.is_empty());
+        assert_eq!(recording.items().len(), mounted + sent.len());
+        assert_eq!(
+            format!("{sent:?}"),
+            format!("{:?}", recording.items().split_off(mounted))
+        );
+
+        // A run, which renames its step (`clock.runFor(1500)`), is measured all the same: once the spring plays on
+        // the graph nothing is sent, and the answer is empty because nothing came, not because of a step's name.
+        let after_press = recording.items().len();
+        let (ran, sent) = recording.during(|| app.run_for(Duration::from_millis(1500)));
+        ran.unwrap();
+        assert!(sent.is_empty(), "{sent:?}");
+        assert_eq!(recording.items().len(), after_press);
     }
 
     #[test]
