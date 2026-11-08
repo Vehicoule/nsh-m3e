@@ -575,7 +575,6 @@ fn fab_container(cell: FabCell, scheme: &ColorScheme, hovered: bool) -> (Rgb, u8
 /// `mediumShape`, ADR 0012), as the FAB draws it.
 fn fab_corner_radius(cell: FabCell) -> Points {
     let (width, height) = cell.frame();
-    let half = width.0.min(height.0) / 2.0;
     // No size may fall back on another's: one would hide the other's arm. A size the catalog does not show has no
     // shape here.
     let shape = match cell.size {
@@ -585,6 +584,14 @@ fn fab_corner_radius(cell: FabCell) -> Points {
         FabSize::Large => Some(fab_large_tokens::CONTAINER_SHAPE),
         _ => None,
     };
+    corner_radius(shape, Points(width.0.min(height.0)))
+}
+
+/// The radius of the corners of `shape` on a box whose shorter side is `side`: no more than half of it, which is the
+/// radius of a circle shape. A square shape, or none, has no radius. Apart from [`fab_corner_radius`] so that a
+/// test can give it the shapes no FAB token has (a circle) and a radius larger than the box.
+fn corner_radius(shape: Option<Shape>, side: Points) -> Points {
+    let half = side.0 / 2.0;
     match shape {
         Some(Shape::Circle) => Points(half),
         Some(Shape::Rounded(corners)) => Points(corners.top_start.0.min(half)),
@@ -1663,6 +1670,35 @@ mod tests {
     }
 
     #[test]
+    fn a_corner_is_rounded_by_its_shape_and_by_no_more_than_half_the_side() {
+        let side = Points(40.0);
+        // A circle shape is half the side; a rounded one its own radius when that fits.
+        assert_eq!(
+            corner_radius(Some(shape_tokens::CORNER_FULL), side),
+            Points(20.0)
+        );
+        assert_eq!(
+            corner_radius(Some(shape_tokens::CORNER_MEDIUM), side),
+            Points(12.0)
+        );
+        // A radius of 28 does not fit in a box of 40: the corners are cut at half the side, not at twice it.
+        assert_eq!(
+            corner_radius(Some(shape_tokens::CORNER_EXTRA_LARGE), side),
+            Points(20.0)
+        );
+        assert_eq!(
+            corner_radius(Some(shape_tokens::CORNER_EXTRA_LARGE), Points(100.0)),
+            Points(28.0)
+        );
+        // Square corners and no shape have no radius.
+        assert_eq!(
+            corner_radius(Some(shape_tokens::CORNER_NONE), side),
+            Points(0.0)
+        );
+        assert_eq!(corner_radius(None, side), Points(0.0));
+    }
+
+    #[test]
     fn the_corner_is_read_inside_its_arc_by_a_margin_and_no_deeper() {
         // The depth of the pixel `n` points along both edges, read at its middle, inside the arc of `radius`: its
         // distance to the arc's center subtracted from the radius.
@@ -2201,7 +2237,28 @@ mod tests {
         for shot in Shot::all() {
             for scale in [1, 2] {
                 assert_eq!(check(&painted(shot, scale), shot), Ok(Vec::new()));
+                assert_eq!(check_shadows(&painted(shot, scale), shot), Ok(Vec::new()));
             }
+        }
+    }
+
+    #[test]
+    fn a_shadow_is_read_at_the_pixel_of_its_point_at_any_whole_scale() {
+        let shot = Shot::all()[0];
+        let cell = fab_cell(FabStyle::PrimaryContainer, FabSize::Baseline);
+        let (x, y) = below(cell);
+        let surface = Rgb::of(&LIGHT, ColorRole::Surface);
+        for scale in [1, 2] {
+            // No shadow at the one pixel the point names, whatever the scale: the surface is not darker than itself.
+            // A read at another pixel would find the image's background, which is darker than the surface, and pass.
+            let mut image = painted(shot, scale);
+            let start =
+                ((points_to_u32(y) * scale * image.width + points_to_u32(x) * scale) * 4) as usize;
+            image.rgba[start..start + 3].copy_from_slice(&surface.0);
+            let found = check_shadows(&image, shot).unwrap();
+            assert_eq!(found.len(), 1, "scale {scale}");
+            assert_eq!(found[0].probe.target, Target::Fab(cell), "scale {scale}");
+            assert_eq!(found[0].found, Some(surface), "scale {scale}");
         }
     }
 
