@@ -17,6 +17,7 @@ pub mod checkbox_tokens;
 pub mod circular_progress_indicator_tokens;
 pub mod color_dark_tokens;
 pub mod color_light_tokens;
+pub mod divider_tokens;
 pub mod elevated_button_tokens;
 pub mod elevation_tokens;
 pub mod expressive_motion_tokens;

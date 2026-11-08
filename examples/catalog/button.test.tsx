@@ -1,11 +1,12 @@
-// The button's and icon button's screenshots on NSH's desktop and web hosts (ADR 0013): `nsh test
+// The button's, icon button's and divider's screenshots on NSH's desktop and web hosts (ADR 0013): `nsh test
 // examples/catalog/button.test.tsx --target <linux|web>`, run from the root of the repository, saves them in
 // `target/visual`; `cargo run -p visual-checks -- target/visual` checks their known pixels. `nsh test` takes a test only
 // inside its app, so this file is beside the catalog's `nsh.json`.
 //
-// The catalog shows every size, style, shape and availability of the button on a grid, and every size, width,
+// The catalog shows every size, style, shape and availability of the button on a grid, every size, width,
 // style, shape and availability of the icon button on a second grid below it (and the switches on a third, which
-// `switch.test.tsx` hovers; they are in these screenshots at rest).
+// `switch.test.tsx` hovers; they are in these screenshots at rest), and every direction and thickness of the
+// divider in a column beside the second grid. A divider has no hover state: no screenshot has the mouse over one.
 // Each appearance gets one screenshot at rest, one with the mouse over the small round enabled button of each style,
 // and one with the mouse over the small uniform round enabled icon button of each style. The file names are those
 // `visual-checks` reads (`Shot::file_name`).

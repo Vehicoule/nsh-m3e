@@ -103,6 +103,14 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
+        file: "DividerTokens.kt",
+        object: None,
+        doc: &[
+            "The divider's color and thickness. The color is a role of the scheme ([`crate::color::ColorRole`]), \
+             resolved against the light or dark [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
         file: "ElevatedButtonTokens.kt",
         object: None,
         doc: &[
