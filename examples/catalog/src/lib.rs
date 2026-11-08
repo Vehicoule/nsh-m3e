@@ -1,12 +1,13 @@
 //! The catalog: every component of `nsh-m3e` in each of its states, for the visual checks of ADR 0013: the buttons,
-//! the icon buttons, the switches, the checkboxes, the dividers and the floating action buttons.
+//! the icon buttons, the switches, the checkboxes, the dividers, the floating action buttons and the extended ones.
 //!
-//! `nsh test` opens it on NSH's hosts (`button.test.tsx`, `switch.test.tsx`, `checkbox.test.tsx` and `fab.test.tsx`,
-//! beside its `nsh.json`) and saves screenshots of it; `visual-checks` reads the pixels it knows in them, at the places
-//! [`grid`], [`switch`], [`checkbox`] and [`fab`] give.
+//! `nsh test` opens it on NSH's hosts (`button.test.tsx`, `switch.test.tsx`, `checkbox.test.tsx`, `fab.test.tsx` and
+//! `extended_fab.test.tsx`, beside its `nsh.json`) and saves screenshots of it; `visual-checks` reads the pixels it knows
+//! in them, at the places [`grid`], [`switch`], [`checkbox`], [`fab`] and [`extended_fab`] give.
 //! The catalog is a Rust app (`nsh.json` names its root, [`Catalog`]); nothing in it runs JavaScript.
 
 pub mod checkbox;
+pub mod extended_fab;
 pub mod fab;
 pub mod grid;
 pub mod switch;
@@ -32,8 +33,9 @@ fn native(registry: &mut Registry) {
     registry.register::<Catalog>();
 }
 
-/// Every button, icon button, switch, checkbox, divider and FAB of the catalog at its place on the [`grid`], the
-/// [`switch`] grid, the [`checkbox`] grid and the [`fab`] row, on the scheme's surface color.
+/// Every button, icon button, switch, checkbox, divider, FAB and extended FAB of the catalog at its place on the
+/// [`grid`], the [`switch`] grid, the [`checkbox`] grid, the [`fab`] row and the [`extended_fab`] grid, on the scheme's
+/// surface color.
 #[component]
 pub fn Catalog() -> impl IntoElement {
     let surface = AdaptiveColor::rgb(
@@ -98,7 +100,7 @@ pub fn Catalog() -> impl IntoElement {
         )
     });
     let page = SwitchCell::all().fold(page, |page, cell| page.child(switch::element(cell)));
-    fab::place(checkbox::place(page))
+    extended_fab::place(fab::place(checkbox::place(page)))
 }
 
 #[cfg(test)]
@@ -159,10 +161,13 @@ mod tests {
                 _ => {}
             }
         }
-        // The FABs are buttons for screen readers too.
+        // The FABs and the extended FABs are buttons for screen readers too.
         assert_eq!(
             disabled.len(),
-            Cell::all().count() + IconCell::all().count() + fab::FabCell::all().count()
+            Cell::all().count()
+                + IconCell::all().count()
+                + fab::FabCell::all().count()
+                + extended_fab::ExtendedFabCell::all().count()
         );
         let child_of = |id: NodeId| {
             parents

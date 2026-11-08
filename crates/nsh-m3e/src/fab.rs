@@ -355,16 +355,16 @@ fn size_spec(size: FabSize) -> SizeSpec {
 
 /// What a color style gives the FAB: the role of its container and of its icon.
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct StyleSpec {
-    container: ColorRole,
+pub(crate) struct StyleSpec {
+    pub(crate) container: ColorRole,
     /// The icon, and the state layer over the container, which is the icon's color as androidx's ripple is the
     /// content color.
-    icon: ColorRole,
+    pub(crate) icon: ColorRole,
 }
 
 /// The colors of `style`. A state does not change them: each style's token file gives the same icon color at rest,
 /// hovered, focused and pressed, and `every_state_has_the_same_icon_color` would say if that changed.
-fn style_spec(style: FabStyle) -> StyleSpec {
+pub(crate) fn style_spec(style: FabStyle) -> StyleSpec {
     match style {
         FabStyle::PrimaryContainer => StyleSpec {
             container: fab_primary_container_tokens::CONTAINER_COLOR,
@@ -395,7 +395,7 @@ fn touch_slop(size: Size<Points>) -> EdgeInsets {
 
 /// `style` with the corners that `shape` gives a container: rounded by the shape's radius, or by half the shorter
 /// side.
-fn rounded<S: Styled>(style: S, shape: Shape) -> S {
+pub(crate) fn rounded<S: Styled>(style: S, shape: Shape) -> S {
     match corners(shape) {
         Corners::Full => style.rounded_full(),
         Corners::Radius(radius) => style.rounded(radius),
@@ -411,7 +411,7 @@ const SHOW_HIDE_TARGET_SCALE: f32 = 0.2;
 /// scheme's `fastSpatialSpec` and the alpha with its `fastEffectsSpec` (lines 1245 to 1260), converted as ADR 0004
 /// says. Every field is written out, none taken from NSH's defaults: it keeps the speed the value already has (a show
 /// that interrupts a hide goes on from there) and asks for the screen's own rate (ADR 0010).
-fn reveal_spring(token: SpringToken) -> Spring {
+pub(crate) fn reveal_spring(token: SpringToken) -> Spring {
     let spec = token.spec();
     Spring {
         stiffness: spec.stiffness,

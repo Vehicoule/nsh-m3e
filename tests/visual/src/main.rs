@@ -1,11 +1,13 @@
 //! Checks the known pixels of the catalog's screenshots (ADR 0013): `cargo run -p visual-checks -- <directory>`.
 //!
 //! `nsh test examples/catalog --target <host>` opens the catalog on one of NSH's hosts and saves its screenshots in
-//! `target/visual` (`examples/catalog/button.test.tsx`, `switch.test.tsx`, `checkbox.test.tsx` and `fab.test.tsx`).
+//! `target/visual` (`examples/catalog/button.test.tsx`, `switch.test.tsx`, `checkbox.test.tsx`, `fab.test.tsx` and
+//! `extended_fab.test.tsx`).
 //! This reads each of them and checks, for every button and icon button of the catalog, the pixels whose color the
 //! tokens give: the container's color inside it, the outline's on its edge, the surface outside its top left corner,
 //! where a rounded corner leaves the background, and an icon button's icon color in its middle; the switches' are
-//! in [`switch`], every checkbox's at the places [`checkbox`] gives and every FAB's, with its shadow, in [`fab`]; and
+//! in [`switch`], every checkbox's at the places [`checkbox`] gives, every FAB's, with its shadow, in [`fab`] and every
+//! extended FAB's in [`extended_fab`]; and
 //! for every divider, the line's color from end to end and across its whole thickness, and the surface one point
 //! past each of its ends and sides. Where the antialiasing of an edge, of the label or of the icon's edge makes a
 //! color unknown, nothing is checked.
@@ -14,6 +16,7 @@
 //! tokens), so it cannot depend on it, and these checks take every expected color from the library's tokens.
 
 mod checkbox;
+mod extended_fab;
 mod fab;
 
 use std::fmt;
@@ -23,6 +26,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use catalog::checkbox::CheckboxCell;
+use catalog::extended_fab::ExtendedFabCell;
 use catalog::fab::FabCell;
 use catalog::grid::{self, Availability, Cell, DividerCell, IconCell};
 use catalog::switch::SwitchCell;
@@ -84,7 +88,7 @@ impl Appearance {
     }
 }
 
-/// A component of the catalog: a button, an icon button, a switch, a checkbox, a FAB or a divider.
+/// A component of the catalog: a button, an icon button, a switch, a checkbox, a FAB, an extended FAB or a divider.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Target {
     Button(Cell),
@@ -92,6 +96,7 @@ enum Target {
     Switch(SwitchCell),
     Checkbox(CheckboxCell),
     Fab(FabCell),
+    ExtendedFab(ExtendedFabCell),
     Divider(DividerCell),
 }
 
@@ -104,6 +109,7 @@ impl Target {
             Self::Switch(cell) => cell.test_id(),
             Self::Checkbox(cell) => cell.test_id(),
             Self::Fab(cell) => cell.test_id(),
+            Self::ExtendedFab(cell) => cell.test_id(),
             Self::Divider(cell) => cell.test_id(),
         }
     }
@@ -178,6 +184,10 @@ impl Shot {
             Some(Target::Checkbox(cell)) => format!("{appearance}-hover-{}.png", cell.test_id()),
             // Nor a FAB: the FAB's own shots are `fab::Shot`.
             Some(Target::Fab(cell)) => format!("{appearance}-hover-{}.png", cell.test_id()),
+            // Nor an extended FAB: its own shots are `extended_fab::Shot`.
+            Some(Target::ExtendedFab(cell)) => {
+                format!("{appearance}-hover-{}.png", cell.test_id())
+            }
             // No screenshot has the mouse over a divider: it has no hover state, and the shots do not hover it.
             Some(Target::Divider(cell)) => {
                 format!("{appearance}-hover-{}.png", cell.test_id())
@@ -842,6 +852,14 @@ fn run(directory: &Path, out: &mut impl io::Write) -> Result<(), Error> {
             directory,
             &shot.file_name(),
             |image| fab::check(image, shot),
+            out,
+        )?;
+    }
+    for shot in extended_fab::Shot::all() {
+        mismatches += check_file(
+            directory,
+            &shot.file_name(),
+            |image| extended_fab::check(image, shot),
             out,
         )?;
     }
@@ -1822,6 +1840,20 @@ mod tests {
         (count, out)
     }
 
+    /// Saves the screenshot `light` as the dark one, `dark`, which is then wrong in its pixels: the run counts them,
+    /// names `dark` as failed and `right`, a screenshot that is right, as ok.
+    fn assert_a_light_screenshot_saved_as_the_dark_one_fails(
+        directory: &Path,
+        light: &str,
+        dark: &str,
+        right: &str,
+    ) {
+        fs::copy(directory.join(light), directory.join(dark)).unwrap();
+        let (_, out) = counted_in(directory);
+        assert!(out.contains(&format!("{dark}: FAILED")), "{out}");
+        assert!(out.contains(&format!("{right}: ok")), "{out}");
+    }
+
     #[test]
     fn run_reports_missing_and_wrong_screenshots() {
         let directory = std::env::temp_dir().join(format!("visual-checks-{}", std::process::id()));
@@ -1830,7 +1862,8 @@ mod tests {
         for shot in Shot::all() {
             save(&directory, &shot.file_name(), &painted(shot, 1));
         }
-        // Without the checkbox's screenshots, the run reads the first one it lacks; then without the FAB's.
+        // Without the checkbox's screenshots, the run reads the first one it lacks; then without the FAB's, then
+        // without the extended FAB's.
         assert!(matches!(run_in(&directory).1, Err(Error::Read { .. })));
         for shot in checkbox::Shot::all() {
             save(&directory, &shot.file_name(), &checkbox::painted(shot, 1));
@@ -1839,17 +1872,24 @@ mod tests {
         for shot in fab::Shot::all() {
             save(&directory, &shot.file_name(), &fab::painted(shot, 1));
         }
+        assert!(matches!(run_in(&directory).1, Err(Error::Read { .. })));
+        for shot in extended_fab::Shot::all() {
+            save(
+                &directory,
+                &shot.file_name(),
+                &extended_fab::painted(shot, 1),
+            );
+        }
         let (out, result) = run_in(&directory);
         assert!(result.is_ok());
         assert!(out.contains("light-rest.png: ok"));
         // The light screenshot saved as the dark one.
-        fs::copy(
-            directory.join("light-rest.png"),
-            directory.join("dark-rest.png"),
-        )
-        .unwrap();
-        let (_, out) = counted_in(&directory);
-        assert!(out.contains("dark-rest.png: FAILED"));
+        assert_a_light_screenshot_saved_as_the_dark_one_fails(
+            &directory,
+            "light-rest.png",
+            "dark-rest.png",
+            "light-rest.png",
+        );
         // The catalog's screenshot is right again, and a checkbox's is wrong: the light one saved as the dark one.
         let dark_rest = Shot::all()
             .into_iter()
@@ -1863,19 +1903,13 @@ mod tests {
         let [light, dark_checkbox] = rests[..] else {
             panic!("one checkbox shot at rest in each appearance: {rests:?}");
         };
-        fs::copy(
-            directory.join(light.file_name()),
-            directory.join(dark_checkbox.file_name()),
-        )
-        .unwrap();
-        let (_, out) = counted_in(&directory);
-        assert!(
-            out.contains(&format!("{}: FAILED", dark_checkbox.file_name())),
-            "{out}"
+        assert_a_light_screenshot_saved_as_the_dark_one_fails(
+            &directory,
+            &light.file_name(),
+            &dark_checkbox.file_name(),
+            "dark-rest.png",
         );
-        assert!(out.contains("dark-rest.png: ok"), "{out}");
-        // The checkbox's screenshot is right again, and a FAB's is wrong, in its pixels and its shadows: the light one
-        // saved as the dark one.
+        // The checkbox's screenshot is right again, and a FAB's is wrong, in its pixels and its shadows.
         save(
             &directory,
             &dark_checkbox.file_name(),
@@ -1888,19 +1922,30 @@ mod tests {
         let [light, dark_fab] = rests[..] else {
             panic!("one FAB shot at rest in each appearance: {rests:?}");
         };
-        fs::copy(
-            directory.join(light.file_name()),
-            directory.join(dark_fab.file_name()),
-        )
-        .unwrap();
-        let (_, out) = counted_in(&directory);
-        assert!(
-            out.contains(&format!("{}: FAILED", dark_fab.file_name())),
-            "{out}"
+        assert_a_light_screenshot_saved_as_the_dark_one_fails(
+            &directory,
+            &light.file_name(),
+            &dark_fab.file_name(),
+            &dark_checkbox.file_name(),
         );
-        assert!(
-            out.contains(&format!("{}: ok", dark_checkbox.file_name())),
-            "{out}"
+        // The FAB's screenshot is right again, and an extended FAB's is wrong.
+        save(
+            &directory,
+            &dark_fab.file_name(),
+            &fab::painted(dark_fab, 1),
+        );
+        let rests: Vec<extended_fab::Shot> = extended_fab::Shot::all()
+            .into_iter()
+            .filter(|shot| shot.hovered.is_none())
+            .collect();
+        let [light, dark_extended] = rests[..] else {
+            panic!("one extended FAB shot at rest in each appearance: {rests:?}");
+        };
+        assert_a_light_screenshot_saved_as_the_dark_one_fails(
+            &directory,
+            &light.file_name(),
+            &dark_extended.file_name(),
+            &dark_fab.file_name(),
         );
         fs::remove_dir_all(&directory).unwrap();
     }
