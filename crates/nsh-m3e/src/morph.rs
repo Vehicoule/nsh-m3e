@@ -67,12 +67,10 @@ fn half_shorter_side(size: Size<Points>) -> f32 {
     size.width.0.min(size.height.0) / 2.0
 }
 
-/// The spring of the morph: androidx `Button.kt` animates the button's shape with
-/// `MotionSchemeKeyTokens.DefaultEffects`, "intentional here to prevent any bounce in this component" (ADR 0011),
-/// converted as ADR 0004 says. Every field is written out, none taken from NSH's defaults: it starts from the speed
-/// the corners already have, at the screen's own rate (ADR 0010).
-fn morph_spring() -> Spring {
-    let spec = SpringToken::DefaultEffects.spec();
+/// The spring of the morph for `token`, converted as ADR 0004 says. Every field is written out, none taken from NSH's
+/// defaults: it starts from the speed the corners already have, at the screen's own rate (ADR 0010).
+fn spring_of(token: SpringToken) -> Spring {
+    let spec = token.spec();
     Spring {
         stiffness: spec.stiffness,
         damping: spec.damping_coefficient(),
@@ -80,6 +78,12 @@ fn morph_spring() -> Spring {
         velocity: None,
         frame_rate: None,
     }
+}
+
+/// The spring of the button's morph: androidx `Button.kt` animates the button's shape with
+/// `MotionSchemeKeyTokens.DefaultEffects`, "intentional here to prevent any bounce in this component" (ADR 0011).
+fn morph_spring() -> Spring {
+    spring_of(SpringToken::DefaultEffects)
 }
 
 /// A container drawn with an animated corner radius, and the state that moves it: its shape at rest, its shape while
@@ -166,6 +170,33 @@ impl DrawnShape {
                 .radius
                 .spring(self.target().radius(self.size.get()), morph_spring());
         });
+    }
+
+    /// The corners go to `to`, from where they are and as fast as they move, with `token`'s spring: the shape of a
+    /// component that morphs between more than two shapes (the list item's, which hover, focus, selection and press
+    /// each give one). Its current shape then is both `rest` and `pressed`, and [`DrawnShape::press`] is never used.
+    /// Nothing is sent when the corners are already `to`, which includes the first call that gives the shape the
+    /// component starts with. With reduce motion on nothing moves and the shape stays as it is (ADR 0011, "Reduce
+    /// motion").
+    pub(crate) fn morph_to(self, to: Corners, token: SpringToken) {
+        untracked(|| {
+            if self.rest.get() == to && self.pressed_corners.get() == to {
+                return;
+            }
+            self.rest.set(to);
+            self.pressed_corners.set(to);
+            if reduce_motion() {
+                return;
+            }
+            let _ = self
+                .radius
+                .spring(to.radius(self.size.get()), spring_of(token));
+        });
+    }
+
+    /// The container's size, from its layout (the one it was expected to be until the first).
+    pub(crate) fn size(self) -> Size<Points> {
+        self.size.get()
     }
 
     /// The container: a canvas filling the component (place it first among its children), which draws the
@@ -255,7 +286,58 @@ fn trace(painter: Painter, radius: &AnimatedValue, size: Size<Points>, inset: f3
 
 #[cfg(test)]
 mod tests {
+    use std::time::SystemTime;
+
+    use nsh_engine::{Clock, EngineConfig, Root};
+    use nsh_testing::Headless;
+
     use super::*;
+    use crate::animation_probe::{Recording, started_springs};
+    use crate::morph_probe::{spring_in, spring_with};
+
+    /// A drawn container that rests at 12 points and presses into 16, and the buttons that move it: `Morph` and
+    /// `Again` send it to 12 with [`DrawnShape::morph_to`], `Press` presses it.
+    #[component]
+    fn Morphing() -> impl IntoElement {
+        let drawn = DrawnShape::new(
+            Corners::Radius(Points(12.0)),
+            Corners::Radius(Points(16.0)),
+            Size::new(Points(40.0), Points(40.0)),
+        );
+        let to_rest = move |(): &()| {
+            drawn.morph_to(Corners::Radius(Points(12.0)), SpringToken::FastSpatial);
+        };
+        view()
+            .child(drawn.container(|| None))
+            .child(text("Morph").on_press(to_rest))
+            .child(text("Again").on_press(to_rest))
+            .child(text("Press").on_press(move |(): &()| drawn.press(true)))
+    }
+
+    #[test]
+    fn morphing_to_a_shape_makes_it_both_the_rest_and_the_pressed_corners() {
+        let mut app = Headless::start(EngineConfig {
+            clock: Clock::manual(SystemTime::UNIX_EPOCH),
+            ..EngineConfig::new(Root::of::<Morphing>())
+        })
+        .unwrap();
+        let recording = Recording::attach(&mut app);
+        app.wait_for("Morph").unwrap();
+        // The rest corners are already 12 points, but the pressed ones are 16: the shape still moves, with the
+        // spring of the token it was given and not the button's.
+        app.press("Morph").unwrap();
+        let moved = recording.in_step("press(Morph)");
+        let _ = spring_with(&moved, "press(Morph)", 12.0, SpringToken::FastSpatial);
+        // Both are 12 now, so the same shape again sends nothing.
+        app.press("Again").unwrap();
+        assert_eq!(
+            started_springs(&recording.in_step("press(Again)")),
+            Vec::new()
+        );
+        // A press then goes to the pressed corners, which are 12 and no longer 16.
+        app.press("Press").unwrap();
+        let _ = spring_in(&recording.in_step("press(Press)"), "press(Press)", 12.0);
+    }
 
     #[test]
     fn only_shapes_with_four_equal_corners_can_morph() {

@@ -14,6 +14,7 @@ pub mod color;
 pub mod elevation;
 pub mod icon;
 pub mod icon_button;
+pub mod list_item;
 pub mod material_symbols;
 mod morph;
 #[cfg(test)]
