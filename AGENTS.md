@@ -75,7 +75,7 @@ scripts/sync-material-symbols.sh check
 cargo xtask gen-icons --check
 scripts/sync-material-web.sh check
 scripts/sync-nsh.sh check
-cargo mutants --workspace --cargo-arg=--locked   # cargo-mutants 27.1.0
+cargo mutants --workspace --cargo-arg=--locked   # cargo-mutants 27.1.0; on a pull request, --in-diff (ADR 0022)
 typos                                            # typos-cli 1.52.0
 cargo machete                                    # cargo-machete 0.9.2, no unused dependency
 zizmor .github/workflows/                        # zizmor 1.32.0, the workflows' security audit
