@@ -4,15 +4,16 @@
 // inside its app, so this file is beside the catalog's `nsh.json`.
 //
 // The catalog shows every size, style, shape and availability of the button on a grid, every size, width, style,
-// shape and availability of the icon button on a second grid below it, and every arrangement, icon position and label
-// visibility of the navigation bar on a third.
+// shape and availability of the icon button on a second grid below it, the switches on a third (which
+// `switch.test.tsx` hovers; they are in these screenshots at rest) and every arrangement, icon position and label
+// visibility of the navigation bar on a fourth.
 // Each appearance gets one screenshot at rest, one with the mouse over the small round enabled button of each style,
 // one with the mouse over the small uniform round enabled icon button of each style, and one with the mouse over each
 // of four items of the navigation bars. The file names are those `visual-checks` reads (`Shot::file_name`).
 import { expect, open, test } from "nsh/test";
 
 // The catalog's viewport (`catalog::grid::viewport`); `visual-checks` refuses a screenshot of another size.
-const VIEWPORT = { width: 2608, height: 2848 };
+const VIEWPORT = { width: 2608, height: 2944 };
 
 const STYLES = ["filled", "tonal", "outlined", "text"];
 

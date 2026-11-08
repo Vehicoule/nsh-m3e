@@ -9,7 +9,7 @@ use nsh_m3e::navigation_bar::NavigationBarArrangement;
 use nsh_m3e::navigation_item::{NavigationItemIconPosition, NavigationItemLabel};
 use nsh_m3e::tokens::androidx::navigation_bar_tokens;
 
-use crate::grid::{self, MARGIN, ROW_GAP};
+use crate::grid::{MARGIN, ROW_GAP};
 
 /// Every arrangement, in the order of the rows.
 pub const ARRANGEMENTS: [NavigationBarArrangement; 2] = [
@@ -79,10 +79,10 @@ pub const COLUMN_WIDTH: Points = Points(640.0);
 /// system bars' insets at zero.
 pub const BAR_HEIGHT: Points = navigation_bar_tokens::CONTAINER_HEIGHT;
 
-/// The top of the bars' grid: below the icon buttons' rows and their last gap.
+/// The top of the bars' grid: below the switches' rows and their last gap, which are below the icon buttons'.
 #[must_use]
 pub fn top() -> Points {
-    grid::icon_bottom()
+    Points(crate::switch::top().0 + crate::switch::block_height().0)
 }
 
 /// The bottom of the bars' grid: the last row and its gap end there.
@@ -234,6 +234,7 @@ mod tests {
     use std::collections::HashSet;
 
     use super::*;
+    use crate::grid;
 
     #[test]
     fn every_bar_is_once_in_the_catalog() {
@@ -272,33 +273,34 @@ mod tests {
     #[test]
     fn the_rows_and_columns_are_where_the_layout_says() {
         let first = NavCell::default();
-        // Below the icon buttons: they end at 2,664 points, the last row's gap and the bottom margin included.
-        assert_eq!(top(), Points(2664.0));
-        assert_eq!(first.origin(), (Points(24.0), Points(2664.0)));
+        // Below the switches, which are below the icon buttons: the switches end at 2,760 points, the last row's gap
+        // included.
+        assert_eq!(top(), Points(2760.0));
+        assert_eq!(first.origin(), (Points(24.0), Points(2760.0)));
         // Hidden labels are the second column of an icon position, the start icon the third.
         let hidden = NavCell {
             label: NavigationItemLabel::Hidden,
             ..first
         };
-        assert_eq!(hidden.origin(), (Points(664.0), Points(2664.0)));
+        assert_eq!(hidden.origin(), (Points(664.0), Points(2760.0)));
         let start = NavCell {
             icon_position: NavigationItemIconPosition::Start,
             ..first
         };
-        assert_eq!(start.origin(), (Points(1304.0), Points(2664.0)));
+        assert_eq!(start.origin(), (Points(1304.0), Points(2760.0)));
         // Centered is the second row: below the first bar (64 points) and the gap.
         let centered = NavCell {
             arrangement: NavigationBarArrangement::Centered,
             ..first
         };
-        assert_eq!(centered.origin(), (Points(24.0), Points(2744.0)));
+        assert_eq!(centered.origin(), (Points(24.0), Points(2840.0)));
         let last = NavCell::new(
             NavigationBarArrangement::Centered,
             NavigationItemIconPosition::Start,
             NavigationItemLabel::Hidden,
         );
-        assert_eq!(last.origin(), (Points(1944.0), Points(2744.0)));
-        assert_eq!(bottom(), Points(2824.0));
+        assert_eq!(last.origin(), (Points(1944.0), Points(2840.0)));
+        assert_eq!(bottom(), Points(2920.0));
     }
 
     #[test]
@@ -327,7 +329,7 @@ mod tests {
             .collect();
         assert_eq!(centers, [104.0, 264.0, 424.0]);
         // Every item is in the middle of the bar's height (2,664 and half of 64 points).
-        assert_eq!(equal.item_center(ItemState::Selected).1, Points(2696.0));
+        assert_eq!(equal.item_center(ItemState::Selected).1, Points(2792.0));
         let centered = NavCell {
             arrangement: NavigationBarArrangement::Centered,
             ..equal
@@ -340,7 +342,7 @@ mod tests {
             .map(|s| centered.item_center(s).0.0)
             .collect();
         assert_eq!(centers, [204.0, 324.0, 444.0]);
-        assert_eq!(centered.item_center(ItemState::Disabled).1, Points(2776.0));
+        assert_eq!(centered.item_center(ItemState::Disabled).1, Points(2872.0));
     }
 
     #[test]

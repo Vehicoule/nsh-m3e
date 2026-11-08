@@ -373,7 +373,10 @@ mod tests {
         );
         assert_eq!(
             (none.x, none.y),
-            (Points(24.0 + 11.0 + 4.0), Points(2824.0 + 11.0 + 8.0))
+            (
+                Points(24.0 + 11.0 + 4.0),
+                Points(catalog::checkbox::top().0 + 11.0 + 8.0)
+            )
         );
     }
 
@@ -540,7 +543,7 @@ mod tests {
         assert_eq!(
             found[0].to_string(),
             format!(
-                "checkbox-checked-enabled mark at (109, 2843) points: expected {} (± 2), found #6750a4",
+                "checkbox-checked-enabled mark at (109, 2939) points: expected {} (± 2), found #6750a4",
                 wanted.expected
             )
         );
