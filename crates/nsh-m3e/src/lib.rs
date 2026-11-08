@@ -18,6 +18,7 @@ pub mod divider;
 pub mod elevation;
 pub mod icon;
 pub mod icon_button;
+pub mod icon_toggle_button;
 #[cfg(test)]
 mod keyframe_probe;
 pub mod linear_progress_indicator;
