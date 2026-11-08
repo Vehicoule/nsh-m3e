@@ -1178,9 +1178,9 @@ mod tests {
                 let step = press_down(&mut app);
                 let spring = morph_in(&recording, &step, pressed);
                 // While it plays, the engine sends nothing (ADR 0010).
-                app.step("run");
-                app.run_for(Duration::from_secs(1)).unwrap();
-                assert!(recording.in_step("run").is_empty(), "{what}");
+                let (ran, sent) = recording.during(|| app.run_for(Duration::from_secs(1)));
+                ran.unwrap();
+                assert!(sent.is_empty(), "{what}: {sent:?}");
 
                 let mut replay = replay(&recording);
                 let mut samples = replay.run(spring.node, 9);
