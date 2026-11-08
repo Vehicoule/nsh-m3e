@@ -35,6 +35,7 @@ pub mod progress_indicator_tokens;
 pub mod radio_button_tokens;
 pub mod shape_tokens;
 pub mod small_icon_button_tokens;
+pub mod snackbar_tokens;
 pub mod standard_icon_button_tokens;
 pub mod state_tokens;
 pub mod switch_tokens;
