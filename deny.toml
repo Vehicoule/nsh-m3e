@@ -10,12 +10,6 @@ yanked = "deny"
 # and why this library does not reach it. When NSH no longer pulls the crate in, `cargo deny` reports the ignore as
 # unused: remove it then.
 ignore = [
-    # `zip` 8 through NSH's `nsh-updater`, which extracts downloaded update archives (`install.rs`). The fix is in
-    # zip 9; NSH's `main` still requires `zip = "8"`. This library never installs updates.
-    { id = "RUSTSEC-2026-0367", reason = "zip 8 via nsh-updater's update extraction, unused by this library (ADR 0009)" },
-    { id = "RUSTSEC-2026-0368", reason = "zip 8 via nsh-updater's update extraction, unused by this library (ADR 0009)" },
-    { id = "RUSTSEC-2026-0369", reason = "zip 8 via nsh-updater's update extraction, unused by this library (ADR 0009)" },
-    { id = "RUSTSEC-2026-0429", reason = "zip 8 via nsh-updater's update extraction, unused by this library (ADR 0009)" },
     # `ttf-parser` is unmaintained, with no known vulnerability; NSH's `nsh-macros` reads fonts with it at build time.
     { id = "RUSTSEC-2026-0192", reason = "ttf-parser, unmaintained, used by NSH's macros at build time (ADR 0009)" },
 ]

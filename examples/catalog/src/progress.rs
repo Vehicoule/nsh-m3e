@@ -323,7 +323,7 @@ mod tests {
         let (right, bottom) = extent();
         assert_eq!((right, bottom), (Points(2592.0), Points(1250.0)));
         assert!(right.0 <= width.0 && bottom.0 <= height.0);
-        assert_eq!((width, height), (Points(2608.0), Points(2688.0)));
+        assert_eq!((width, height), (Points(2608.0), Points(2784.0)));
     }
 
     #[test]
