@@ -303,6 +303,12 @@ mod tests {
             panic!("not a spring: {transition:?}");
         };
         let duration = f64::from(transition.duration_ms) / 1000.0;
+        // Before integrating: the integration runs for as long as the duration, so an infinite one (a spring whose
+        // natural frequency came out zero) would not fail, it would never end.
+        assert!(
+            duration.is_finite() && duration > 0.0,
+            "no time a spring can take: {transition:?}"
+        );
         let fractions: Vec<f64> = (1..=100).map(|i| f64::from(i) / 100.0 * 0.99).collect();
         let seconds: Vec<f64> = fractions.iter().map(|x| x * duration).collect();
         let played = positions(
