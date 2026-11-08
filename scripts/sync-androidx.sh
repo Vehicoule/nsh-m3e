@@ -39,7 +39,6 @@ components=(
     internal/LinearWavyProgressModifiers.kt
     internal/CircularWavyProgressModifiers.kt
     Snackbar.kt
-    ComposeMaterial3Flags.kt
     ToggleButton.kt
 )
 
