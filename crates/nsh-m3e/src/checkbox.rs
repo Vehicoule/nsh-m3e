@@ -444,7 +444,13 @@ fn length_table() -> (Vec<f32>, Vec<f32>, Vec<f32>) {
 /// The corner radius of the box: `CheckboxTokens.ContainerShape`, which androidx's `RadiusSize` (2 points, line 1068)
 /// equals.
 fn corner_radius() -> f32 {
-    match morph::corners(checkbox_tokens::CONTAINER_SHAPE) {
+    radius_of(morph::corners(checkbox_tokens::CONTAINER_SHAPE))
+}
+
+/// The radius `corners` give the box: a radius in points as it is, a full one half the box (a token's `ContainerShape`
+/// is the first, so the second is only what a token with another shape would give).
+fn radius_of(corners: morph::Corners) -> f32 {
+    match corners {
         morph::Corners::Radius(radius) => radius.0,
         morph::Corners::Full => BOX.0 / 2.0,
     }
@@ -1116,6 +1122,22 @@ mod tests {
         assert_eq!(checkbox_tokens::SELECTED_OUTLINE_WIDTH, Points(0.0));
         assert_ne!(checkbox_tokens::SELECTED_OUTLINE_WIDTH, STROKE);
         assert_eq!(corner_radius().to_bits(), 2.0_f32.to_bits());
+    }
+
+    /// A radius in points is the box's radius as it is, and a full one is half the box: the second is not what the
+    /// token gives, so only this says what it would.
+    #[test]
+    fn the_box_takes_its_radius_from_its_corners() {
+        assert_eq!(
+            radius_of(morph::Corners::Radius(px(3.0))).to_bits(),
+            3.0_f32.to_bits()
+        );
+        assert_eq!(
+            radius_of(morph::Corners::Full).to_bits(),
+            (BOX.0 / 2.0).to_bits()
+        );
+        assert_eq!(BOX, Points(18.0));
+        assert_eq!(radius_of(morph::Corners::Full).to_bits(), 9.0_f32.to_bits());
     }
 
     #[test]

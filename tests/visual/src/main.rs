@@ -1564,6 +1564,45 @@ mod tests {
                 .unwrap()
                 .contains("dark-rest.png: FAILED")
         );
+        // The catalog's screenshot is right again, and a checkbox's is wrong: the light one saved as the dark one.
+        let dark_rest = Shot::all()
+            .into_iter()
+            .find(|shot| shot.file_name() == "dark-rest.png")
+            .unwrap();
+        fs::write(
+            directory.join(dark_rest.file_name()),
+            encode_uncompressed(&painted(dark_rest, 1)),
+        )
+        .unwrap();
+        let rests: Vec<checkbox::Shot> = checkbox::Shot::all()
+            .into_iter()
+            .filter(|shot| shot.hovered.is_none())
+            .collect();
+        let [light, dark] = rests[..] else {
+            panic!("one checkbox shot at rest in each appearance: {rests:?}");
+        };
+        fs::copy(
+            directory.join(light.file_name()),
+            directory.join(dark.file_name()),
+        )
+        .unwrap();
+        let mut out = Vec::new();
+        let counted = match run(&directory, &mut out) {
+            Err(Error::Mismatches(count)) => count,
+            other => panic!("the checkbox's wrong pixels are counted: {other:?}"),
+        };
+        let out = String::from_utf8(out).unwrap();
+        assert!(counted > 0);
+        assert!(
+            out.contains(&format!("{}: FAILED", dark.file_name())),
+            "{out}"
+        );
+        assert!(out.contains("dark-rest.png: ok"), "{out}");
+        // Every pixel the run counted is named: two spaces start the line of each.
+        assert_eq!(
+            out.lines().filter(|line| line.starts_with("  ")).count(),
+            counted
+        );
         fs::remove_dir_all(&directory).unwrap();
     }
 }
