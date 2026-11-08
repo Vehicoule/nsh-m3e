@@ -10,6 +10,7 @@
 #[cfg(test)]
 mod animation_probe;
 pub mod button;
+pub mod checkbox;
 pub mod color;
 pub mod elevation;
 pub mod icon;
@@ -20,5 +21,6 @@ mod morph;
 mod morph_probe;
 pub mod motion;
 pub mod radio;
+pub mod switch;
 mod tint;
 pub mod tokens;
