@@ -25,6 +25,7 @@ components=(
     Divider.kt
     IconButton.kt
     IconButtonDefaults.kt
+    FloatingActionButton.kt
     Checkbox.kt
     ComposeMaterial3Flags.kt
     Switch.kt
