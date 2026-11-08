@@ -1630,6 +1630,46 @@ mod tests {
     }
 
     #[test]
+    fn a_start_pill_without_a_label_is_drawn_once() {
+        // Its area is the size the item expected, the icon and the padding around it (24 + 2 · 16 by 24 + 2 · 8
+        // points): the layout changes nothing, so nothing is drawn again. With a label the item is wider than it
+        // expected, and its pill is drawn again at the width the layout gave it.
+        let (_app, recording) = start(Config {
+            icon_position: NavigationItemIconPosition::Start,
+            label_visibility: NavigationItemLabel::Hidden,
+            ..Config::default()
+        });
+        let items = recording.items();
+        let mounted = Mounted::of(&items);
+        for (index, item) in mounted.items.iter().enumerate() {
+            assert_eq!(
+                mounted.size(item.area),
+                Size::new(Points(56.0), Points(40.0)),
+                "item {index}"
+            );
+            let drawings = items
+                .iter()
+                .filter(|mount| matches!(mount, MountItem::Canvas { id, .. } if *id == item.pill))
+                .count();
+            assert_eq!(drawings, 1, "item {index}");
+            // The pill is drawn in the batch that creates it, at the size the item expected, before the layout gives the
+            // area its frame: an item that expected no area would show no pill until a second batch.
+            let first = |is: fn(&MountItem, NodeId) -> bool| {
+                items.iter().position(|mount| is(mount, item.pill))
+            };
+            let drawn =
+                first(|mount, id| matches!(mount, MountItem::Canvas { id: at, .. } if *at == id));
+            let framed =
+                first(|mount, id| matches!(mount, MountItem::Frame { id: at, .. } if *at == id));
+            assert!(drawn.is_some() && framed.is_some(), "item {index}");
+            assert!(
+                drawn < framed,
+                "item {index}: drawn at {drawn:?}, framed at {framed:?}"
+            );
+        }
+    }
+
+    #[test]
     fn selecting_an_item_springs_its_pill_open_and_the_old_one_shut_and_the_drawing_follows() {
         let (mut app, recording) = start(Config::default());
         let mounted = Mounted::of(&recording.items());

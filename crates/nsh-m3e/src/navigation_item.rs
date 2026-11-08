@@ -173,3 +173,40 @@ impl Indicator {
             .fill_background_from_view(area)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use nsh_core::canvas::Drawing;
+    use nsh_engine::{EngineConfig, Root};
+    use nsh_testing::Headless;
+
+    use super::*;
+
+    /// Draws a selected indicator whose area is each of the sizes, and says on screen whether it drew anything.
+    #[component]
+    fn Probe() -> impl IntoElement {
+        [(0.0, 0.0), (0.0, 10.0), (10.0, 0.0), (10.0, 10.0)]
+            .into_iter()
+            .fold(view(), |page, (width, height)| {
+                let indicator = Indicator::new(true, Size::new(Points(width), Points(height)));
+                let empty = indicator.drawing().finish() == Drawing::default();
+                page.child(text(format!("{width}x{height} empty={empty}")))
+            })
+    }
+
+    #[test]
+    fn an_area_with_no_width_or_no_height_draws_nothing() {
+        let mut app = Headless::start(EngineConfig::new(Root::of::<Probe>())).unwrap();
+        // A pill with a side of no length has nothing to draw: a zero width or height is not an area, and only an area
+        // with both is drawn. The text is the probe's whole answer: a drawing where there should be none, or none where
+        // there should be one, is another text.
+        for shown in [
+            "0x0 empty=true",
+            "0x10 empty=true",
+            "10x0 empty=true",
+            "10x10 empty=false",
+        ] {
+            app.wait_for(&format!("text:{shown}")).unwrap();
+        }
+    }
+}
