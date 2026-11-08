@@ -1,14 +1,16 @@
 //! Checks the known pixels of the catalog's screenshots (ADR 0013): `cargo run -p visual-checks -- <directory>`.
 //!
 //! `nsh test examples/catalog --target <host>` opens the catalog on one of NSH's hosts and saves its screenshots in
-//! `target/visual` (`examples/catalog/button.test.tsx`). This reads each of them and checks, for every button and
-//! icon button of the catalog, the pixels whose color the tokens give: the container's color inside it, the
+//! `target/visual` (`examples/catalog/button.test.tsx`). This reads each of them and checks, for every button, icon
+//! button and list item of the catalog, the pixels whose color the tokens give: the container's color inside it, the
 //! outline's on its edge, the surface outside its top left corner, where a rounded corner leaves the background, and
-//! an icon button's icon color in its middle. Where the antialiasing of an edge, of the label or of the icon's edge
-//! makes a color unknown, nothing is checked.
+//! the icon color in the middle of an icon button's or a list item's icons ([`list_item`] holds the list items').
+//! Where the antialiasing of an edge, of the label or of the icon's edge makes a color unknown, nothing is checked.
 //!
 //! It is not a `cargo xtask` task: `xtask` must build when the library does not (it regenerates the library's
 //! tokens), so it cannot depend on it, and these checks take every expected color from the library's tokens.
+
+mod list_item;
 
 use std::fmt;
 use std::fs;
@@ -17,6 +19,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use catalog::grid::{self, Availability, Cell, IconCell};
+use catalog::list_item::{Kind, Lines, ListCell};
 use nsh_core::geometry::Points;
 use nsh_m3e::button::{ButtonShape, ButtonSize, ButtonStyle};
 use nsh_m3e::color::{ColorRole, ColorScheme};
@@ -72,11 +75,12 @@ impl Appearance {
     }
 }
 
-/// A component of the catalog: a button or an icon button.
+/// A component of the catalog: a button, an icon button or a list item.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Target {
     Button(Cell),
     IconButton(IconCell),
+    ListItem(ListCell),
 }
 
 impl Target {
@@ -85,6 +89,7 @@ impl Target {
         match self {
             Self::Button(cell) => cell.test_id(),
             Self::IconButton(cell) => cell.test_id(),
+            Self::ListItem(cell) => cell.test_id(),
         }
     }
 }
@@ -100,7 +105,7 @@ struct Shot {
 impl Shot {
     /// Every screenshot `examples/catalog/button.test.tsx` takes, in each appearance: the catalog at rest, then the
     /// mouse over the small round enabled button of each style, then over the small uniform round enabled icon
-    /// button of each style.
+    /// button of each style, then over the two-line clickable list item and the two-line selected one.
     fn all() -> Vec<Self> {
         Appearance::ALL
             .into_iter()
@@ -127,6 +132,13 @@ impl Shot {
                             Availability::Enabled,
                         ))))
                     }))
+                    .chain(
+                        [Kind::Clickable, Kind::Selected]
+                            .into_iter()
+                            .map(move |kind| {
+                                shot(Some(Target::ListItem(ListCell::new(Lines::Two, kind))))
+                            }),
+                    )
             })
             .collect()
     }
@@ -142,6 +154,12 @@ impl Shot {
             Some(Target::IconButton(cell)) => {
                 format!(
                     "{appearance}-hover-icon-{}.png",
+                    cell.label().to_lowercase()
+                )
+            }
+            Some(Target::ListItem(cell)) => {
+                format!(
+                    "{appearance}-hover-list-{}.png",
                     cell.label().to_lowercase()
                 )
             }
@@ -513,7 +531,7 @@ fn icon_probes(cell: IconCell, scheme: &ColorScheme, hovered: bool) -> Vec<Probe
     probes
 }
 
-/// The pixels the checks know in `shot`, for every button and icon button of the catalog.
+/// The pixels the checks know in `shot`, for every button, icon button and list item of the catalog.
 fn shot_probes(shot: Shot) -> Vec<Probe> {
     let scheme = shot.appearance.scheme();
     Cell::all()
@@ -521,6 +539,11 @@ fn shot_probes(shot: Shot) -> Vec<Probe> {
         .chain(
             IconCell::all()
                 .flat_map(|cell| icon_probes(cell, &scheme, shot.hovers(Target::IconButton(cell)))),
+        )
+        .chain(
+            ListCell::all().flat_map(|cell| {
+                list_item::probes(cell, &scheme, shot.hovers(Target::ListItem(cell)))
+            }),
         )
         .collect()
 }
@@ -1222,11 +1245,11 @@ mod tests {
         assert_eq!(changed.len(), 1);
         assert_eq!(changed[0].target, shot.hovered.unwrap());
         assert_eq!(changed[0].what, "container");
-        let buttons = rest
-            .iter()
-            .filter(|p| matches!(p.target, Target::Button(_)))
-            .count();
-        let icon_buttons = rest.len() - buttons;
+        let count = |is: fn(&Target) -> bool| rest.iter().filter(|p| is(&p.target)).count();
+        let buttons = count(|target| matches!(target, Target::Button(_)));
+        let icon_buttons = count(|target| matches!(target, Target::IconButton(_)));
+        let list_items = count(|target| matches!(target, Target::ListItem(_)));
+        assert_eq!(buttons + icon_buttons + list_items, rest.len());
         assert_eq!(
             buttons,
             Cell::all()
@@ -1240,6 +1263,13 @@ mod tests {
                 .sum::<usize>()
         );
         assert!(icon_buttons >= IconCell::all().count() * 3);
+        assert_eq!(
+            list_items,
+            ListCell::all()
+                .map(|c| list_item::probes(c, &LIGHT, false).len())
+                .sum::<usize>()
+        );
+        assert!(list_items >= ListCell::all().count() * 3);
     }
 
     #[test]
@@ -1250,6 +1280,10 @@ mod tests {
         assert_eq!(
             Target::IconButton(icon_button).test_id(),
             "icon-tonal-small-uniform-round-enabled"
+        );
+        assert_eq!(
+            Target::ListItem(ListCell::new(Lines::Three, Kind::Selected)).test_id(),
+            "list-three-selected"
         );
     }
 
@@ -1268,6 +1302,8 @@ mod tests {
                 "light-hover-icon-tonal.png",
                 "light-hover-icon-outlined.png",
                 "light-hover-icon-standard.png",
+                "light-hover-list-clickable.png",
+                "light-hover-list-selected.png",
                 "dark-rest.png",
                 "dark-hover-filled.png",
                 "dark-hover-tonal.png",
@@ -1277,11 +1313,13 @@ mod tests {
                 "dark-hover-icon-tonal.png",
                 "dark-hover-icon-outlined.png",
                 "dark-hover-icon-standard.png",
+                "dark-hover-list-clickable.png",
+                "dark-hover-list-selected.png",
             ]
         );
         assert_eq!(Shot::all()[0].appearance.scheme(), LIGHT);
         assert_eq!(
-            Shot::all()[9].appearance.scheme(),
+            Shot::all()[11].appearance.scheme(),
             ColorScheme::BASELINE_DARK
         );
         // The icon buttons hovered are the small uniform round enabled ones.
@@ -1291,6 +1329,15 @@ mod tests {
                 IconButtonStyle::Filled,
                 Availability::Enabled
             )))
+        );
+        // The list items hovered are the two-line clickable one and the two-line selected one.
+        assert_eq!(
+            Shot::all()[9].hovered,
+            Some(Target::ListItem(ListCell::new(Lines::Two, Kind::Clickable)))
+        );
+        assert_eq!(
+            Shot::all()[10].hovered,
+            Some(Target::ListItem(ListCell::new(Lines::Two, Kind::Selected)))
         );
     }
 
@@ -1327,7 +1374,7 @@ mod tests {
             )
         );
         // The same image is not the dark shot.
-        assert_ne!(check(&image, Shot::all()[10]).unwrap(), Vec::new());
+        assert_ne!(check(&image, Shot::all()[12]).unwrap(), Vec::new());
     }
 
     #[test]

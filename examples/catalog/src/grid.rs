@@ -5,6 +5,8 @@
 //!
 //! The icon buttons sit on a second grid below the first: one column per style and width, one row per size, in four
 //! blocks of rows, enabled then disabled, round then square in each.
+//!
+//! The list items sit on a third grid below the second, which [`crate::list_item`] lays out.
 
 use nsh_core::geometry::Points;
 use nsh_m3e::button::{ButtonShape, ButtonSize, ButtonStyle};
@@ -90,23 +92,33 @@ pub const ICON_SIZES: [IconButtonSize; 5] = [
 /// side of a 40-point icon). A layout value of the catalog, not of Material.
 pub const ICON_COLUMN_WIDTH: Points = Points(200.0);
 
-/// The size of the viewport the catalog is opened in, width and height: the two grids and their margins. The
-/// buttons' grid is the wider: 8 columns of 320 points, where the icon buttons' grid has 12 of 200.
+/// The size of the viewport the catalog is opened in, width and height: the three grids and their margins. The
+/// buttons' grid is the widest: 8 columns of 320 points, where the icon buttons' grid has 12 of 200 and the list items'
+/// has 4 of 400.
 #[must_use]
 pub fn viewport() -> (Points, Points) {
     let mut width = MARGIN.0 * 2.0;
     for _ in 0..STYLES.len() * SHAPES.len() {
         width += COLUMN_WIDTH.0;
     }
-    let mut height = icon_top().0 + MARGIN.0;
+    (
+        Points(width),
+        Points(crate::list_item::bottom().0 + MARGIN.0),
+    )
+}
+
+/// The bottom of the icon buttons' grid: below its rows, each followed by its gap.
+#[must_use]
+pub fn icon_bottom() -> Points {
+    let mut bottom = icon_top().0;
     for _ in AVAILABILITIES {
         for _ in ICON_SHAPES {
             for size in ICON_SIZES {
-                height += icon_height(size).0 + ROW_GAP.0;
+                bottom += icon_height(size).0 + ROW_GAP.0;
             }
         }
     }
-    (Points(width), Points(height))
+    Points(bottom)
 }
 
 /// The top of the icon buttons' grid: below the buttons' rows, each followed by its gap.
@@ -539,9 +551,9 @@ mod tests {
     #[test]
     fn the_viewport_holds_the_grids_and_their_margins() {
         let (width, height) = viewport();
-        // The buttons' 8 columns of 320 points are wider than the icon buttons' 12 of 200; below the buttons' 880
-        // points of rows, the icon buttons' 1,760.
-        assert_eq!((width, height), (Points(2608.0), Points(2688.0)));
+        // The buttons' 8 columns of 320 points are wider than the icon buttons' 12 of 200 and the list items' 4 of
+        // 400; below the buttons' 880 points of rows, the icon buttons' 1,760 and the list items' 264.
+        assert_eq!((width, height), (Points(2608.0), Points(2952.0)));
         for cell in Cell::all() {
             let (x, y) = cell.origin();
             assert!(x.0 + COLUMN_WIDTH.0 <= width.0 - MARGIN.0);
@@ -555,10 +567,13 @@ mod tests {
             assert!(x.0 + ICON_COLUMN_WIDTH.0 <= width.0 - MARGIN.0);
             assert!(y.0 >= icon_top().0);
             assert!(y.0 + cell_height.0 <= height.0 - MARGIN.0);
+            assert!(y.0 + cell_height.0 <= icon_bottom().0 - ROW_GAP.0);
             bottom = Points(bottom.0.max(y.0 + cell_height.0));
         }
-        // The last row and its gap end at the margin.
-        assert_eq!(bottom.0 + ROW_GAP.0, height.0 - MARGIN.0);
+        // The last row and its gap end where the list items' grid begins, and the list items end at the margin.
+        assert_eq!(bottom.0 + ROW_GAP.0, icon_bottom().0);
+        assert_eq!(icon_bottom(), crate::list_item::top());
+        assert_eq!(crate::list_item::bottom().0, height.0 - MARGIN.0);
     }
 
     #[test]
