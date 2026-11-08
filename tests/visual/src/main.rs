@@ -7,6 +7,10 @@
 //! background, and an icon button's icon color in its middle; and for every checkbox, the places [`checkbox`] gives.
 //! Where the antialiasing of an edge, of the label or of the icon's edge makes a color unknown, nothing is checked.
 //!
+//! The linear progress indicators have screenshots of their own, taken with reduced motion on so that they hold
+//! still: for each, the colors of its line, of the gap after it, of its track and of the stop at the end of the track,
+//! at the places the geometry gives in the middle of each (see [`progress_probes`]).
+//!
 //! It is not a `cargo xtask` task: `xtask` must build when the library does not (it regenerates the library's
 //! tokens), so it cannot depend on it, and these checks take every expected color from the library's tokens.
 
@@ -20,17 +24,19 @@ use std::process::ExitCode;
 
 use catalog::checkbox::CheckboxCell;
 use catalog::grid::{self, Availability, Cell, IconCell};
+use catalog::progress::{ProgressCell, Reading};
 use nsh_core::geometry::Points;
 use nsh_m3e::button::{ButtonShape, ButtonSize, ButtonStyle};
 use nsh_m3e::color::{ColorRole, ColorScheme};
 use nsh_m3e::icon_button::{IconButtonShape, IconButtonSize, IconButtonStyle, IconButtonWidth};
+use nsh_m3e::progress::ProgressShape;
 use nsh_m3e::tokens::Shape;
 use nsh_m3e::tokens::androidx::{
     filled_button_tokens, filled_icon_button_tokens, filled_tonal_button_tokens,
-    filled_tonal_icon_button_tokens, large_icon_button_tokens, medium_icon_button_tokens,
-    outlined_button_tokens, outlined_icon_button_tokens, small_icon_button_tokens,
-    standard_icon_button_tokens, state_tokens, xlarge_icon_button_tokens,
-    xsmall_icon_button_tokens,
+    filled_tonal_icon_button_tokens, large_icon_button_tokens, linear_progress_indicator_tokens,
+    medium_icon_button_tokens, outlined_button_tokens, outlined_icon_button_tokens,
+    progress_indicator_tokens, small_icon_button_tokens, standard_icon_button_tokens, state_tokens,
+    xlarge_icon_button_tokens, xsmall_icon_button_tokens,
 };
 
 const USAGE: &str = "usage: cargo run -p visual-checks -- <directory of screenshots>";
@@ -75,12 +81,13 @@ impl Appearance {
     }
 }
 
-/// A component of the catalog: a button, an icon button or a checkbox.
+/// A component of the catalog: a button, an icon button, a checkbox or a linear progress indicator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Target {
     Button(Cell),
     IconButton(IconCell),
     Checkbox(CheckboxCell),
+    Progress(ProgressCell),
 }
 
 impl Target {
@@ -90,6 +97,7 @@ impl Target {
             Self::Button(cell) => cell.test_id(),
             Self::IconButton(cell) => cell.test_id(),
             Self::Checkbox(cell) => cell.test_id(),
+            Self::Progress(cell) => cell.test_id(),
         }
     }
 }
@@ -152,6 +160,9 @@ impl Shot {
             }
             // The buttons' script never hovers a checkbox; the checkbox's own shots are `checkbox::Shot`.
             Some(Target::Checkbox(cell)) => format!("{appearance}-hover-{}.png", cell.test_id()),
+            // No script hovers an indicator: they have shots of their own ([`ProgressShot`]). This is the name one
+            // would have.
+            Some(Target::Progress(cell)) => format!("{appearance}-hover-{}.png", cell.test_id()),
         }
     }
 
@@ -532,6 +543,148 @@ fn shot_probes(shot: Shot) -> Vec<Probe> {
         .collect()
 }
 
+/// A screenshot of the linear progress indicators, which the test script takes with reduced motion on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ProgressShot {
+    appearance: Appearance,
+}
+
+impl ProgressShot {
+    /// Every screenshot of the indicators `examples/catalog/button.test.tsx` takes: one in each appearance.
+    fn all() -> Vec<Self> {
+        Appearance::ALL
+            .into_iter()
+            .map(|appearance| Self { appearance })
+            .collect()
+    }
+
+    /// Its file name, as the test script saves it.
+    fn file_name(self) -> String {
+        format!("progress-{}.png", self.appearance.name())
+    }
+}
+
+/// How far from each end of a line or of the track a pixel is read: past the antialiasing of a round end, which is
+/// 2 points deep (the stroke is 4 points thick), and then some. Not a design value: where the check looks.
+const END_INSET: f32 = 4.0;
+
+/// The thresholds of a wavy indicator's wave, in per cent: it has no height at or under the first and at or over the
+/// second, and its full height between them (androidx `WavyProgressIndicator.kt`, lines 493 to 500).
+const WAVE_AFTER_PERCENT: u8 = 10;
+const WAVE_BEFORE_PERCENT: u8 = 95;
+
+/// Where, as a fraction of the width, an indeterminate indicator that holds still has the middle of its first line and
+/// the middle of the track between its lines. The pose is the one at 1000 ms of the cycle (`STILL_POSE_AT_MS`): the
+/// first line goes from 0.41 of the width to the end, the second from the start to a tenth of it, and the track
+/// between them from 0.17 to 0.34 (the second line's end, the first line's start, and a gap of 8 points on a track
+/// 120 wide on each side). Not design values: where the check looks, inside each.
+const STILL_LINE_AT: f32 = 0.6;
+const STILL_TRACK_AT: f32 = 0.25;
+
+/// Where to read the color of a line or a track that goes from `from` to `to` points: its middle, or, for a wave, the
+/// first place at least [`END_INSET`] from its start where the wave crosses its middle line (every `half` points: the
+/// wave is flat there, so the line is under the pixel whatever the amplitude), and none where there is no such place
+/// at least [`END_INSET`] from its end.
+fn read_at(from: f32, to: f32, crossing: Option<f32>) -> Option<f32> {
+    let first = from + END_INSET;
+    let last = to - END_INSET;
+    let at = match crossing {
+        Some(half) => (first / half).ceil() * half,
+        None => f32::midpoint(from, to).floor(),
+    };
+    (first <= at && at <= last).then_some(at)
+}
+
+/// The pixels the checks know in the indicator `cell`, in a screenshot in `scheme` with reduced motion on: the wave of
+/// a wavy indicator is at its start, so it crosses its middle line every half wavelength from the left, and an
+/// indeterminate indicator holds the pose of 1000 ms. All of them are solid colors, read on the row just under the
+/// middle line, inside a 4-point stroke.
+///
+/// A determinate indicator has its line from the start to the progress, a gap of 8 points between the centers of the
+/// line's and the track's round ends (the track's 4 points and the stroke's 4), its track to the end, and the stop,
+/// in the line's color, at the end of the track. Read: inside the line (or the track's color at its start where the
+/// line has no length, which draws nothing, not a dot), the surface in the middle of the gap, inside the track where it
+/// is long enough, and the stop's center (the line's own end where it has reached it).
+fn progress_probes(cell: ProgressCell, scheme: &ColorScheme) -> Vec<Probe> {
+    let (x, y) = cell.origin();
+    let (width, height) = cell.frame();
+    let target = Target::Progress(cell);
+    let row = Points(y.0 + (height.0 / 2.0).floor());
+    let probe = |what: &'static str, at: f32, expected: Rgb| Probe {
+        target,
+        what,
+        x: Points(x.0 + at),
+        y: row,
+        expected,
+        tolerance: 0,
+    };
+    let line = Rgb::of(scheme, progress_indicator_tokens::ACTIVE_INDICATOR_COLOR);
+    let track = Rgb::of(scheme, progress_indicator_tokens::TRACK_COLOR);
+    let stop = Rgb::of(scheme, progress_indicator_tokens::STOP_COLOR);
+    let surface = Rgb::of(scheme, ColorRole::Surface);
+    let tokens = (
+        linear_progress_indicator_tokens::ACTIVE_THICKNESS.0,
+        linear_progress_indicator_tokens::TRACK_ACTIVE_SPACE.0,
+        linear_progress_indicator_tokens::ACTIVE_WAVE_WAVELENGTH.0,
+        linear_progress_indicator_tokens::INDETERMINATE_ACTIVE_WAVE_WAVELENGTH.0,
+    );
+    let (thickness, space, wavelength, indeterminate_wavelength) = tokens;
+    let wavy = cell.shape == ProgressShape::Wavy;
+    // The line's round end reaches half the stroke past its end, so the ends are held that far inside the indicator.
+    let cap = thickness / 2.0;
+    let end = width.0 - cap;
+    let Reading::Determinate(percent) = cell.reading else {
+        // The pose of an indeterminate indicator that holds still: the first line, which a wave crosses the middle line
+        // along, and the track between the lines. There is no stop.
+        let crossing = wavy.then_some(indeterminate_wavelength / 2.0);
+        let line_at = width.0 * STILL_LINE_AT;
+        let line_at =
+            crossing.map_or_else(|| line_at.floor(), |half| (line_at / half).ceil() * half);
+        return vec![
+            probe("first line", line_at, line),
+            probe(
+                "track between the lines",
+                (width.0 * STILL_TRACK_AT).floor(),
+                track,
+            ),
+        ];
+    };
+    let mut found = Vec::new();
+    let done = width.0 * f32::from(percent) / 100.0;
+    let head = done.max(cap).min(end);
+    // The track starts a gap past the line's end: the stroke's thickness and the space, but no more than the line is
+    // long (androidx's `gapSizeFraction` and `min(barHead - cap, gap)`).
+    let spacing = space + thickness;
+    let track_start = done + done.min(spacing);
+    let track_from = track_start.max(cap).min(end);
+    let waves = percent > WAVE_AFTER_PERCENT && percent < WAVE_BEFORE_PERCENT;
+    if percent == 0 {
+        found.push(probe("no line", cap, track));
+    } else {
+        let crossing = (wavy && waves).then_some(wavelength / 2.0);
+        if let Some(at) = read_at(cap, head, crossing) {
+            found.push(probe("line", at, line));
+        }
+        if track_start < end {
+            found.push(probe("gap", head + spacing / 2.0, surface));
+        }
+    }
+    // Where the track has no length (it starts at the stop), `read_at` finds no place inside it.
+    if let Some(at) = read_at(track_from, end, None) {
+        found.push(probe("track", at, track));
+    }
+    found.push(probe("stop", end, stop));
+    found
+}
+
+/// The pixels the checks know in `shot`, for every indicator of the catalog.
+fn progress_shot_probes(shot: ProgressShot) -> Vec<Probe> {
+    let scheme = shot.appearance.scheme();
+    ProgressCell::all()
+        .flat_map(|cell| progress_probes(cell, &scheme))
+        .collect()
+}
+
 /// A decoded screenshot: 8-bit RGBA, row by row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Image {
@@ -668,8 +821,18 @@ impl fmt::Display for Mismatch {
 
 /// Every probe of `shot` that `image` does not match.
 fn check(image: &Image, shot: Shot) -> Result<Vec<Mismatch>, String> {
+    check_probes(image, shot_probes(shot))
+}
+
+/// Every probe of `shot` that `image` does not match.
+fn check_progress(image: &Image, shot: ProgressShot) -> Result<Vec<Mismatch>, String> {
+    check_probes(image, progress_shot_probes(shot))
+}
+
+/// Every one of `probes` that `image` does not match.
+fn check_probes(image: &Image, probes: Vec<Probe>) -> Result<Vec<Mismatch>, String> {
     let scale = image.scale()?;
-    Ok(shot_probes(shot)
+    Ok(probes
         .into_iter()
         .filter_map(|probe| {
             let (x, y) = pixel_of(&probe, scale);
@@ -736,6 +899,15 @@ fn check_file(
     Ok(found.len())
 }
 
+/// Success where no pixel was wrong, and the error that counts them where some were.
+fn finish(mismatches: usize) -> Result<(), Error> {
+    if mismatches == 0 {
+        Ok(())
+    } else {
+        Err(Error::Mismatches(mismatches))
+    }
+}
+
 fn run(directory: &Path, out: &mut impl io::Write) -> Result<(), Error> {
     let mut mismatches = 0;
     for shot in Shot::all() {
@@ -754,17 +926,38 @@ fn run(directory: &Path, out: &mut impl io::Write) -> Result<(), Error> {
             out,
         )?;
     }
-    if mismatches == 0 {
-        Ok(())
-    } else {
-        Err(Error::Mismatches(mismatches))
+    finish(mismatches)
+}
+
+/// Checks the screenshots of the linear progress indicators in `directory`.
+fn run_progress(directory: &Path, out: &mut impl io::Write) -> Result<(), Error> {
+    let mut mismatches = 0;
+    for shot in ProgressShot::all() {
+        mismatches += check_file(
+            directory,
+            &shot.file_name(),
+            |image| check_progress(image, shot),
+            out,
+        )?;
     }
+    finish(mismatches)
+}
+
+/// Both kinds of checks have passed or neither: the first failure, if there is one.
+fn both(buttons: Result<(), Error>, progress: Result<(), Error>) -> Result<(), Error> {
+    buttons.and(progress)
 }
 
 /// Runs the checks on the one directory `args` names, writing what they find to `out`.
 fn run_with(args: &[String], out: &mut impl io::Write) -> Result<(), Error> {
     match args {
-        [directory] => run(Path::new(directory), out),
+        [directory] => {
+            let directory = Path::new(directory);
+            // Both are run, so that a failure of one does not hide the other's.
+            let buttons = run(directory, out);
+            let progress = run_progress(directory, out);
+            both(buttons, progress)
+        }
         _ => Err(Error::Usage),
     }
 }
@@ -1602,6 +1795,487 @@ mod tests {
         assert_eq!(
             out.lines().filter(|line| line.starts_with("  ")).count(),
             counted
+        );
+        fs::remove_dir_all(&directory).unwrap();
+    }
+    // ---- the linear progress indicators ----------------------------------------------------------------------------
+
+    fn progress_cell(shape: ProgressShape, reading: Reading) -> ProgressCell {
+        ProgressCell::new(shape, reading)
+    }
+
+    /// What `cell`'s probes read, relative to the cell's top left corner: what, how far along, how far down, and the
+    /// color expected.
+    fn relative(cell: ProgressCell, scheme: &ColorScheme) -> Vec<(&'static str, f32, f32, Rgb)> {
+        let (x, y) = cell.origin();
+        progress_probes(cell, scheme)
+            .into_iter()
+            .map(|p| (p.what, p.x.0 - x.0, p.y.0 - y.0, p.expected))
+            .collect()
+    }
+
+    #[test]
+    fn a_flat_determinate_indicator_is_read_in_its_line_its_gap_its_track_and_its_stop() {
+        use ProgressShape::Flat;
+        let primary = Rgb::of(&LIGHT, ColorRole::Primary);
+        let track = Rgb::of(&LIGHT, ColorRole::SecondaryContainer);
+        let surface = Rgb::of(&LIGHT, ColorRole::Surface);
+        let at = |percent| relative(progress_cell(Flat, Reading::Determinate(percent)), &LIGHT);
+        // 120 points wide and 4 tall: the row under the middle is 2 down, the line's end reaches the stop at 118.
+        // Nothing done: no line at all, so no dot at its start, where the track is; the stop at the end of the track.
+        assert_eq!(
+            at(0),
+            [
+                ("no line", 2.0, 2.0, track),
+                ("track", 60.0, 2.0, track),
+                ("stop", 118.0, 2.0, primary),
+            ]
+        );
+        // 12 points done: the line is 2 to 12, its middle 7; the gap 14 to 18 (8 between the round ends' centers, 12 and
+        // 20), read at 16; the track 20 to 118, read at 69.
+        assert_eq!(
+            at(10),
+            [
+                ("line", 7.0, 2.0, primary),
+                ("gap", 16.0, 2.0, surface),
+                ("track", 69.0, 2.0, track),
+                ("stop", 118.0, 2.0, primary),
+            ]
+        );
+        assert_eq!(
+            at(50),
+            [
+                ("line", 31.0, 2.0, primary),
+                ("gap", 64.0, 2.0, surface),
+                ("track", 93.0, 2.0, track),
+                ("stop", 118.0, 2.0, primary),
+            ]
+        );
+        // 108 done: the track is 116 to 118, too short to read, and the gap is 110 to 114.
+        assert_eq!(
+            at(90),
+            [
+                ("line", 55.0, 2.0, primary),
+                ("gap", 112.0, 2.0, surface),
+                ("stop", 118.0, 2.0, primary),
+            ]
+        );
+        // 114 done and a gap would reach past the end: no track and no gap to read.
+        assert_eq!(
+            at(95),
+            [("line", 58.0, 2.0, primary), ("stop", 118.0, 2.0, primary)]
+        );
+        assert_eq!(
+            at(100),
+            [("line", 60.0, 2.0, primary), ("stop", 118.0, 2.0, primary)]
+        );
+    }
+
+    #[test]
+    fn a_wavy_determinate_indicator_is_read_where_its_wave_crosses_the_middle() {
+        use ProgressShape::Wavy;
+        let primary = Rgb::of(&LIGHT, ColorRole::Primary);
+        let track = Rgb::of(&LIGHT, ColorRole::SecondaryContainer);
+        let surface = Rgb::of(&LIGHT, ColorRole::Surface);
+        let at = |percent| relative(progress_cell(Wavy, Reading::Determinate(percent)), &LIGHT);
+        // 10 points tall: the row under the middle is 5 down. Where the wave has a height (over a tenth, under 95 %) the
+        // line is read where the wave crosses the middle, every 20 points (half its 40-point wavelength): at 20, where
+        // the flat one is read at its middle.
+        assert_eq!(
+            at(0),
+            [
+                ("no line", 2.0, 5.0, track),
+                ("track", 60.0, 5.0, track),
+                ("stop", 118.0, 5.0, primary),
+            ]
+        );
+        // A tenth: flat, so the middle, 7.
+        assert_eq!(
+            at(10),
+            [
+                ("line", 7.0, 5.0, primary),
+                ("gap", 16.0, 5.0, surface),
+                ("track", 69.0, 5.0, track),
+                ("stop", 118.0, 5.0, primary),
+            ]
+        );
+        assert_eq!(
+            at(50),
+            [
+                ("line", 20.0, 5.0, primary),
+                ("gap", 64.0, 5.0, surface),
+                ("track", 93.0, 5.0, track),
+                ("stop", 118.0, 5.0, primary),
+            ]
+        );
+        assert_eq!(
+            at(90),
+            [
+                ("line", 20.0, 5.0, primary),
+                ("gap", 112.0, 5.0, surface),
+                ("stop", 118.0, 5.0, primary),
+            ]
+        );
+        // 95 %: flat again, so the middle, 58.
+        assert_eq!(
+            at(95),
+            [("line", 58.0, 5.0, primary), ("stop", 118.0, 5.0, primary)]
+        );
+        assert_eq!(
+            at(100),
+            [("line", 60.0, 5.0, primary), ("stop", 118.0, 5.0, primary)]
+        );
+        // Just over a tenth the wave has its height, and a line that short has no crossing to read it at; just under
+        // 95 % it has, and is read at 20.
+        assert!(!at(11).iter().any(|probe| probe.0 == "line"));
+        assert_eq!(at(94)[0], ("line", 20.0, 5.0, primary));
+        assert_eq!(at(20)[0], ("line", 20.0, 5.0, primary));
+    }
+
+    #[test]
+    fn an_indeterminate_indicator_is_read_in_its_first_line_and_in_the_track_between_its_lines() {
+        let primary = Rgb::of(&LIGHT, ColorRole::Primary);
+        let track = Rgb::of(&LIGHT, ColorRole::SecondaryContainer);
+        // At 0.6 of the 120 points, inside the first line (0.41 to the end), and at a quarter, inside the track between
+        // the lines (0.17 to 0.34). A wave crosses the middle every 10 points (half its 20-point wavelength): at 80.
+        assert_eq!(
+            relative(
+                progress_cell(ProgressShape::Flat, Reading::Indeterminate),
+                &LIGHT
+            ),
+            [
+                ("first line", 72.0, 2.0, primary),
+                ("track between the lines", 30.0, 2.0, track),
+            ]
+        );
+        assert_eq!(
+            relative(
+                progress_cell(ProgressShape::Wavy, Reading::Indeterminate),
+                &LIGHT
+            ),
+            [
+                ("first line", 80.0, 5.0, primary),
+                ("track between the lines", 30.0, 5.0, track),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_indicators_colors_are_the_tokens_in_each_appearance() {
+        let dark = ColorScheme::BASELINE_DARK;
+        let cell = progress_cell(ProgressShape::Flat, Reading::Determinate(50));
+        let light = progress_probes(cell, &LIGHT);
+        let darker = progress_probes(cell, &dark);
+        assert_eq!(light.len(), darker.len());
+        for (light, dark_probe) in light.iter().zip(&darker) {
+            assert_eq!(
+                (light.what, light.x, light.y, light.tolerance),
+                (dark_probe.what, dark_probe.x, dark_probe.y, 0)
+            );
+        }
+        // The line and the stop are primary, the track the secondary container, the gap the surface.
+        let roles = [
+            ColorRole::Primary,
+            ColorRole::Surface,
+            ColorRole::SecondaryContainer,
+            ColorRole::Primary,
+        ];
+        for (probe, role) in darker.iter().zip(roles) {
+            assert_eq!(probe.expected, Rgb::of(&dark, role), "{}", probe.what);
+            assert_ne!(probe.expected, Rgb::of(&LIGHT, role), "{}", probe.what);
+        }
+        // Every probe is of this indicator, and in the strip beside the icon buttons.
+        let (x, y) = cell.origin();
+        for probe in &light {
+            assert_eq!(probe.target, Target::Progress(cell));
+            assert!(probe.x.0 >= x.0 && probe.x.0 < x.0 + 120.0);
+            assert!(probe.y.0 >= y.0 && probe.y.0 < y.0 + 4.0);
+        }
+    }
+
+    #[test]
+    fn a_line_or_track_is_read_inside_it_and_not_where_it_is_too_short() {
+        // The middle, at least 4 points from each end: 8 points is the least.
+        assert_eq!(read_at(2.0, 12.0, None), Some(7.0));
+        assert_eq!(read_at(0.0, 8.0, None), Some(4.0));
+        assert_eq!(read_at(0.0, 7.0, None), None);
+        assert_eq!(read_at(2.0, 9.0, None), None);
+        // The middle rounds down to a pixel.
+        assert_eq!(read_at(0.0, 9.0, None), Some(4.0));
+        // A wave: the first crossing 4 or more points from the start, if it is 4 or more from the end.
+        assert_eq!(read_at(2.0, 60.0, Some(20.0)), Some(20.0));
+        assert_eq!(read_at(16.0, 100.0, Some(20.0)), Some(20.0));
+        assert_eq!(read_at(17.0, 100.0, Some(20.0)), Some(40.0));
+        assert_eq!(read_at(2.0, 24.0, Some(20.0)), Some(20.0));
+        assert_eq!(read_at(2.0, 23.0, Some(20.0)), None);
+    }
+
+    #[test]
+    fn the_progress_shots_are_the_test_script_files() {
+        let shots = ProgressShot::all();
+        let names: Vec<String> = shots.iter().map(|shot| shot.file_name()).collect();
+        assert_eq!(names, ["progress-light.png", "progress-dark.png"]);
+        assert_eq!(shots[0].appearance.scheme(), LIGHT);
+        assert_eq!(shots[1].appearance.scheme(), ColorScheme::BASELINE_DARK);
+        // No script hovers an indicator, but the name of a shot that did is its own.
+        let cell = progress_cell(ProgressShape::Wavy, Reading::Determinate(50));
+        let hovered = Shot {
+            appearance: Appearance::Dark,
+            hovered: Some(Target::Progress(cell)),
+        };
+        assert_eq!(
+            hovered.file_name(),
+            "dark-hover-linear-wavy-determinate-50.png"
+        );
+        assert_eq!(
+            Target::Progress(cell).test_id(),
+            "linear-wavy-determinate-50"
+        );
+    }
+
+    #[test]
+    fn a_progress_shot_reads_every_indicator() {
+        let shot = ProgressShot::all()[0];
+        let found = progress_shot_probes(shot);
+        let expected: usize = ProgressCell::all()
+            .map(|cell| progress_probes(cell, &LIGHT).len())
+            .sum();
+        assert_eq!(found.len(), expected);
+        // Seven flat and seven wavy indicators: 3, 4, 4, 3, 2, 2 probes of the determinate ones and 2 of the
+        // indeterminate one, twice.
+        assert_eq!(expected, 2 * (3 + 4 + 4 + 3 + 2 + 2 + 2));
+        let targets: std::collections::HashSet<String> =
+            found.iter().map(|probe| probe.target.test_id()).collect();
+        assert_eq!(targets.len(), ProgressCell::all().count());
+        // The dark shot reads the same pixels for other colors.
+        let dark = progress_shot_probes(ProgressShot::all()[1]);
+        assert_eq!(dark.len(), found.len());
+        assert!(
+            found
+                .iter()
+                .zip(&dark)
+                .all(|(light, dark)| (light.x, light.y) == (dark.x, dark.y)
+                    && light.expected != dark.expected)
+        );
+    }
+
+    /// The catalog's indicators painted as the tokens say, at `scale`: every probe of `shot` holds its expected color,
+    /// and the rest a color no probe expects.
+    fn painted_progress(shot: ProgressShot, scale: u32) -> Image {
+        let (width, height) = grid::viewport();
+        let (width, height) = (points_to_u32(width) * scale, points_to_u32(height) * scale);
+        let mut rgba = [1, 2, 3, 255].repeat((width * height) as usize);
+        for probe in progress_shot_probes(shot) {
+            let (x, y) = pixel_of(&probe, scale);
+            let start = ((y * width + x) * 4) as usize;
+            rgba[start..start + 3].copy_from_slice(&probe.expected.0);
+        }
+        Image {
+            width,
+            height,
+            rgba,
+        }
+    }
+
+    #[test]
+    fn indicators_drawn_as_the_tokens_say_pass_at_any_whole_scale() {
+        for shot in ProgressShot::all() {
+            for scale in [1, 2] {
+                assert_eq!(
+                    check_progress(&painted_progress(shot, scale), shot),
+                    Ok(Vec::new())
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn one_wrong_indicator_pixel_fails_and_is_named() {
+        let shot = ProgressShot::all()[0];
+        let mut image = painted_progress(shot, 1);
+        let cell = progress_cell(ProgressShape::Flat, Reading::Determinate(50));
+        let probe = *progress_probes(cell, &LIGHT)
+            .iter()
+            .find(|probe| probe.what == "gap")
+            .unwrap();
+        let (x, y) = pixel_of(&probe, 1);
+        let start = ((y * image.width + x) * 4) as usize;
+        // The track's color where the gap is: the line and the track run together.
+        image.rgba[start..start + 3]
+            .copy_from_slice(&Rgb::of(&LIGHT, ColorRole::SecondaryContainer).0);
+        let found = check_progress(&image, shot).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].probe, probe);
+        assert_eq!(
+            found[0].to_string(),
+            format!(
+                "linear-flat-determinate-50 gap at ({}, {}) points: expected {} (± 0), found {}",
+                probe.x.0,
+                probe.y.0,
+                Rgb::of(&LIGHT, ColorRole::Surface),
+                Rgb::of(&LIGHT, ColorRole::SecondaryContainer)
+            )
+        );
+        // The same image is not the dark shot.
+        assert_ne!(
+            check_progress(&image, ProgressShot::all()[1]).unwrap(),
+            Vec::new()
+        );
+        // The catalog's size is checked as for the buttons.
+        let mut small = painted_progress(shot, 1);
+        small.height -= 1;
+        assert!(check_progress(&small, shot).is_err());
+    }
+
+    #[test]
+    fn both_kinds_of_checks_must_pass() {
+        assert!(both(Ok(()), Ok(())).is_ok());
+        assert!(matches!(
+            both(Err(Error::Mismatches(1)), Ok(())),
+            Err(Error::Mismatches(1))
+        ));
+        assert!(matches!(
+            both(Ok(()), Err(Error::Mismatches(2))),
+            Err(Error::Mismatches(2))
+        ));
+        // The first failure is the one reported.
+        assert!(matches!(
+            both(Err(Error::Mismatches(1)), Err(Error::Mismatches(2))),
+            Err(Error::Mismatches(1))
+        ));
+        assert!(finish(0).is_ok());
+        assert!(matches!(finish(3), Err(Error::Mismatches(3))));
+    }
+
+    #[test]
+    fn run_progress_reports_missing_and_wrong_screenshots() {
+        let directory =
+            std::env::temp_dir().join(format!("visual-checks-progress-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let mut out = Vec::new();
+        assert!(matches!(
+            run_progress(&directory, &mut out),
+            Err(Error::Read { .. })
+        ));
+        for shot in ProgressShot::all() {
+            fs::write(
+                directory.join(shot.file_name()),
+                encode_uncompressed(&painted_progress(shot, 1)),
+            )
+            .unwrap();
+        }
+        let mut out = Vec::new();
+        assert!(run_progress(&directory, &mut out).is_ok());
+        let report = String::from_utf8(out).unwrap();
+        assert!(report.contains("progress-light.png: ok"));
+        assert!(report.contains("progress-dark.png: ok"));
+        // The light screenshot saved as the dark one.
+        fs::copy(
+            directory.join("progress-light.png"),
+            directory.join("progress-dark.png"),
+        )
+        .unwrap();
+        let mut out = Vec::new();
+        assert!(matches!(
+            run_progress(&directory, &mut out),
+            Err(Error::Mismatches(n)) if n > 0
+        ));
+        let report = String::from_utf8(out).unwrap();
+        assert!(report.contains("progress-dark.png: FAILED"));
+        assert!(report.contains("linear-flat-determinate-0 no line"));
+        fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[test]
+    fn the_checks_of_the_buttons_and_of_the_progress_indicators_both_run_on_the_directory() {
+        let directory =
+            std::env::temp_dir().join(format!("visual-checks-both-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let args = [directory.to_str().unwrap().to_owned()];
+        // `run` checks the buttons' and the checkboxes' screenshots, which `button.test.tsx` and `checkbox.test.tsx` take.
+        let write_buttons = || {
+            for shot in Shot::all() {
+                fs::write(
+                    directory.join(shot.file_name()),
+                    encode_uncompressed(&painted(shot, 1)),
+                )
+                .unwrap();
+            }
+            for shot in checkbox::Shot::all() {
+                fs::write(
+                    directory.join(shot.file_name()),
+                    encode_uncompressed(&checkbox::painted(shot, 1)),
+                )
+                .unwrap();
+            }
+        };
+        let write_progress = || {
+            for shot in ProgressShot::all() {
+                fs::write(
+                    directory.join(shot.file_name()),
+                    encode_uncompressed(&painted_progress(shot, 1)),
+                )
+                .unwrap();
+            }
+        };
+        // Nothing there: the buttons' screenshots are the first missing, and are what is reported.
+        let mut out = Vec::new();
+        assert!(matches!(run_with(&args, &mut out), Err(Error::Read { .. })));
+
+        // Both right: both are named in what is written, and it passes.
+        write_buttons();
+        write_progress();
+        let mut out = Vec::new();
+        assert!(run_with(&args, &mut out).is_ok());
+        let report = String::from_utf8(out).unwrap();
+        assert!(report.contains("light-rest.png: ok"));
+        assert!(report.contains("progress-light.png: ok"));
+
+        // Only the progress indicators wrong (the light shot saved as the dark one): it fails, and says which.
+        fs::copy(
+            directory.join("progress-light.png"),
+            directory.join("progress-dark.png"),
+        )
+        .unwrap();
+        let mut out = Vec::new();
+        assert!(matches!(
+            run_with(&args, &mut out),
+            Err(Error::Mismatches(n)) if n > 0
+        ));
+        let report = String::from_utf8(out).unwrap();
+        assert!(report.contains("dark-rest.png: ok"));
+        assert!(report.contains("progress-dark.png: FAILED"));
+
+        // Only the buttons wrong: it fails, and the progress indicators were checked all the same.
+        write_progress();
+        fs::copy(
+            directory.join("light-rest.png"),
+            directory.join("dark-rest.png"),
+        )
+        .unwrap();
+        let mut out = Vec::new();
+        assert!(matches!(
+            run_with(&args, &mut out),
+            Err(Error::Mismatches(n)) if n > 0
+        ));
+        let report = String::from_utf8(out).unwrap();
+        assert!(report.contains("dark-rest.png: FAILED"));
+        assert!(report.contains("progress-dark.png: ok"));
+
+        // The buttons' screenshots gone and the progress indicators' wrong: the missing file is what is reported, and
+        // the wrong pixels are listed all the same.
+        fs::remove_file(directory.join("light-rest.png")).unwrap();
+        fs::copy(
+            directory.join("progress-light.png"),
+            directory.join("progress-dark.png"),
+        )
+        .unwrap();
+        let mut out = Vec::new();
+        assert!(matches!(run_with(&args, &mut out), Err(Error::Read { .. })));
+        assert!(
+            String::from_utf8(out)
+                .unwrap()
+                .contains("progress-dark.png: FAILED")
         );
         fs::remove_dir_all(&directory).unwrap();
     }

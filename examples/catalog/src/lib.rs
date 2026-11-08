@@ -1,12 +1,19 @@
 //! The catalog: every component of `nsh-m3e` in each of its states, for the visual checks of ADR 0013: the buttons,
-//! the icon buttons and the checkboxes.
+//! the icon buttons, the checkboxes and the linear progress indicators.
 //!
 //! `nsh test` opens it on NSH's hosts (`button.test.tsx` and `checkbox.test.tsx`, beside its `nsh.json`) and saves
-//! screenshots of it; `visual-checks` reads the pixels it knows in them, at the places [`grid`] and [`checkbox`] give.
-//! The catalog is a Rust app (`nsh.json` names its root, [`Catalog`]); nothing in it runs JavaScript.
+//! screenshots of it; `visual-checks` reads the pixels it knows in them, at the places [`grid`] gives for the buttons
+//! and icon buttons, [`checkbox`] for the checkboxes and [`progress`] for the indicators. The catalog is a Rust app
+//! (`nsh.json` names its root, [`Catalog`]); nothing in it runs JavaScript.
+//!
+//! - [`grid`]: the buttons, one column per style and shape, and the icon buttons on a second grid below them.
+//! - [`checkbox`]: the checkboxes, on a grid of their own.
+//! - [`progress`]: the linear progress indicators, flat and wavy, determinate at several values and indeterminate, in a
+//!   column beside the icon buttons' grid.
 
 pub mod checkbox;
 pub mod grid;
+pub mod progress;
 
 use nsh_core::element::AdaptiveColor;
 use nsh_core::prelude::*;
@@ -17,6 +24,7 @@ use nsh_m3e::icon_button::icon_button;
 use nsh_m3e::material_symbols::outlined;
 
 use crate::grid::{Availability, Cell, IconCell};
+use crate::progress::ProgressCell;
 
 /// The icon every icon button of the catalog shows: Material Symbols' `favorite`, filled, whose middle is filled, so
 /// that the visual checks read the icon's color there.
@@ -27,8 +35,8 @@ fn native(registry: &mut Registry) {
     registry.register::<Catalog>();
 }
 
-/// Every button, icon button and checkbox of the catalog at its place on the [`grid`] and the [`checkbox`] grid, on
-/// the scheme's surface color.
+/// Every button, icon button, checkbox and progress indicator of the catalog at its place on the [`grid`], the
+/// [`checkbox`] grid and in the [`progress`] column, on the scheme's surface color.
 #[component]
 pub fn Catalog() -> impl IntoElement {
     let surface = AdaptiveColor::rgb(
@@ -73,6 +81,7 @@ pub fn Catalog() -> impl IntoElement {
                 ),
         )
     });
+    let page = ProgressCell::all().fold(page, |page, cell| page.child(progress::placed(cell)));
     checkbox::place(page)
 }
 

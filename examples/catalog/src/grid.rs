@@ -90,8 +90,10 @@ pub const ICON_SIZES: [IconButtonSize; 5] = [
 /// side of a 40-point icon). A layout value of the catalog, not of Material.
 pub const ICON_COLUMN_WIDTH: Points = Points(200.0);
 
-/// The size of the viewport the catalog is opened in, width and height: the two grids and their margins. The
-/// buttons' grid is the wider: 8 columns of 320 points, where the icon buttons' grid has 12 of 200.
+/// The size of the viewport the catalog is opened in, width and height: the two grids and their margins, and the
+/// progress indicators' column if it needed more. The buttons' grid is the wider: 8 columns of 320 points, where the
+/// icon buttons' grid has 12 of 200. The indicators' column lies in the space beside the icon buttons' grid, so it
+/// asks for no more.
 #[must_use]
 pub fn viewport() -> (Points, Points) {
     let mut width = MARGIN.0 * 2.0;
@@ -106,7 +108,12 @@ pub fn viewport() -> (Points, Points) {
             }
         }
     }
-    (Points(width), Points(height))
+    // The progress indicators' strip lies inside the icon buttons' grid's right margin, so they change nothing of it.
+    let (progress_right, progress_bottom) = crate::progress::extent();
+    (
+        Points(width.max(progress_right.0)),
+        Points(height.max(progress_bottom.0)),
+    )
 }
 
 /// The top of the icon buttons' grid: below the buttons' rows, each followed by its gap.
