@@ -596,8 +596,9 @@ const WAVE_BEFORE_PERCENT: u8 = 95;
 /// the middle of the track between its lines. The pose is the one at 1000 ms of the cycle (`STILL_POSE_AT_MS`): the
 /// first line goes from 0.41 of the width to the end, the second from the start to a tenth of it, and the track
 /// between them from 0.17 to 0.34 (the second line's end, the first line's start, and a gap of 8 points on a track
-/// 120 wide on each side). Not design values: where the check looks, inside each.
-const STILL_LINE_AT: f32 = 0.6;
+/// 120 wide on each side). Not design values: where the check looks, inside each. The first line's is not a multiple of
+/// the wave's wavelength, so that the half wavelength it is rounded up to is a number the checks test.
+const STILL_LINE_AT: f32 = 0.55;
 const STILL_TRACK_AT: f32 = 0.25;
 
 /// Where to read the color of a line or a track that goes from `from` to `to` points: its middle, or, for a wave, the
@@ -1965,15 +1966,15 @@ mod tests {
     fn an_indeterminate_indicator_is_read_in_its_first_line_and_in_the_track_between_its_lines() {
         let primary = Rgb::of(&LIGHT, ColorRole::Primary);
         let track = Rgb::of(&LIGHT, ColorRole::SecondaryContainer);
-        // At 0.6 of the 120 points, inside the first line (0.41 to the end), and at a quarter, inside the track between
-        // the lines (0.17 to 0.34). A wave crosses the middle every 10 points (half its 20-point wavelength): at 80.
+        // At 0.55 of the 120 points, inside the first line (0.41 to the end), and at a quarter, inside the track between
+        // the lines (0.17 to 0.34). A wave crosses the middle every 10 points (half its 20-point wavelength): at 70.
         assert_eq!(
             relative(
                 progress_cell(ProgressShape::Flat, Reading::Indeterminate),
                 &LIGHT
             ),
             [
-                ("first line", 72.0, 2.0, primary),
+                ("first line", 66.0, 2.0, primary),
                 ("track between the lines", 30.0, 2.0, track),
             ]
         );
@@ -1983,7 +1984,7 @@ mod tests {
                 &LIGHT
             ),
             [
-                ("first line", 80.0, 5.0, primary),
+                ("first line", 70.0, 5.0, primary),
                 ("track between the lines", 30.0, 5.0, track),
             ]
         );
