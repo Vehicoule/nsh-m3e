@@ -24,6 +24,8 @@ components=(
     Button.kt
     IconButton.kt
     IconButtonDefaults.kt
+    Checkbox.kt
+    ComposeMaterial3Flags.kt
     Switch.kt
     ProgressIndicator.kt
     WavyProgressIndicator.kt
