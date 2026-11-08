@@ -260,11 +260,29 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
+        file: "SnackbarTokens.kt",
+        object: None,
+        doc: &[
+            "The snackbar: its container's color, shape and elevation, the colors and type styles of its supporting \
+             text, its action's label and its icon, and its heights with one and two lines of text. Colors are \
+             roles of the scheme ([`crate::color::ColorRole`]).",
+        ],
+    },
+    Source {
         file: "StateTokens.kt",
         object: None,
         doc: &[
             "The opacities of the state layer: a layer of the content's color drawn over a component while it is \
              hovered, focused, pressed or dragged.",
+        ],
+    },
+    Source {
+        file: "SwitchTokens.kt",
+        object: None,
+        doc: &[
+            "The switch's track, handle and icon: their sizes, and their colors in each state, selected and unselected, \
+             enabled and disabled. Colors are roles of the scheme ([`crate::color::ColorRole`]), resolved against the \
+             light or dark [`crate::color::ColorScheme`].",
         ],
     },
     Source {

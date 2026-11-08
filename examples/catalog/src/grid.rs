@@ -5,6 +5,8 @@
 //!
 //! The icon buttons sit on a second grid below the first: one column per style and width, one row per size, in four
 //! blocks of rows, enabled then disabled, round then square in each.
+//!
+//! The switches sit on a third grid below the second ([`crate::switch`]).
 
 use nsh_core::geometry::Points;
 use nsh_m3e::button::{ButtonShape, ButtonSize, ButtonStyle};
@@ -90,15 +92,16 @@ pub const ICON_SIZES: [IconButtonSize; 5] = [
 /// side of a 40-point icon). A layout value of the catalog, not of Material.
 pub const ICON_COLUMN_WIDTH: Points = Points(200.0);
 
-/// The size of the viewport the catalog is opened in, width and height: the two grids and their margins. The
-/// buttons' grid is the wider: 8 columns of 320 points, where the icon buttons' grid has 12 of 200.
+/// The size of the viewport the catalog is opened in, width and height: the three grids and their margins. The
+/// buttons' grid is the widest: 8 columns of 320 points, where the icon buttons' grid has 12 of 200 and the switches'
+/// 4 of 96.
 #[must_use]
 pub fn viewport() -> (Points, Points) {
     let mut width = MARGIN.0 * 2.0;
     for _ in 0..STYLES.len() * SHAPES.len() {
         width += COLUMN_WIDTH.0;
     }
-    let mut height = icon_top().0 + MARGIN.0;
+    let mut height = icon_top().0 + MARGIN.0 + crate::switch::block_height().0;
     for _ in AVAILABILITIES {
         for _ in ICON_SHAPES {
             for size in ICON_SIZES {
@@ -459,7 +462,7 @@ impl IconCell {
 }
 
 /// Where `item` is in `items`, or 0 for an item the catalog does not show.
-fn position<T: PartialEq + Copy>(items: &[T], item: T) -> usize {
+pub(crate) fn position<T: PartialEq + Copy>(items: &[T], item: T) -> usize {
     items.iter().position(|i| *i == item).unwrap_or(0)
 }
 
@@ -540,8 +543,8 @@ mod tests {
     fn the_viewport_holds_the_grids_and_their_margins() {
         let (width, height) = viewport();
         // The buttons' 8 columns of 320 points are wider than the icon buttons' 12 of 200; below the buttons' 880
-        // points of rows, the icon buttons' 1,760.
-        assert_eq!((width, height), (Points(2608.0), Points(2688.0)));
+        // points of rows, the icon buttons' 1,760, then the switches' 96.
+        assert_eq!((width, height), (Points(2608.0), Points(2784.0)));
         for cell in Cell::all() {
             let (x, y) = cell.origin();
             assert!(x.0 + COLUMN_WIDTH.0 <= width.0 - MARGIN.0);
@@ -557,8 +560,11 @@ mod tests {
             assert!(y.0 + cell_height.0 <= height.0 - MARGIN.0);
             bottom = Points(bottom.0.max(y.0 + cell_height.0));
         }
-        // The last row and its gap end at the margin.
-        assert_eq!(bottom.0 + ROW_GAP.0, height.0 - MARGIN.0);
+        // The last icon button row and its gap end where the switches' grid starts, which ends at the margin.
+        assert_eq!(
+            bottom.0 + ROW_GAP.0 + crate::switch::block_height().0,
+            height.0 - MARGIN.0
+        );
     }
 
     #[test]

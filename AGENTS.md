@@ -85,6 +85,7 @@ host's system libraries:
 ```sh
 # under xvfb-run with a screen larger than the catalog's window (`catalog::grid::viewport`); or --target web
 nsh test examples/catalog/button.test.tsx --target linux
+nsh test examples/catalog/switch.test.tsx --target linux
 cargo run -p visual-checks --locked -- target/visual
 ```
 

@@ -132,15 +132,17 @@ jobs:
         run: |
           mkdir -p target/visual
           if [ "${{ matrix.host }}" = linux ]; then
-            # The screen holds the catalog's window (`catalog::grid::viewport` for the buttons' script,
-            # `catalog::checkbox::viewport` for the checkboxes', which grow with each component); xvfb-run's default
-            # screen is smaller, and a window larger than its screen shows only part of the catalog. 2800 x 8000
-            # points is not a measure of a window but room for them to grow, so that a pull request that adds a
+            # The screen holds the catalog's window (`catalog::grid::viewport` for the buttons' and the switches'
+            # scripts, `catalog::checkbox::viewport` for the checkboxes', which grow with each component); xvfb-run's
+            # default screen is smaller, and a window larger than its screen shows only part of the catalog. 2800 x
+            # 8000 points is not a measure of a window but room for them to grow, so that a pull request that adds a
             # component does not have to change this line.
             dbus-run-session -- xvfb-run -a -s "-screen 0 2800x8000x24" nsh test examples/catalog/button.test.tsx --target linux
+            dbus-run-session -- xvfb-run -a -s "-screen 0 2800x8000x24" nsh test examples/catalog/switch.test.tsx --target linux
             dbus-run-session -- xvfb-run -a -s "-screen 0 2800x8000x24" nsh test examples/catalog/checkbox.test.tsx --target linux
           else
             nsh test examples/catalog/button.test.tsx --target web
+            nsh test examples/catalog/switch.test.tsx --target web
             nsh test examples/catalog/checkbox.test.tsx --target web
           fi
         env:
