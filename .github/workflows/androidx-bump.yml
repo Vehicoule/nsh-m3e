@@ -38,6 +38,8 @@ jobs:
           permission-pull-requests: write
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # `git push` below writes with the bot app's token this checkout keeps.
+          persist-credentials: true
           ref: main
           token: ${{ steps.app.outputs.token }}
       - name: Install the pinned toolchain
