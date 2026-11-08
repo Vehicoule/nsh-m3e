@@ -1,4 +1,6 @@
-//! The pixels the checks know in the catalog's list items (ADR 0013).
+//! The list item's known pixels (ADR 0013): what `list_item.test.tsx` screenshots show of each list item of the
+//! catalog (`catalog::list_item`), at rest and with the mouse over the two-line clickable item and the two-line
+//! selected one.
 //!
 //! For every list item: the container's color at its left edge, and the colors of its two icons in their middles.
 //! Where the item is selected or hovered its corners are 12 or 16 points wide, and the pixel at its top left is the
@@ -12,7 +14,47 @@ use nsh_m3e::color::{ColorRole, ColorScheme};
 use nsh_m3e::tokens::Shape;
 use nsh_m3e::tokens::androidx::{list_tokens, state_tokens};
 
-use crate::{CONTAINER_INSET, Probe, Rgb, Target, faded};
+use super::{Appearance, CONTAINER_INSET, Image, Mismatch, Probe, Rgb, Target, faded, pixel_of};
+
+/// One screenshot `examples/catalog/list_item.test.tsx` takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Shot {
+    pub(crate) appearance: Appearance,
+    /// The list item the mouse is over, if any.
+    pub(crate) hovered: Option<ListCell>,
+}
+
+impl Shot {
+    /// Every screenshot the script takes, in each appearance: the catalog at rest, then the mouse over the two-line
+    /// clickable list item and over the two-line selected one.
+    pub(crate) fn all() -> Vec<Self> {
+        Appearance::ALL
+            .into_iter()
+            .flat_map(|appearance| {
+                let shot = move |hovered| Self {
+                    appearance,
+                    hovered,
+                };
+                std::iter::once(shot(None)).chain(
+                    [Kind::Clickable, Kind::Selected]
+                        .map(|kind| shot(Some(ListCell::new(Lines::Two, kind)))),
+                )
+            })
+            .collect()
+    }
+
+    /// Its file name, as the test script saves it.
+    pub(crate) fn file_name(self) -> String {
+        let appearance = self.appearance.name();
+        match self.hovered {
+            None => format!("list-{appearance}-rest.png"),
+            Some(cell) => format!(
+                "list-{appearance}-hover-{}.png",
+                cell.label().to_lowercase()
+            ),
+        }
+    }
+}
 
 /// How far from the container's top left corner the pixel outside its corner is read, in each direction: the pixel
 /// whose center is 2.5 points from both edges. It is outside the arc of a corner more than 8.5 points wide and inside
@@ -195,6 +237,51 @@ pub(crate) fn probes(cell: ListCell, scheme: &ColorScheme, hovered: bool) -> Vec
         trailing_tolerance,
     ));
     probes
+}
+
+/// The pixels the checks know in `shot`, for every list item of the catalog.
+fn shot_probes(shot: Shot) -> Vec<Probe> {
+    let scheme = shot.appearance.scheme();
+    ListCell::all()
+        .flat_map(|cell| probes(cell, &scheme, shot.hovered == Some(cell)))
+        .collect()
+}
+
+/// Every probe of `shot` that `image` does not match; an error if the image is not the catalog's list item viewport at
+/// a whole scale.
+pub(crate) fn check(image: &Image, shot: Shot) -> Result<Vec<Mismatch>, String> {
+    let scale = image.scale_in(catalog::list_item::viewport())?;
+    Ok(shot_probes(shot)
+        .into_iter()
+        .filter_map(|probe| {
+            let (x, y) = pixel_of(&probe, scale);
+            let found = image.pixel(x, y);
+            match found {
+                Some(found) if found.near(probe.expected, probe.tolerance) => None,
+                _ => Some(Mismatch { probe, found }),
+            }
+        })
+        .collect())
+}
+
+/// The catalog painted as the tokens say, at `scale`: every probe of `shot` holds its expected color, and the rest a
+/// color no probe expects.
+#[cfg(test)]
+pub(crate) fn painted(shot: Shot, scale: u32) -> Image {
+    use super::points_to_u32;
+    let (width, height) = catalog::list_item::viewport();
+    let (width, height) = (points_to_u32(width) * scale, points_to_u32(height) * scale);
+    let mut rgba = [1, 2, 3, 255].repeat((width * height) as usize);
+    for probe in shot_probes(shot) {
+        let (x, y) = pixel_of(&probe, scale);
+        let start = ((y * width + x) * 4) as usize;
+        rgba[start..start + 3].copy_from_slice(&probe.expected.0);
+    }
+    Image {
+        width,
+        height,
+        rgba,
+    }
 }
 
 #[cfg(test)]
@@ -414,5 +501,103 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn the_shots_are_the_test_script_files() {
+        let names: Vec<String> = Shot::all().into_iter().map(Shot::file_name).collect();
+        assert_eq!(
+            names,
+            [
+                "list-light-rest.png",
+                "list-light-hover-clickable.png",
+                "list-light-hover-selected.png",
+                "list-dark-rest.png",
+                "list-dark-hover-clickable.png",
+                "list-dark-hover-selected.png",
+            ]
+        );
+        assert_eq!(Shot::all()[0].appearance.scheme(), LIGHT);
+        assert_eq!(Shot::all()[3].appearance.scheme(), DARK);
+        // The list items hovered are the two-line clickable one and the two-line selected one.
+        assert_eq!(
+            Shot::all()[1].hovered,
+            Some(ListCell::new(Lines::Two, Kind::Clickable))
+        );
+        assert_eq!(
+            Shot::all()[2].hovered,
+            Some(ListCell::new(Lines::Two, Kind::Selected))
+        );
+        // The script's names are the shots' (`list_item.test.tsx`).
+        let script = include_str!("../../../examples/catalog/list_item.test.tsx");
+        assert!(script.contains("`target/visual/list-${scheme}-rest.png`"));
+        assert!(script.contains("`target/visual/list-${scheme}-hover-${kind}.png`"));
+    }
+
+    #[test]
+    fn a_catalog_drawn_as_the_tokens_say_passes_at_any_whole_scale() {
+        for shot in Shot::all() {
+            for scale in [1, 2] {
+                assert_eq!(check(&painted(shot, scale), shot), Ok(Vec::new()));
+            }
+        }
+    }
+
+    #[test]
+    fn the_mouse_changes_the_pixels_of_the_item_under_it_and_of_no_other() {
+        let rest = shot_probes(Shot::all()[0]);
+        for shot in &Shot::all()[1..3] {
+            let hovered = shot_probes(*shot);
+            // What the mouse adds or changes: a probe the shot at rest does not have.
+            let changed: Vec<&Probe> = hovered
+                .iter()
+                .filter(|probe| !rest.contains(probe))
+                .collect();
+            assert!(!changed.is_empty(), "{shot:?}");
+            assert!(
+                changed
+                    .iter()
+                    .all(|probe| Some(probe.target) == shot.hovered.map(Target::ListItem)),
+                "{shot:?}: {changed:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_wrong_pixel_fails_and_is_named() {
+        // The light image has one pixel wrong, and the dark shot is not the light one.
+        let shot = Shot::all()[0];
+        let mut image = painted(shot, 1);
+        let cell = ListCell::new(Lines::Two, Kind::Selected);
+        let probe = probes(cell, &LIGHT, false)
+            .into_iter()
+            .find(|probe| probe.what == "last row")
+            .unwrap();
+        let (x, y) = pixel_of(&probe, 1);
+        let start = ((y * image.width + x) * 4) as usize;
+        image.rgba[start..start + 3].copy_from_slice(&Rgb::of(&LIGHT, ColorRole::Surface).0);
+        let found = check(&image, shot).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].probe, probe);
+        assert_ne!(
+            check(&painted(shot, 1), Shot::all()[3]).unwrap(),
+            Vec::new()
+        );
+    }
+
+    #[test]
+    fn a_screenshot_of_another_viewport_is_refused() {
+        // `button.test.tsx` opens the catalog at the viewport above the list items.
+        let (width, height) = catalog::grid::viewport();
+        let (width, height) = (crate::points_to_u32(width), crate::points_to_u32(height));
+        let image = Image {
+            width,
+            height,
+            rgba: vec![0; 4 * (width * height) as usize],
+        };
+        assert!(check(&image, Shot::all()[0]).is_err());
+        let mut image = painted(Shot::all()[0], 1);
+        image.height += 1;
+        assert!(check(&image, Shot::all()[0]).is_err());
     }
 }

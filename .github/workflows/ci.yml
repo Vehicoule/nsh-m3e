@@ -1,5 +1,6 @@
 name: CI
 
+# common: header
 on:
   pull_request:
   push:
@@ -16,6 +17,7 @@ permissions:
 concurrency:
   group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: true
+# end common: header
 
 env:
   CARGO_TERM_COLOR: always
@@ -32,11 +34,54 @@ env:
   PROPTEST_RNG_SEED: 20261106
 
 jobs:
+  # common: changes
+  # Sorts what a pull request changes, so that one changing only documentation does not take a runner for each check:
+  # the jobs that need `changes` then skip, and GitHub counts a skipped job as passed, required or not. The checks
+  # that read documentation too (spelling, licenses) do not need it and always run, and everything runs on `main` and
+  # by hand. The jobs test `!= 'false'`, so a failure here makes them all run rather than skip.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.sort.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The merge commit and its first parent, the base: what the pull request changes.
+          fetch-depth: 2
+      - name: See whether the pull request changes more than documentation
+        id: sort
+        env:
+          EVENT: ${{ github.event_name }}
+          # Read by no build, test, proof or tool but typos and reuse. `.claude/` and `reference/` are not in it: some
+          # repositories check them against a pinned source.
+          DOCS: '^(docs/|LICENSES/|[^/]+\.md$|\.github/CODEOWNERS$|\.github/pull_request_template\.md$)'
+        # `--no-renames` lists a moved file by its old path too, so moving one out of the code still counts.
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed=$(git diff --no-renames --name-only HEAD^1 HEAD)
+          echo "$changed"
+          if [ -n "$changed" ] && ! grep -qvE "$DOCS" <<< "$changed"; then
+            echo "Only documentation changes: the checks of the code skip."
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          fi
+  # end common: changes
+
   check:
     name: check
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Install the pinned toolchain
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
@@ -71,9 +116,13 @@ jobs:
   # The mutants are split into four shards that run side by side, each on its own runner: one runner took 19 to 22
   # minutes for the whole set. `--in-place` mutates this checkout instead of a copy, so the build reuses the `target/`
   # that rust-cache restored (a copy starts from an empty `target/`). Every shard runs the same command with the same
-  # denominator, so together they test every mutant exactly once (cargo-mutants' `--shard k/n`).
+  # denominator, so together they test every mutant exactly once (cargo-mutants' `--shard k/n`). `round-robin` deals
+  # the mutants out one by one: the default, `slice`, gave each shard a run of consecutive mutants, which took from 4
+  # to 25 minutes depending on the files they fell in.
   mutants-shard:
     name: mutants shard ${{ matrix.shard }}/4
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     strategy:
       # One failing shard must not hide the mutants the others miss.
@@ -82,6 +131,8 @@ jobs:
         shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Install the pinned toolchain
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
@@ -90,28 +141,122 @@ jobs:
       - name: Install cargo-mutants
         run: cargo install cargo-mutants --version 27.1.0 --locked
       - name: Mutation testing
-        run: cargo mutants --workspace --cargo-arg=--locked --in-place --shard ${{ matrix.shard }}/4
+        run: cargo mutants --workspace --cargo-arg=--locked --in-place --sharding round-robin --shard ${{ matrix.shard }}/4
 
   # The required check: green only when every shard is. `always()` makes it run, and fail, when a shard fails or is
   # cancelled; without it, it would be skipped, and a skipped required check counts as passed.
   mutants:
     name: mutants
-    needs: mutants-shard
+    needs: [changes, mutants-shard]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Every shard passed
         env:
+          CODE: ${{ needs.changes.outputs.code }}
           RESULT: ${{ needs.mutants-shard.result }}
+        # The shards skip, and this passes, only when `changes` found nothing but documentation.
         run: |
           echo "The shards' result: $RESULT"
+          if [ "$CODE" = false ] && [ "$RESULT" = skipped ]; then
+            echo "Only documentation changes: no shard to run."
+            exit 0
+          fi
           test "$RESULT" = success
 
   deny:
     name: deny
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           command: check
+
+  # common: typos
+  # Spelling mistakes in code, comments and docs; everything in the repository is in English.
+  typos:
+    name: typos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install typos
+        run: cargo install typos-cli --version 1.52.0 --locked
+      - name: Spell check
+        run: typos
+  # end common: typos
+
+  # common: machete
+  # A dependency no crate uses still widens the supply chain and the build (AGENTS.md, rule 11).
+  machete:
+    name: machete
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install cargo-machete
+        run: cargo install cargo-machete --version 0.9.2 --locked
+      - name: Find unused dependencies
+        run: cargo machete
+  # end common: machete
+
+  # common: zizmor
+  # The workflows run code from every pull request with the repository's token: audit them for the known ways that
+  # goes wrong (injection, leaked credentials, unpinned or impostor actions).
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install zizmor
+        run: cargo install zizmor --version 1.32.0 --locked
+      - name: Audit the workflows
+        # The token, read-only here, lets the online audits check the pinned actions against GitHub.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: zizmor .github/workflows/
+      # The layout Vehicoule's four repositories share: the common blocks of this file, and the checkouts' tokens.
+      - name: Check the workflows' shared layout
+        run: |
+          scripts/test-check-workflows.sh
+          scripts/check-workflows.sh
+  # end common: zizmor
+
+  # ADR 0015: every file in the repository has its copyright and license declared, in REUSE.toml.
+  # common: reuse
+  reuse:
+    name: reuse
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check licensing (reuse 6.3.0)
+        run: pipx run --spec reuse==6.3.0 reuse lint
+  # end common: reuse

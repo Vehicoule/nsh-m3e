@@ -1,15 +1,20 @@
 //! The list items of the catalog, and where it puts them, so that the visual checks know where to read their pixels.
 //!
-//! The list items sit on a third grid, below the icon buttons': one column per kind of item, one row per number of
-//! lines. Every item has a leading and a trailing icon, and is [`WIDTH`] points wide whatever its text.
+//! The list items sit on a grid below the FABs' row (see [`crate::fab`]), the last block of the page: one column per
+//! kind of item, one row per number of lines. Every item has a leading and a trailing icon, and is [`WIDTH`] points
+//! wide whatever its text. [`viewport`] is the page's size with this grid.
+//!
+//! The grid's top is where the FABs' row ends, a gap below it: `button.test.tsx`, `switch.test.tsx`,
+//! `checkbox.test.tsx` and `fab.test.tsx` open the page at viewports that stop above it; `list_item.test.tsx` opens it
+//! at [`viewport`].
 
 use nsh_core::geometry::Points;
 use nsh_core::prelude::*;
 use nsh_m3e::list_item::{clickable_list_item, list_item};
 use nsh_m3e::tokens::androidx::list_tokens;
 
-use crate::ICON;
 use crate::grid::{self, MARGIN, ROW_GAP};
+use crate::{ICON, fab};
 
 /// How many lines an item shows, in the order of the rows: the headline alone, with supporting text, and with an
 /// overline and supporting text.
@@ -63,10 +68,15 @@ pub fn height(lines: Lines) -> Points {
     }
 }
 
-/// The top of the list items' grid: below the icon buttons' rows, each followed by its gap.
+/// The space between the FABs' row and the list items' grid: past the reach of the highest FAB's shadow, which is 20
+/// points below it (ADR 0018). A layout value of the catalog, not of Material.
+pub const GAP: Points = Points(48.0);
+
+/// The top of the list items' grid: where the FABs' row ends, a gap below it (the bottom margin of [`fab::viewport`]
+/// starts where the row and its row gap end).
 #[must_use]
 pub fn top() -> Points {
-    grid::icon_bottom()
+    Points(fab::viewport().1.0 - MARGIN.0 + GAP.0)
 }
 
 /// The bottom of the list items' grid: below its rows, each followed by its gap.
@@ -77,6 +87,13 @@ pub fn bottom() -> Points {
         bottom += height(lines).0 + ROW_GAP.0;
     }
     Points(bottom)
+}
+
+/// The size of the viewport the catalog is opened in to show the list items, width and height: the page's width, as
+/// the grid is narrower than the buttons', and the height of the page with the grid and the margin below it.
+#[must_use]
+pub fn viewport() -> (Points, Points) {
+    (grid::viewport().0, Points(bottom().0 + MARGIN.0))
 }
 
 /// One list item of the catalog.
@@ -204,11 +221,40 @@ pub fn item(cell: ListCell) -> AnyElement {
     item.into_element()
 }
 
+/// `page` with every list item of the catalog at its place, each in a view with its test id and the width the catalog
+/// gives it.
+#[must_use]
+pub fn place(page: View) -> View {
+    ListCell::all().fold(page, |page, cell| {
+        let (x, y) = cell.origin();
+        page.child(
+            view()
+                .absolute()
+                .left(x)
+                .top(y)
+                .w(WIDTH)
+                .test_id(&cell.test_id())
+                .child(item(cell)),
+        )
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
+    use std::sync::{Arc, Mutex, PoisonError};
+
+    use nsh_core::geometry::Bounds;
+    use nsh_core::{AccessibilityRole, MountItem, NodeId};
+    use nsh_engine::{EngineConfig, Root};
+    use nsh_testing::Headless;
 
     use super::*;
+    use crate::Catalog;
+
+    /// The list item test script, `list_item.test.tsx`, which opens the catalog at [`viewport`] and takes the
+    /// screenshots `visual-checks` reads.
+    const SCRIPT: &str = include_str!("../list_item.test.tsx");
 
     #[test]
     fn every_list_item_is_once_in_the_catalog() {
@@ -245,33 +291,86 @@ mod tests {
 
     #[test]
     fn the_rows_and_columns_are_where_the_layout_says() {
-        // Below the icon buttons: the 2,664 points their grid ends at, each row followed by its gap.
-        assert_eq!(top(), Points(2664.0));
+        // The FABs' row ends at the margin before the FABs' viewport does; the list items start a gap below it.
+        assert_eq!(top(), Points(fab::viewport().1.0 - 24.0 + 48.0));
+        assert_eq!(top(), Points(3032.0));
         let first = ListCell::new(Lines::One, Kind::Plain);
-        assert_eq!(first.origin(), (Points(24.0), Points(2664.0)));
+        assert_eq!(first.origin(), (Points(24.0), Points(3032.0)));
         // Clickable is the second column, 400 points on.
         let clickable = ListCell::new(Lines::One, Kind::Clickable);
-        assert_eq!(clickable.origin(), (Points(424.0), Points(2664.0)));
+        assert_eq!(clickable.origin(), (Points(424.0), Points(3032.0)));
         let disabled = ListCell::new(Lines::One, Kind::Disabled);
-        assert_eq!(disabled.origin(), (Points(1224.0), Points(2664.0)));
+        assert_eq!(disabled.origin(), (Points(1224.0), Points(3032.0)));
         // The second row is below the one-line row (56 points and the gap), the third below the two-line one.
         let two = ListCell::new(Lines::Two, Kind::Plain);
-        assert_eq!(two.origin(), (Points(24.0), Points(2736.0)));
+        assert_eq!(two.origin(), (Points(24.0), Points(3104.0)));
         let three = ListCell::new(Lines::Three, Kind::Selected);
-        assert_eq!(three.origin(), (Points(824.0), Points(2824.0)));
+        assert_eq!(three.origin(), (Points(824.0), Points(3192.0)));
         // The last row and its gap end at `bottom`.
-        assert_eq!(bottom(), Points(2928.0));
+        assert_eq!(bottom(), Points(3296.0));
     }
 
     #[test]
-    fn the_items_fit_their_columns() {
+    fn the_viewport_holds_the_list_items_and_the_grids_above() {
+        let (width, height) = viewport();
+        // The page is as wide as the buttons' grid; the list items' grid is three rows and their gaps, and the margin
+        // below it.
+        assert_eq!((width, height), (Points(2608.0), Points(3320.0)));
+        assert_eq!(width, grid::viewport().0);
+        assert_eq!(height.0, bottom().0 + MARGIN.0);
         const { assert!(WIDTH.0 < COLUMN_WIDTH.0) };
-        let (width, height) = grid::viewport();
+        let mut last = Points(0.0);
         for cell in ListCell::all() {
             let (x, y) = cell.origin();
+            assert!(x.0 >= MARGIN.0, "{cell:?}");
             assert!(x.0 + WIDTH.0 <= width.0 - MARGIN.0, "{cell:?}");
+            assert!(y.0 >= top().0, "{cell:?}");
             assert!(y.0 + cell.height().0 <= height.0 - MARGIN.0, "{cell:?}");
+            last = Points(last.0.max(y.0 + cell.height().0));
         }
+        // The last row and its gap end at the margin.
+        assert_eq!(last.0 + ROW_GAP.0, height.0 - MARGIN.0);
+        // A gap or more below every FAB: the highest FAB's shadow reaches 20 points below it (ADR 0018).
+        for cell in fab::FabCell::all() {
+            assert!(cell.origin().1.0 + cell.frame().1.0 + GAP.0 <= top().0);
+        }
+        // No list item takes the place of a checkbox, a switch, a button or an icon button.
+        for cell in crate::checkbox::CheckboxCell::all() {
+            assert!(cell.origin().1.0 + crate::checkbox::SIDE.0 <= top().0);
+        }
+        for cell in grid::Cell::all() {
+            assert!(cell.origin().1.0 + grid::height(cell.size).0 <= top().0);
+        }
+        for cell in grid::IconCell::all() {
+            assert!(cell.origin().1.0 + cell.frame().1.0 <= top().0);
+        }
+    }
+
+    #[test]
+    fn the_test_script_opens_the_catalog_at_the_viewport_and_takes_the_shots_visual_checks_reads() {
+        let (width, height) = viewport();
+        assert!(
+            SCRIPT.contains(&format!(
+                "const VIEWPORT = {{ width: {}, height: {} }};",
+                width.0, height.0
+            )),
+            "the script's viewport is not {width:?} x {height:?}"
+        );
+        for line in [
+            "await app.screenshot(`target/visual/list-${scheme}-rest.png`);",
+            "await app.hover(`id:list-two-${kind}`);",
+            "`target/visual/list-${scheme}-hover-${kind}.png`",
+            "for (const scheme of [\"light\", \"dark\"] as const) {",
+            "const KINDS = [\"clickable\", \"selected\"];",
+        ] {
+            assert!(SCRIPT.contains(line), "the script lacks: {line}");
+        }
+        // The items it hovers are the grid's two-line clickable and selected ones, in the grid's names.
+        let ids: Vec<String> = [Kind::Clickable, Kind::Selected]
+            .into_iter()
+            .map(|kind| ListCell::new(Lines::Two, kind).test_id())
+            .collect();
+        assert_eq!(ids, ["list-two-clickable", "list-two-selected"]);
     }
 
     #[test]
@@ -319,5 +418,128 @@ mod tests {
             .map(|kind| ListCell::new(Lines::One, kind).takes_presses())
             .collect();
         assert_eq!(takes, [false, true, true, false]);
+    }
+
+    /// Everything the catalog mounts on its first screen, in the order the engine sent it.
+    fn mounted_items() -> Vec<MountItem> {
+        let mut app = Headless::start(EngineConfig::new(Root::of::<Catalog>())).unwrap();
+        let items: Arc<Mutex<Vec<MountItem>>> = Arc::default();
+        let sink = Arc::clone(&items);
+        app.observe(move |_, batch| {
+            sink.lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .extend(batch.items.iter().cloned());
+        });
+        app.wait_for("Filled").unwrap();
+        let mounted = items.lock().unwrap_or_else(PoisonError::into_inner);
+        mounted.clone()
+    }
+
+    /// Every list item is at its place on the list items' grid, inside a view with its test id and the width the
+    /// catalog gives it; the item has its kind's role and state, the height of its lines, and the texts its lines
+    /// show, and no others.
+    #[test]
+    fn every_list_item_is_where_the_grid_says() {
+        let items = mounted_items();
+
+        let mut ids = HashMap::new();
+        let mut frames: HashMap<NodeId, Bounds<Points>> = HashMap::new();
+        let mut roles = HashMap::new();
+        let mut parents = HashMap::new();
+        let mut texts = Vec::new();
+        for item in &items {
+            match item {
+                MountItem::ViewProps { id, props } => {
+                    if let Some(test_id) = &props.test_id {
+                        ids.insert(test_id.to_string(), *id);
+                    }
+                    roles.insert(
+                        *id,
+                        (props.accessibility.role, props.accessibility.state.disabled),
+                    );
+                }
+                MountItem::Frame { id, frame } => {
+                    frames.insert(*id, *frame);
+                }
+                MountItem::Insert { parent, child, .. } => {
+                    parents.insert(*child, *parent);
+                }
+                MountItem::Text { id, text, .. } => {
+                    texts.push((*id, text.text.clone()));
+                }
+                _ => {}
+            }
+        }
+        let child_of = |id: NodeId| {
+            parents
+                .iter()
+                .find(|(_, parent)| **parent == id)
+                .map(|(child, _)| *child)
+                .unwrap()
+        };
+        // The wrapper a node is inside of, if it is inside one of the list items'.
+        let wrapper_of = |mut id: NodeId| {
+            let wrappers: HashMap<NodeId, ListCell> = ListCell::all()
+                .map(|cell| (ids[&cell.test_id()], cell))
+                .collect();
+            for _ in 0..parents.len() {
+                if let Some(cell) = wrappers.get(&id) {
+                    return Some(*cell);
+                }
+                id = *parents.get(&id)?;
+            }
+            None
+        };
+        for cell in ListCell::all() {
+            let id = ids[&cell.test_id()];
+            let (x, y) = cell.origin();
+            let frame = frames[&id];
+            assert_eq!((frame.origin.x, frame.origin.y), (x, y), "{cell:?}");
+            assert_eq!(frame.size.width, WIDTH, "{cell:?}");
+            let item = child_of(id);
+            assert_eq!(frames[&item].size.height, cell.height(), "{cell:?}");
+            assert_eq!(frames[&item].size.width, WIDTH, "{cell:?}");
+            // The views of the item with a role: the plain item has none, the others have one.
+            let with_role: Vec<(AccessibilityRole, bool)> = roles
+                .iter()
+                .filter(|(node, (role, _))| {
+                    *role != AccessibilityRole::default() && wrapper_of(**node) == Some(cell)
+                })
+                .map(|(_, role)| *role)
+                .collect();
+            let expected = match cell.kind {
+                Kind::Clickable => vec![(AccessibilityRole::Button, false)],
+                Kind::Disabled => vec![(AccessibilityRole::Button, true)],
+                Kind::Selected => vec![(AccessibilityRole::Radio, false)],
+                _ => Vec::new(),
+            };
+            assert_eq!(with_role, expected, "{cell:?}");
+            let mut shown: Vec<&str> = texts
+                .iter()
+                .filter(|(text, _)| wrapper_of(*text) == Some(cell))
+                .map(|(_, text)| text.as_str())
+                .collect();
+            shown.sort_unstable();
+            let mut expected = vec![cell.label()];
+            if cell.has_overline() {
+                expected.push("Overline");
+            }
+            if cell.has_supporting() {
+                expected.push("Supporting text");
+            }
+            expected.sort_unstable();
+            assert_eq!(shown, expected, "{cell:?}");
+        }
+        // Every selected item is a radio, and nothing else of the catalog is.
+        let radios = ListCell::all()
+            .filter(|cell| matches!(cell.kind, Kind::Selected))
+            .count();
+        assert_eq!(
+            roles
+                .values()
+                .filter(|(role, _)| *role == AccessibilityRole::Radio)
+                .count(),
+            radios
+        );
     }
 }

@@ -6,8 +6,11 @@
 
 ## Context
 
-The drawn container of [ADR 0011](0011-morph-shapes-with-a-drawn-container.md) has one corner radius: all four corners
-of a shape are the same, and one animated value moves them. The button, the icon button and the list item use it.
+The drawn container of [ADR 0011](0011-morph-shapes-with-a-drawn-container.md) has one corner radius for a side:
+its two start corners are the same, and so are its two end corners, and an animated value moves each side's. Most
+shapes are the same at all four corners, so one value moves them all; the connected button group's items, whose start
+and end corners differ, are the only shapes that use both. The button, the icon button, the toggle buttons and the list
+item use it.
 
 The M3E list also has items whose four corners differ, the segmented ones. This ADR decides whether the drawn container
 learns to draw them. It decides nothing else.
@@ -30,9 +33,11 @@ learns to draw them. It decides nothing else.
     back to fully rounded corners, which is a pill: a token with uneven corners would give a wrong container, not an
     error. Every container token of the button, the icon button and the non-segmented list item has equal corners, and
     the components' `every_*_shape_can_morph` tests check it.
-  - `DrawnShape` holds one `AnimatedValue` for the radius. A press or a state change starts one spring on it, from the
-    value and the speed it has. The tests of ADR 0010 (`spring_in`, `spring_with` in `morph_probe.rs`) read exactly one
-    started spring per change, and replay its curve against the closed form.
+  - `DrawnShape` holds an `AnimatedValue` for the start corners' radius and one for the end corners', which only a
+    shape with its sides apart moves (`SideCorners`): a corner at the top is never different from the one below it. A
+    press or a state change starts one spring on each radius that moves, from the value and the speed it has. The
+    tests of ADR 0010 (`spring_in`, `spring_with` in `morph_probe.rs`) read exactly one started spring per change of a
+    shape whose corners are alike, and replay its curve against the closed form.
   - A corner radius larger than half the shorter side is drawn as that half. For four radii that rule is not enough:
     two radii on one edge can add up to more than the edge. How androidx's `CornerBasedShape` reduces them is in its
     foundation and UI libraries, which are not vendored here: it would have to be read at the pinned commit and written

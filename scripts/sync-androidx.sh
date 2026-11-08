@@ -22,14 +22,21 @@ components_copy="reference/androidx-material3-components"
 # `components_path` and copied flat: the names under `internal/` do not collide with the others.
 components=(
     Button.kt
+    Divider.kt
     IconButton.kt
     IconButtonDefaults.kt
+    FloatingActionButton.kt
+    Checkbox.kt
+    ComposeMaterial3Flags.kt
+    Switch.kt
     ListItem.kt
     ListItemDefaults.kt
     ProgressIndicator.kt
     WavyProgressIndicator.kt
     internal/LinearWavyProgressModifiers.kt
     internal/CircularWavyProgressModifiers.kt
+    Snackbar.kt
+    ToggleButton.kt
 )
 
 root="$(git rev-parse --show-toplevel)"

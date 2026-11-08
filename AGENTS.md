@@ -76,6 +76,12 @@ cargo xtask gen-icons --check
 scripts/sync-material-web.sh check
 scripts/sync-nsh.sh check
 cargo mutants --workspace --cargo-arg=--locked   # cargo-mutants 27.1.0
+typos                                            # typos-cli 1.52.0
+cargo machete                                    # cargo-machete 0.9.2, no unused dependency
+zizmor .github/workflows/                        # zizmor 1.32.0, the workflows' security audit
+scripts/check-workflows.sh                       # the workflows follow the four repositories' shared layout
+scripts/test-check-workflows.sh                  # and that check passes its cases
+reuse lint                                       # reuse 6.3.0 (ADR 0015)
 ```
 
 The visual checks ([ADR 0013](docs/adr/0013-visual-checks-on-nsh-hosts.md)) run in
@@ -83,8 +89,11 @@ The visual checks ([ADR 0013](docs/adr/0013-visual-checks-on-nsh-hosts.md)) run 
 host's system libraries:
 
 ```sh
-# under xvfb-run with a screen larger than 2608 x 2952 points; or --target web
+# under xvfb-run with a screen larger than 2608 x 2784 points (2608 x 3008 for the FABs, 2608 x 3320 for the list items); or --target web
 nsh test examples/catalog/button.test.tsx --target linux
+nsh test examples/catalog/switch.test.tsx --target linux
+nsh test examples/catalog/fab.test.tsx --target linux
+nsh test examples/catalog/list_item.test.tsx --target linux
 cargo run -p visual-checks --locked -- target/visual
 ```
 
@@ -112,7 +121,7 @@ request, and report what you ran.
 | `docs/` | Requirements and references |
 | `reference/` | Vendored sources of truth, pinned, never edited by hand |
 | `.claude/skills/` | Vendored skills for coding agents, pinned (the NSH ones are synced by `scripts/sync-nsh.sh`) |
-| `scripts/` | Repository tooling (`sync-nsh.sh`: keep the NSH skills on the pinned NSH commit; `sync-androidx.sh`: keep `reference/androidx-material3-tokens/` and `reference/androidx-material3-components/` on the pinned androidx commit; `sync-material-symbols.sh`: keep `reference/material-symbols/` on the pinned Material Symbols commit; `sync-material-web.sh`: keep `reference/material-web/` on the pinned Material Web commit) |
+| `scripts/` | Repository tooling (`sync-nsh.sh`: keep the NSH skills on the pinned NSH commit; `sync-androidx.sh`: keep `reference/androidx-material3-tokens/` and `reference/androidx-material3-components/` on the pinned androidx commit; `sync-material-symbols.sh`: keep `reference/material-symbols/` on the pinned Material Symbols commit; `sync-material-web.sh`: keep `reference/material-web/` on the pinned Material Web commit; `check-workflows.sh`: keep the workflows on the layout Vehicoule's four repositories share) |
 
 A token module that a component needs and that does not exist yet is added by listing its androidx file in
 `SOURCES` (`xtask/src/main.rs`) and running `cargo xtask gen-tokens`, never by typing the values. The generator

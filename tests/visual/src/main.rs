@@ -1,15 +1,21 @@
 //! Checks the known pixels of the catalog's screenshots (ADR 0013): `cargo run -p visual-checks -- <directory>`.
 //!
 //! `nsh test examples/catalog --target <host>` opens the catalog on one of NSH's hosts and saves its screenshots in
-//! `target/visual` (`examples/catalog/button.test.tsx`). This reads each of them and checks, for every button, icon
-//! button and list item of the catalog, the pixels whose color the tokens give: the container's color inside it, the
-//! outline's on its edge, the surface outside its top left corner, where a rounded corner leaves the background, and
-//! the icon color in the middle of an icon button's or a list item's icons ([`list_item`] holds the list items').
-//! Where the antialiasing of an edge, of the label or of the icon's edge makes a color unknown, nothing is checked.
+//! `target/visual` (`examples/catalog/button.test.tsx`, `switch.test.tsx`, `checkbox.test.tsx`, `fab.test.tsx` and
+//! `list_item.test.tsx`).
+//! This reads each of them and checks, for every button and icon button of the catalog, the pixels whose color the
+//! tokens give: the container's color inside it, the outline's on its edge, the surface outside its top left corner,
+//! where a rounded corner leaves the background, and an icon button's icon color in its middle; the switches' are
+//! in [`switch`], every checkbox's at the places [`checkbox`] gives, every FAB's, with its shadow, in [`fab`] and
+//! every list item's in [`list_item`]; and for every divider, the line's color from end to end and across its whole thickness, and the surface one point
+//! past each of its ends and sides. Where the antialiasing of an edge, of the label or of the icon's edge makes a
+//! color unknown, nothing is checked.
 //!
 //! It is not a `cargo xtask` task: `xtask` must build when the library does not (it regenerates the library's
 //! tokens), so it cannot depend on it, and these checks take every expected color from the library's tokens.
 
+mod checkbox;
+mod fab;
 mod list_item;
 
 use std::fmt;
@@ -18,20 +24,26 @@ use std::io::{self, Cursor, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use catalog::grid::{self, Availability, Cell, IconCell};
-use catalog::list_item::{Kind, Lines, ListCell};
+use catalog::checkbox::CheckboxCell;
+use catalog::fab::FabCell;
+use catalog::grid::{self, Availability, Cell, DividerCell, IconCell};
+use catalog::list_item::ListCell;
+use catalog::switch::SwitchCell;
 use nsh_core::geometry::Points;
 use nsh_m3e::button::{ButtonShape, ButtonSize, ButtonStyle};
 use nsh_m3e::color::{ColorRole, ColorScheme};
+use nsh_m3e::divider::DividerOrientation;
 use nsh_m3e::icon_button::{IconButtonShape, IconButtonSize, IconButtonStyle, IconButtonWidth};
 use nsh_m3e::tokens::Shape;
 use nsh_m3e::tokens::androidx::{
-    filled_button_tokens, filled_icon_button_tokens, filled_tonal_button_tokens,
+    divider_tokens, filled_button_tokens, filled_icon_button_tokens, filled_tonal_button_tokens,
     filled_tonal_icon_button_tokens, large_icon_button_tokens, medium_icon_button_tokens,
     outlined_button_tokens, outlined_icon_button_tokens, small_icon_button_tokens,
     standard_icon_button_tokens, state_tokens, xlarge_icon_button_tokens,
     xsmall_icon_button_tokens,
 };
+
+mod switch;
 
 const USAGE: &str = "usage: cargo run -p visual-checks -- <directory of screenshots>";
 
@@ -75,12 +87,16 @@ impl Appearance {
     }
 }
 
-/// A component of the catalog: a button, an icon button or a list item.
+/// A component of the catalog: a button, an icon button, a switch, a checkbox, a FAB, a list item or a divider.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Target {
     Button(Cell),
     IconButton(IconCell),
+    Switch(SwitchCell),
+    Checkbox(CheckboxCell),
+    Fab(FabCell),
     ListItem(ListCell),
+    Divider(DividerCell),
 }
 
 impl Target {
@@ -89,7 +105,11 @@ impl Target {
         match self {
             Self::Button(cell) => cell.test_id(),
             Self::IconButton(cell) => cell.test_id(),
+            Self::Switch(cell) => cell.test_id(),
+            Self::Checkbox(cell) => cell.test_id(),
+            Self::Fab(cell) => cell.test_id(),
             Self::ListItem(cell) => cell.test_id(),
+            Self::Divider(cell) => cell.test_id(),
         }
     }
 }
@@ -105,7 +125,8 @@ struct Shot {
 impl Shot {
     /// Every screenshot `examples/catalog/button.test.tsx` takes, in each appearance: the catalog at rest, then the
     /// mouse over the small round enabled button of each style, then over the small uniform round enabled icon
-    /// button of each style, then over the two-line clickable list item and the two-line selected one.
+    /// button of each style; then those `examples/catalog/switch.test.tsx` takes, in each appearance: the mouse over
+    /// each of [`switch::HOVERED`].
     fn all() -> Vec<Self> {
         Appearance::ALL
             .into_iter()
@@ -132,14 +153,13 @@ impl Shot {
                             Availability::Enabled,
                         ))))
                     }))
-                    .chain(
-                        [Kind::Clickable, Kind::Selected]
-                            .into_iter()
-                            .map(move |kind| {
-                                shot(Some(Target::ListItem(ListCell::new(Lines::Two, kind))))
-                            }),
-                    )
             })
+            .chain(Appearance::ALL.into_iter().flat_map(|appearance| {
+                switch::HOVERED.into_iter().map(move |cell| Self {
+                    appearance,
+                    hovered: Some(Target::Switch(cell)),
+                })
+            }))
             .collect()
     }
 
@@ -157,11 +177,17 @@ impl Shot {
                     cell.label().to_lowercase()
                 )
             }
-            Some(Target::ListItem(cell)) => {
-                format!(
-                    "{appearance}-hover-list-{}.png",
-                    cell.label().to_lowercase()
-                )
+            // The test id already starts with `switch-`.
+            Some(Target::Switch(cell)) => format!("{appearance}-hover-{}.png", cell.test_id()),
+            // The buttons' script never hovers a checkbox; the checkbox's own shots are `checkbox::Shot`.
+            Some(Target::Checkbox(cell)) => format!("{appearance}-hover-{}.png", cell.test_id()),
+            // Nor a FAB: the FAB's own shots are `fab::Shot`.
+            Some(Target::Fab(cell)) => format!("{appearance}-hover-{}.png", cell.test_id()),
+            // Nor a list item: the list items' own shots are `list_item::Shot`.
+            Some(Target::ListItem(cell)) => format!("{appearance}-hover-{}.png", cell.test_id()),
+            // No screenshot has the mouse over a divider: it has no hover state, and the shots do not hover it.
+            Some(Target::Divider(cell)) => {
+                format!("{appearance}-hover-{}.png", cell.test_id())
             }
         }
     }
@@ -531,7 +557,54 @@ fn icon_probes(cell: IconCell, scheme: &ColorScheme, hovered: bool) -> Vec<Probe
     probes
 }
 
-/// The pixels the checks know in `shot`, for every button, icon button and list item of the catalog.
+/// The pixels the checks know for the divider `cell` in a screenshot in `scheme`: the line in the token's color along
+/// its whole length and across its whole thickness, and the surface one point past each end and each side of it.
+///
+/// A divider is one fill of a box whose edges are on whole points, so at a whole scale no pixel of it is antialiased,
+/// and every probe is exact. It has no hover state, so the mouse over it or not changes nothing.
+fn divider_probes(cell: DividerCell, scheme: &ColorScheme) -> Vec<Probe> {
+    let target = Target::Divider(cell);
+    let (x, y) = cell.origin();
+    let surface = Rgb::of(scheme, ColorRole::Surface);
+    let line = Rgb::of(scheme, divider_tokens::COLOR);
+    let (length, thickness) = (grid::DIVIDER_SPACE.0, cell.thickness.0);
+    // The middle of the line's length, and the pixel row or column nearest the middle of its thickness: a whole number
+    // of points from its start and its first side, both of which are whole numbers.
+    let middle = (length / 2.0).floor();
+    let center = (thickness / 2.0).floor();
+    // What each probe reads: where along the line and across it, in points from its start and from its first side.
+    let places = [
+        ("line's middle", middle, center, line),
+        ("line's first side", middle, 0.0, line),
+        ("line's last side", middle, thickness - 1.0, line),
+        ("surface before the line", middle, -1.0, surface),
+        ("surface after the line", middle, thickness, surface),
+        ("line's start", 0.0, center, line),
+        ("line's end", length - 1.0, center, line),
+        ("surface before the line's start", -1.0, center, surface),
+        ("surface past the line's end", length, center, surface),
+    ];
+    places
+        .into_iter()
+        .map(|(what, along, across, expected)| {
+            // A horizontal line runs along x and is thick along y; a vertical one is the other way round.
+            let (dx, dy) = match cell.orientation {
+                DividerOrientation::Vertical => (across, along),
+                _ => (along, across),
+            };
+            Probe {
+                target,
+                what,
+                x: Points(x.0 + dx),
+                y: Points(y.0 + dy),
+                expected,
+                tolerance: 0,
+            }
+        })
+        .collect()
+}
+
+/// The pixels the checks know in `shot`, for every button, icon button, switch and divider of the catalog.
 fn shot_probes(shot: Shot) -> Vec<Probe> {
     let scheme = shot.appearance.scheme();
     Cell::all()
@@ -541,10 +614,10 @@ fn shot_probes(shot: Shot) -> Vec<Probe> {
                 .flat_map(|cell| icon_probes(cell, &scheme, shot.hovers(Target::IconButton(cell)))),
         )
         .chain(
-            ListCell::all().flat_map(|cell| {
-                list_item::probes(cell, &scheme, shot.hovers(Target::ListItem(cell)))
-            }),
+            SwitchCell::all()
+                .flat_map(|cell| switch::probes(cell, &scheme, shot.hovers(Target::Switch(cell)))),
         )
+        .chain(DividerCell::all().flat_map(|cell| divider_probes(cell, &scheme)))
         .collect()
 }
 
@@ -605,7 +678,11 @@ impl Image {
     /// How many pixels a point is: the image is the catalog's viewport at a whole scale (1 on a desktop, 2 on a
     /// high-density screen).
     fn scale(&self) -> Result<u32, String> {
-        let (width, height) = grid::viewport();
+        self.scale_in(grid::viewport())
+    }
+
+    /// How many pixels a point is, when the image is a viewport of `width` and `height` points at a whole scale.
+    fn scale_in(&self, (width, height): (Points, Points)) -> Result<u32, String> {
         let scale = self.width / points_to_u32(width).max(1);
         if scale == 0
             || self.width != scale * points_to_u32(width)
@@ -715,32 +792,73 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+/// Reads `directory`'s screenshot `name` and checks it with `check`, writing what it finds to `out`; how many pixels
+/// were not what was expected. What `check` finds is whatever prints as one line: a pixel that is not the token's
+/// color ([`Mismatch`]) or a line of text, as [`fab::check`] gives, which reads shadows as well.
+fn check_file<M: fmt::Display>(
+    directory: &Path,
+    name: &str,
+    check: impl FnOnce(&Image) -> Result<Vec<M>, String>,
+    out: &mut impl io::Write,
+) -> Result<usize, Error> {
+    let path = directory.join(name);
+    let bytes = fs::read(&path).map_err(|source| Error::Read {
+        path: path.clone(),
+        source,
+    })?;
+    let image = Image::decode(bytes).map_err(|message| Error::Image {
+        path: path.clone(),
+        message,
+    })?;
+    let found = check(&image).map_err(|message| Error::Image {
+        path: path.clone(),
+        message,
+    })?;
+    let _ = writeln!(
+        out,
+        "{}: {}",
+        path.display(),
+        if found.is_empty() { "ok" } else { "FAILED" }
+    );
+    for mismatch in &found {
+        let _ = writeln!(out, "  {mismatch}");
+    }
+    Ok(found.len())
+}
+
 fn run(directory: &Path, out: &mut impl io::Write) -> Result<(), Error> {
     let mut mismatches = 0;
     for shot in Shot::all() {
-        let path = directory.join(shot.file_name());
-        let bytes = fs::read(&path).map_err(|source| Error::Read {
-            path: path.clone(),
-            source,
-        })?;
-        let image = Image::decode(bytes).map_err(|message| Error::Image {
-            path: path.clone(),
-            message,
-        })?;
-        let found = check(&image, shot).map_err(|message| Error::Image {
-            path: path.clone(),
-            message,
-        })?;
-        let _ = writeln!(
+        mismatches += check_file(
+            directory,
+            &shot.file_name(),
+            |image| check(image, shot),
             out,
-            "{}: {}",
-            path.display(),
-            if found.is_empty() { "ok" } else { "FAILED" }
-        );
-        for mismatch in &found {
-            let _ = writeln!(out, "  {mismatch}");
-        }
-        mismatches += found.len();
+        )?;
+    }
+    for shot in checkbox::Shot::all() {
+        mismatches += check_file(
+            directory,
+            &shot.file_name(),
+            |image| checkbox::check(image, shot),
+            out,
+        )?;
+    }
+    for shot in fab::Shot::all() {
+        mismatches += check_file(
+            directory,
+            &shot.file_name(),
+            |image| fab::check(image, shot),
+            out,
+        )?;
+    }
+    for shot in list_item::Shot::all() {
+        mismatches += check_file(
+            directory,
+            &shot.file_name(),
+            |image| list_item::check(image, shot),
+            out,
+        )?;
     }
     if mismatches == 0 {
         Ok(())
@@ -1245,15 +1363,22 @@ mod tests {
         assert_eq!(changed.len(), 1);
         assert_eq!(changed[0].target, shot.hovered.unwrap());
         assert_eq!(changed[0].what, "container");
-        let count = |is: fn(&Target) -> bool| rest.iter().filter(|p| is(&p.target)).count();
+        let count = |of: fn(&Target) -> bool| rest.iter().filter(|p| of(&p.target)).count();
         let buttons = count(|target| matches!(target, Target::Button(_)));
         let icon_buttons = count(|target| matches!(target, Target::IconButton(_)));
-        let list_items = count(|target| matches!(target, Target::ListItem(_)));
-        assert_eq!(buttons + icon_buttons + list_items, rest.len());
+        let switches = count(|target| matches!(target, Target::Switch(_)));
+        let dividers = count(|target| matches!(target, Target::Divider(_)));
+        assert_eq!(rest.len(), buttons + icon_buttons + switches + dividers);
         assert_eq!(
             buttons,
             Cell::all()
                 .map(|c| probes(c, &LIGHT, false).len())
+                .sum::<usize>()
+        );
+        assert_eq!(
+            dividers,
+            DividerCell::all()
+                .map(|c| divider_probes(c, &LIGHT).len())
                 .sum::<usize>()
         );
         assert_eq!(
@@ -1263,13 +1388,176 @@ mod tests {
                 .sum::<usize>()
         );
         assert!(icon_buttons >= IconCell::all().count() * 3);
+    }
+
+    /// The divider `orientation`, `thickness` points thick, of the catalog.
+    fn divider_cell(orientation: DividerOrientation, thickness: f32) -> DividerCell {
+        DividerCell::new(orientation, Points(thickness))
+    }
+
+    /// What `divider_probes` reads, as (what, x, y, whether the line is expected there), in points.
+    fn read(cell: DividerCell, scheme: &ColorScheme) -> Vec<(&'static str, f32, f32, bool)> {
+        let line = Rgb::of(scheme, ColorRole::OutlineVariant);
+        divider_probes(cell, scheme)
+            .into_iter()
+            .map(|probe| (probe.what, probe.x.0, probe.y.0, probe.expected == line))
+            .collect()
+    }
+
+    #[test]
+    fn divider_probes_read_the_line_from_end_to_end_and_the_surface_past_it() {
+        use DividerOrientation::{Horizontal, Vertical};
+        // The one-point horizontal line at (2440, 904), 96 points long: its one row is its middle, first and last.
         assert_eq!(
-            list_items,
-            ListCell::all()
-                .map(|c| list_item::probes(c, &LIGHT, false).len())
-                .sum::<usize>()
+            read(divider_cell(Horizontal, 1.0), &LIGHT),
+            [
+                ("line's middle", 2488.0, 904.0, true),
+                ("line's first side", 2488.0, 904.0, true),
+                ("line's last side", 2488.0, 904.0, true),
+                ("surface before the line", 2488.0, 903.0, false),
+                ("surface after the line", 2488.0, 905.0, false),
+                ("line's start", 2440.0, 904.0, true),
+                ("line's end", 2535.0, 904.0, true),
+                ("surface before the line's start", 2439.0, 904.0, false),
+                ("surface past the line's end", 2536.0, 904.0, false),
+            ]
         );
-        assert!(list_items >= ListCell::all().count() * 3);
+        // The two-point one at (2440, 1016): its middle is the second row.
+        assert_eq!(
+            read(divider_cell(Horizontal, 2.0), &LIGHT),
+            [
+                ("line's middle", 2488.0, 1017.0, true),
+                ("line's first side", 2488.0, 1016.0, true),
+                ("line's last side", 2488.0, 1017.0, true),
+                ("surface before the line", 2488.0, 1015.0, false),
+                ("surface after the line", 2488.0, 1018.0, false),
+                ("line's start", 2440.0, 1017.0, true),
+                ("line's end", 2535.0, 1017.0, true),
+                ("surface before the line's start", 2439.0, 1017.0, false),
+                ("surface past the line's end", 2536.0, 1017.0, false),
+            ]
+        );
+        // The four-point vertical one at (2440, 1464): the same, turned. Its middle is the third column.
+        assert_eq!(
+            read(divider_cell(Vertical, 4.0), &LIGHT),
+            [
+                ("line's middle", 2442.0, 1512.0, true),
+                ("line's first side", 2440.0, 1512.0, true),
+                ("line's last side", 2443.0, 1512.0, true),
+                ("surface before the line", 2439.0, 1512.0, false),
+                ("surface after the line", 2444.0, 1512.0, false),
+                ("line's start", 2442.0, 1464.0, true),
+                ("line's end", 2442.0, 1559.0, true),
+                ("surface before the line's start", 2442.0, 1463.0, false),
+                ("surface past the line's end", 2442.0, 1560.0, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_probe_expects_the_line_exactly_where_the_line_is() {
+        for cell in DividerCell::all() {
+            let (x, y) = cell.origin();
+            let (width, height) = cell.frame();
+            let found = divider_probes(cell, &LIGHT);
+            assert_eq!(found.len(), 9, "{cell:?}");
+            let mut lines = 0;
+            for probe in &found {
+                // The line is the box of its frame at its origin; a probe is inside it or one point outside.
+                let inside = (x.0..x.0 + width.0).contains(&probe.x.0)
+                    && (y.0..y.0 + height.0).contains(&probe.y.0);
+                let expected = if inside {
+                    lines += 1;
+                    Rgb::of(&LIGHT, ColorRole::OutlineVariant)
+                } else {
+                    Rgb::of(&LIGHT, ColorRole::Surface)
+                };
+                assert_eq!(probe.expected, expected, "{cell:?} {}", probe.what);
+                assert_eq!(probe.tolerance, 0, "{cell:?} {}", probe.what);
+                assert_eq!(probe.target, Target::Divider(cell));
+                // Whole points, so that a probe reads one pixel of a whole scale and no edge between two.
+                assert!(probe.x.0.fract() == 0.0 && probe.x.0 > 0.0, "{probe:?}");
+                assert!(probe.y.0.fract() == 0.0 && probe.y.0 > 0.0, "{probe:?}");
+            }
+            assert_eq!(lines, 5, "{cell:?}");
+            // Each side of the line and each end is read, one point outside.
+            let reads =
+                |at: fn(&Probe) -> f32, edge: f32| found.iter().any(|p| (at(p) - edge).abs() < 0.5);
+            assert!(reads(|p| p.x.0, x.0 - 1.0), "{cell:?}");
+            assert!(reads(|p| p.x.0, x.0 + width.0), "{cell:?}");
+            assert!(reads(|p| p.y.0, y.0 - 1.0), "{cell:?}");
+            assert!(reads(|p| p.y.0, y.0 + height.0), "{cell:?}");
+            // And the line's last point on each of them.
+            assert!(reads(|p| p.x.0, x.0 + width.0 - 1.0), "{cell:?}");
+            assert!(reads(|p| p.y.0, y.0 + height.0 - 1.0), "{cell:?}");
+        }
+    }
+
+    #[test]
+    fn the_line_is_the_outline_variant_of_each_appearance_and_no_mouse_changes_it() {
+        let dark = ColorScheme::BASELINE_DARK;
+        let cell = DividerCell::default();
+        let light_line = divider_probes(cell, &LIGHT)[0].expected;
+        let dark_line = divider_probes(cell, &dark)[0].expected;
+        assert_eq!(light_line, Rgb::of(&LIGHT, ColorRole::OutlineVariant));
+        assert_eq!(dark_line, Rgb::of(&dark, ColorRole::OutlineVariant));
+        assert_ne!(light_line, dark_line);
+        assert_eq!(
+            divider_probes(cell, &dark)[3].expected,
+            Rgb::of(&dark, ColorRole::Surface)
+        );
+        // A divider has no hover state: whatever the mouse is over, its probes are the same.
+        let of_dividers = |shot: Shot| -> Vec<Probe> {
+            shot_probes(shot)
+                .into_iter()
+                .filter(|probe| matches!(probe.target, Target::Divider(_)))
+                .collect()
+        };
+        let shots = Shot::all();
+        let rest = of_dividers(shots[0]);
+        assert_eq!(rest.len(), 6 * 9);
+        for shot in &shots[1..9] {
+            assert_eq!(of_dividers(*shot), rest, "{shot:?}");
+        }
+        assert_ne!(of_dividers(shots[9]), rest);
+        // No screenshot has the mouse over a divider.
+        assert!(
+            shots
+                .iter()
+                .all(|shot| !matches!(shot.hovered, Some(Target::Divider(_))))
+        );
+    }
+
+    #[test]
+    fn a_line_one_point_short_or_long_is_found_and_named() {
+        let shot = Shot::all()[0];
+        let cell = divider_cell(DividerOrientation::Horizontal, 1.0);
+        let probes = divider_probes(cell, &LIGHT);
+        let [end, past] = [probes[6], probes[8]];
+        assert_eq!(
+            (end.what, past.what),
+            ("line's end", "surface past the line's end")
+        );
+        for (probe, wrong) in [
+            (end, Rgb::of(&LIGHT, ColorRole::Surface)),
+            (past, Rgb::of(&LIGHT, ColorRole::OutlineVariant)),
+        ] {
+            let mut image = painted(shot, 1);
+            let (x, y) = pixel_of(&probe, 1);
+            let start = ((y * image.width + x) * 4) as usize;
+            image.rgba[start..start + 3].copy_from_slice(&wrong.0);
+            let found = check(&image, shot).unwrap();
+            assert_eq!(found.len(), 1);
+            assert_eq!(found[0].probe, probe);
+            assert_eq!(found[0].found, Some(wrong));
+            assert_eq!(
+                found[0].to_string(),
+                format!(
+                    "divider-horizontal-1 {} at ({}, {}) points: expected {} (± 0), found {wrong}",
+                    probe.what, probe.x.0, probe.y.0, probe.expected
+                )
+            );
+        }
     }
 
     #[test]
@@ -1282,8 +1570,16 @@ mod tests {
             "icon-tonal-small-uniform-round-enabled"
         );
         assert_eq!(
-            Target::ListItem(ListCell::new(Lines::Three, Kind::Selected)).test_id(),
+            Target::ListItem(ListCell::new(
+                catalog::list_item::Lines::Three,
+                catalog::list_item::Kind::Selected
+            ))
+            .test_id(),
             "list-three-selected"
+        );
+        assert_eq!(
+            Target::Divider(DividerCell::default()).test_id(),
+            "divider-horizontal-1"
         );
     }
 
@@ -1302,8 +1598,6 @@ mod tests {
                 "light-hover-icon-tonal.png",
                 "light-hover-icon-outlined.png",
                 "light-hover-icon-standard.png",
-                "light-hover-list-clickable.png",
-                "light-hover-list-selected.png",
                 "dark-rest.png",
                 "dark-hover-filled.png",
                 "dark-hover-tonal.png",
@@ -1313,13 +1607,15 @@ mod tests {
                 "dark-hover-icon-tonal.png",
                 "dark-hover-icon-outlined.png",
                 "dark-hover-icon-standard.png",
-                "dark-hover-list-clickable.png",
-                "dark-hover-list-selected.png",
+                "light-hover-switch-off-plain-enabled.png",
+                "light-hover-switch-on-icon-enabled.png",
+                "dark-hover-switch-off-plain-enabled.png",
+                "dark-hover-switch-on-icon-enabled.png",
             ]
         );
         assert_eq!(Shot::all()[0].appearance.scheme(), LIGHT);
         assert_eq!(
-            Shot::all()[11].appearance.scheme(),
+            Shot::all()[9].appearance.scheme(),
             ColorScheme::BASELINE_DARK
         );
         // The icon buttons hovered are the small uniform round enabled ones.
@@ -1329,15 +1625,6 @@ mod tests {
                 IconButtonStyle::Filled,
                 Availability::Enabled
             )))
-        );
-        // The list items hovered are the two-line clickable one and the two-line selected one.
-        assert_eq!(
-            Shot::all()[9].hovered,
-            Some(Target::ListItem(ListCell::new(Lines::Two, Kind::Clickable)))
-        );
-        assert_eq!(
-            Shot::all()[10].hovered,
-            Some(Target::ListItem(ListCell::new(Lines::Two, Kind::Selected)))
         );
     }
 
@@ -1374,7 +1661,7 @@ mod tests {
             )
         );
         // The same image is not the dark shot.
-        assert_ne!(check(&image, Shot::all()[12]).unwrap(), Vec::new());
+        assert_ne!(check(&image, Shot::all()[10]).unwrap(), Vec::new());
     }
 
     #[test]
@@ -1531,40 +1818,164 @@ mod tests {
         ));
     }
 
+    /// Saves `image` as `name` in `directory`.
+    fn save(directory: &Path, name: &str, image: &Image) {
+        fs::write(directory.join(name), encode_uncompressed(image)).unwrap();
+    }
+
+    /// Runs the checks on `directory`: what they printed and the error they ended with, if any.
+    fn run_in(directory: &Path) -> (String, Result<(), Error>) {
+        let mut out = Vec::new();
+        let result = run(directory, &mut out);
+        (String::from_utf8(out).unwrap(), result)
+    }
+
+    /// The count of the wrong pixels `run` ended with, and what it printed, where every pixel it counted is named:
+    /// two spaces start the line of each.
+    fn counted_in(directory: &Path) -> (usize, String) {
+        let (out, result) = run_in(directory);
+        let Err(Error::Mismatches(count)) = result else {
+            panic!("wrong pixels are counted: {result:?}");
+        };
+        assert!(count > 0);
+        assert_eq!(
+            out.lines().filter(|line| line.starts_with("  ")).count(),
+            count
+        );
+        (count, out)
+    }
+
     #[test]
     fn run_reports_missing_and_wrong_screenshots() {
         let directory = std::env::temp_dir().join(format!("visual-checks-{}", std::process::id()));
         fs::create_dir_all(&directory).unwrap();
-        let mut out = Vec::new();
-        assert!(matches!(run(&directory, &mut out), Err(Error::Read { .. })));
+        assert!(matches!(run_in(&directory).1, Err(Error::Read { .. })));
         for shot in Shot::all() {
-            let image = painted(shot, 1);
-            fs::write(
-                directory.join(shot.file_name()),
-                encode_uncompressed(&image),
-            )
-            .unwrap();
+            save(&directory, &shot.file_name(), &painted(shot, 1));
         }
-        let mut out = Vec::new();
-        assert!(run(&directory, &mut out).is_ok());
-        assert!(
-            String::from_utf8(out)
-                .unwrap()
-                .contains("light-rest.png: ok")
-        );
+        // Without the checkbox's screenshots, the run reads the first one it lacks; then without the FAB's, then the
+        // list items'.
+        assert!(matches!(run_in(&directory).1, Err(Error::Read { .. })));
+        for shot in checkbox::Shot::all() {
+            save(&directory, &shot.file_name(), &checkbox::painted(shot, 1));
+        }
+        assert!(matches!(run_in(&directory).1, Err(Error::Read { .. })));
+        for shot in fab::Shot::all() {
+            save(&directory, &shot.file_name(), &fab::painted(shot, 1));
+        }
+        assert!(matches!(run_in(&directory).1, Err(Error::Read { .. })));
+        for shot in list_item::Shot::all() {
+            save(&directory, &shot.file_name(), &list_item::painted(shot, 1));
+        }
+        let (out, result) = run_in(&directory);
+        assert!(result.is_ok());
+        assert!(out.contains("light-rest.png: ok"));
         // The light screenshot saved as the dark one.
         fs::copy(
             directory.join("light-rest.png"),
             directory.join("dark-rest.png"),
         )
         .unwrap();
-        let mut out = Vec::new();
-        assert!(matches!(run(&directory, &mut out), Err(Error::Mismatches(n)) if n > 0));
+        let (_, out) = counted_in(&directory);
+        assert!(out.contains("dark-rest.png: FAILED"));
+        // The catalog's screenshot is right again, and a checkbox's is wrong: the light one saved as the dark one.
+        let dark_rest = Shot::all()
+            .into_iter()
+            .find(|shot| shot.file_name() == "dark-rest.png")
+            .unwrap();
+        save(&directory, &dark_rest.file_name(), &painted(dark_rest, 1));
+        let rests: Vec<checkbox::Shot> = checkbox::Shot::all()
+            .into_iter()
+            .filter(|shot| shot.hovered.is_none())
+            .collect();
+        let [light, dark_checkbox] = rests[..] else {
+            panic!("one checkbox shot at rest in each appearance: {rests:?}");
+        };
+        fs::copy(
+            directory.join(light.file_name()),
+            directory.join(dark_checkbox.file_name()),
+        )
+        .unwrap();
+        let (_, out) = counted_in(&directory);
         assert!(
-            String::from_utf8(out)
-                .unwrap()
-                .contains("dark-rest.png: FAILED")
+            out.contains(&format!("{}: FAILED", dark_checkbox.file_name())),
+            "{out}"
         );
+        assert!(out.contains("dark-rest.png: ok"), "{out}");
+        // The checkbox's screenshot is right again, and a FAB's is wrong, in its pixels and its shadows: the light one
+        // saved as the dark one.
+        save(
+            &directory,
+            &dark_checkbox.file_name(),
+            &checkbox::painted(dark_checkbox, 1),
+        );
+        let rests: Vec<fab::Shot> = fab::Shot::all()
+            .into_iter()
+            .filter(|shot| shot.hovered.is_none())
+            .collect();
+        let [light, dark_fab] = rests[..] else {
+            panic!("one FAB shot at rest in each appearance: {rests:?}");
+        };
+        fs::copy(
+            directory.join(light.file_name()),
+            directory.join(dark_fab.file_name()),
+        )
+        .unwrap();
+        let (_, out) = counted_in(&directory);
+        assert!(
+            out.contains(&format!("{}: FAILED", dark_fab.file_name())),
+            "{out}"
+        );
+        assert!(
+            out.contains(&format!("{}: ok", dark_checkbox.file_name())),
+            "{out}"
+        );
+        fs::remove_dir_all(&directory).unwrap();
+    }
+
+    /// Writes every screenshot of the catalog, of the checkboxes, of the FABs and of the list items as it should be,
+    /// in `directory`.
+    fn write_right_screenshots(directory: &Path) {
+        for shot in Shot::all() {
+            save(directory, &shot.file_name(), &painted(shot, 1));
+        }
+        for shot in checkbox::Shot::all() {
+            save(directory, &shot.file_name(), &checkbox::painted(shot, 1));
+        }
+        for shot in fab::Shot::all() {
+            save(directory, &shot.file_name(), &fab::painted(shot, 1));
+        }
+        for shot in list_item::Shot::all() {
+            save(directory, &shot.file_name(), &list_item::painted(shot, 1));
+        }
+    }
+
+    #[test]
+    fn run_names_a_wrong_list_item_screenshot_alone() {
+        let directory =
+            std::env::temp_dir().join(format!("visual-checks-list-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        write_right_screenshots(&directory);
+        // A list item's screenshot is wrong: the light one saved as the dark one.
+        let rests: Vec<list_item::Shot> = list_item::Shot::all()
+            .into_iter()
+            .filter(|shot| shot.hovered.is_none())
+            .collect();
+        let [light, dark_list] = rests[..] else {
+            panic!("one list item shot at rest in each appearance: {rests:?}");
+        };
+        fs::copy(
+            directory.join(light.file_name()),
+            directory.join(dark_list.file_name()),
+        )
+        .unwrap();
+        let (_, out) = counted_in(&directory);
+        assert!(
+            out.contains(&format!("{}: FAILED", dark_list.file_name())),
+            "{out}"
+        );
+        assert!(out.contains(&format!("{}: ok", light.file_name())), "{out}");
+        assert!(out.contains("dark-rest.png: ok"), "{out}");
         fs::remove_dir_all(&directory).unwrap();
     }
 }

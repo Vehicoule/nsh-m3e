@@ -645,9 +645,14 @@ fn item(content: Content, press: Option<Scope<ClickableListItemEvent>>) -> AnyEl
     let drawn = untracked(|| {
         let height = min_height(lines());
         let rest = corners(shape(state()));
-        DrawnShape::new(rest, rest, Size::new(height, height))
+        DrawnShape::toggle(
+            [rest; 3],
+            false,
+            Size::new(height, height),
+            SpringToken::FastSpatial,
+        )
     });
-    effect(move || drawn.morph_to(corners(shape(state())), SpringToken::FastSpatial));
+    effect(move || drawn.morph_to(corners(shape(state()))));
     effect(move || {
         // An item disabled while pressed may get no end of its press.
         if disabled() {
