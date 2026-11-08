@@ -128,6 +128,45 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
+        file: "ExtendedFabLargeTokens.kt",
+        object: None,
+        doc: &[
+            "The large extended floating action button's size: its container's height, shape and icon's size, and the \
+             spaces around its icon and label.",
+            "androidx's `FloatingActionButton.kt` writes its icon-to-label space itself (16), under \
+             \"ExtendedFabLargeTokens.IconLabelSpace is incorrect\" (ADR 0012).",
+        ],
+    },
+    Source {
+        file: "ExtendedFabMediumTokens.kt",
+        object: None,
+        doc: &[
+            "The medium extended floating action button's size: its container's height and icon's size, and the \
+             spaces around its icon and label.",
+            "The file has no container shape: androidx comments it out, and `FloatingActionButton.kt` takes \
+             `ShapeDefaults.LargeIncreased` instead. It writes its icon-to-label space itself (12), under \
+             \"ExtendedFabMediumTokens.IconLabelSpace is incorrect\" (ADR 0012).",
+        ],
+    },
+    Source {
+        file: "ExtendedFabPrimaryTokens.kt",
+        object: None,
+        doc: &[
+            "The extended floating action button's default size, its label's type style, and its colors and \
+             elevation in each state. Colors are roles of the scheme ([`crate::color::ColorRole`]), resolved against \
+             the light or dark [`crate::color::ColorScheme`]. androidx's extended button takes its colors and \
+             elevations from `FabPrimaryContainerTokens` and reads only this file's height, shape and label font.",
+        ],
+    },
+    Source {
+        file: "ExtendedFabSmallTokens.kt",
+        object: None,
+        doc: &[
+            "The small extended floating action button's size: its container's height, shape and icon's size, and the \
+             spaces around its icon and label.",
+        ],
+    },
+    Source {
         file: "FabBaselineTokens.kt",
         object: None,
         doc: &[
