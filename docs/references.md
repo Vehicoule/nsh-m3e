@@ -48,3 +48,7 @@ plugin by whoever wants it; only its `coding-guidelines` skill is vendored here.
 |---|---|---|
 | Property tests | https://docs.rs/proptest | `1.12.0` in the root `Cargo.toml`, exact version in `Cargo.lock` |
 | Mutation testing | https://mutants.rs | `27.1.0`, installed by CI (`.github/workflows/ci.yml`) |
+| Spell check | https://github.com/crate-ci/typos | `typos-cli` `1.52.0`, installed by CI |
+| Unused dependencies | https://github.com/bnjbvr/cargo-machete | `0.9.2`, installed by CI |
+| Workflow audit | https://docs.zizmor.sh | `zizmor` `1.32.0`, installed by CI |
+| Licensing of every file | https://reuse.software | `reuse` `6.3.0`, run by `.github/workflows/ci.yml` |
