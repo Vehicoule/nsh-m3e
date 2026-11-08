@@ -1,15 +1,19 @@
 //! Checks the known pixels of the catalog's screenshots (ADR 0013): `cargo run -p visual-checks -- <directory>`.
 //!
 //! `nsh test examples/catalog --target <host>` opens the catalog on one of NSH's hosts and saves its screenshots in
-//! `target/visual` (`examples/catalog/button.test.tsx`). This reads each of them and checks, for every button and
-//! icon button of the catalog, the pixels whose color the tokens give: the container's color inside it, the
-//! outline's on its edge, the surface outside its top left corner, where a rounded corner leaves the background, and
-//! an icon button's icon color in its middle; and for every navigation bar, its edges against the surface, the
-//! container's color and each item's pill, icon and state layer ([`navigation`]). Where the antialiasing of an edge,
-//! of the label or of the icon's edge makes a color unknown, nothing is checked.
+//! `target/visual` (`examples/catalog/button.test.tsx` and `checkbox.test.tsx`). This reads each of them and checks,
+//! for every button and icon button of the catalog, the pixels whose color the tokens give: the container's color
+//! inside it, the outline's on its edge, the surface outside its top left corner, where a rounded corner leaves the
+//! background, and an icon button's icon color in its middle; for every checkbox, the places [`checkbox`] gives; and
+//! for every navigation bar, its edges against the surface, the container's color and each item's pill, icon and state
+//! layer ([`navigation`]). Where the antialiasing of an edge, of the label or of the icon's edge makes a color
+//! unknown, nothing is checked.
 //!
 //! It is not a `cargo xtask` task: `xtask` must build when the library does not (it regenerates the library's
 //! tokens), so it cannot depend on it, and these checks take every expected color from the library's tokens.
+
+mod checkbox;
+mod navigation;
 
 use std::fmt;
 use std::fs;
@@ -17,8 +21,7 @@ use std::io::{self, Cursor, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-mod navigation;
-
+use catalog::checkbox::CheckboxCell;
 use catalog::grid::{self, Availability, Cell, IconCell};
 use catalog::navigation::{ItemState, NavCell};
 use nsh_core::geometry::Points;
@@ -78,13 +81,14 @@ impl Appearance {
     }
 }
 
-/// A component of the catalog: a button, an icon button, a navigation bar or one of its items.
+/// A component of the catalog: a button, an icon button, a checkbox, a navigation bar or one of its items.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Target {
     Button(Cell),
     IconButton(IconCell),
     NavigationBar(NavCell),
     NavigationItem(NavCell, ItemState),
+    Checkbox(CheckboxCell),
 }
 
 impl Target {
@@ -97,6 +101,7 @@ impl Target {
             Self::NavigationItem(cell, state) => {
                 format!("{}-{}", cell.test_id(), state.label().to_lowercase())
             }
+            Self::Checkbox(cell) => cell.test_id(),
         }
     }
 }
@@ -182,6 +187,8 @@ impl Shot {
             Some(item @ (Target::NavigationItem(..) | Target::NavigationBar(_))) => {
                 format!("{appearance}-hover-{}.png", item.test_id())
             }
+            // The buttons' script never hovers a checkbox; the checkbox's own shots are `checkbox::Shot`.
+            Some(Target::Checkbox(cell)) => format!("{appearance}-hover-{}.png", cell.test_id()),
         }
     }
 
@@ -631,7 +638,11 @@ impl Image {
     /// How many pixels a point is: the image is the catalog's viewport at a whole scale (1 on a desktop, 2 on a
     /// high-density screen).
     fn scale(&self) -> Result<u32, String> {
-        let (width, height) = grid::viewport();
+        self.scale_in(grid::viewport())
+    }
+
+    /// How many pixels a point is, when the image is a viewport of `width` and `height` points at a whole scale.
+    fn scale_in(&self, (width, height): (Points, Points)) -> Result<u32, String> {
         let scale = self.width / points_to_u32(width).max(1);
         if scale == 0
             || self.width != scale * points_to_u32(width)
@@ -741,32 +752,56 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+/// Reads `directory`'s screenshot `name` and checks it with `check`, writing what it finds to `out`; how many pixels
+/// were not what was expected.
+fn check_file(
+    directory: &Path,
+    name: &str,
+    check: impl FnOnce(&Image) -> Result<Vec<Mismatch>, String>,
+    out: &mut impl io::Write,
+) -> Result<usize, Error> {
+    let path = directory.join(name);
+    let bytes = fs::read(&path).map_err(|source| Error::Read {
+        path: path.clone(),
+        source,
+    })?;
+    let image = Image::decode(bytes).map_err(|message| Error::Image {
+        path: path.clone(),
+        message,
+    })?;
+    let found = check(&image).map_err(|message| Error::Image {
+        path: path.clone(),
+        message,
+    })?;
+    let _ = writeln!(
+        out,
+        "{}: {}",
+        path.display(),
+        if found.is_empty() { "ok" } else { "FAILED" }
+    );
+    for mismatch in &found {
+        let _ = writeln!(out, "  {mismatch}");
+    }
+    Ok(found.len())
+}
+
 fn run(directory: &Path, out: &mut impl io::Write) -> Result<(), Error> {
     let mut mismatches = 0;
     for shot in Shot::all() {
-        let path = directory.join(shot.file_name());
-        let bytes = fs::read(&path).map_err(|source| Error::Read {
-            path: path.clone(),
-            source,
-        })?;
-        let image = Image::decode(bytes).map_err(|message| Error::Image {
-            path: path.clone(),
-            message,
-        })?;
-        let found = check(&image, shot).map_err(|message| Error::Image {
-            path: path.clone(),
-            message,
-        })?;
-        let _ = writeln!(
+        mismatches += check_file(
+            directory,
+            &shot.file_name(),
+            |image| check(image, shot),
             out,
-            "{}: {}",
-            path.display(),
-            if found.is_empty() { "ok" } else { "FAILED" }
-        );
-        for mismatch in &found {
-            let _ = writeln!(out, "  {mismatch}");
-        }
-        mismatches += found.len();
+        )?;
+    }
+    for shot in checkbox::Shot::all() {
+        mismatches += check_file(
+            directory,
+            &shot.file_name(),
+            |image| checkbox::check(image, shot),
+            out,
+        )?;
     }
     if mismatches == 0 {
         Ok(())
@@ -1626,6 +1661,17 @@ mod tests {
             )
             .unwrap();
         }
+        // Without the checkbox's screenshots, the run reads the first one it lacks.
+        let mut out = Vec::new();
+        assert!(matches!(run(&directory, &mut out), Err(Error::Read { .. })));
+        for shot in checkbox::Shot::all() {
+            let image = checkbox::painted(shot, 1);
+            fs::write(
+                directory.join(shot.file_name()),
+                encode_uncompressed(&image),
+            )
+            .unwrap();
+        }
         let mut out = Vec::new();
         assert!(run(&directory, &mut out).is_ok());
         assert!(
@@ -1645,6 +1691,45 @@ mod tests {
             String::from_utf8(out)
                 .unwrap()
                 .contains("dark-rest.png: FAILED")
+        );
+        // The catalog's screenshot is right again, and a checkbox's is wrong: the light one saved as the dark one.
+        let dark_rest = Shot::all()
+            .into_iter()
+            .find(|shot| shot.file_name() == "dark-rest.png")
+            .unwrap();
+        fs::write(
+            directory.join(dark_rest.file_name()),
+            encode_uncompressed(&painted(dark_rest, 1)),
+        )
+        .unwrap();
+        let rests: Vec<checkbox::Shot> = checkbox::Shot::all()
+            .into_iter()
+            .filter(|shot| shot.hovered.is_none())
+            .collect();
+        let [light, dark] = rests[..] else {
+            panic!("one checkbox shot at rest in each appearance: {rests:?}");
+        };
+        fs::copy(
+            directory.join(light.file_name()),
+            directory.join(dark.file_name()),
+        )
+        .unwrap();
+        let mut out = Vec::new();
+        let counted = match run(&directory, &mut out) {
+            Err(Error::Mismatches(count)) => count,
+            other => panic!("the checkbox's wrong pixels are counted: {other:?}"),
+        };
+        let out = String::from_utf8(out).unwrap();
+        assert!(counted > 0);
+        assert!(
+            out.contains(&format!("{}: FAILED", dark.file_name())),
+            "{out}"
+        );
+        assert!(out.contains("dark-rest.png: ok"), "{out}");
+        // Every pixel the run counted is named: two spaces start the line of each.
+        assert_eq!(
+            out.lines().filter(|line| line.starts_with("  ")).count(),
+            counted
         );
         fs::remove_dir_all(&directory).unwrap();
     }
