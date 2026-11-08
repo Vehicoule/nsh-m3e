@@ -283,6 +283,36 @@ impl DrawnShape {
         });
     }
 
+    /// The corners go to `to`, from where they are and as fast as they move, with the spring the shape was given: the
+    /// shape of a component that morphs between more than two shapes (the list item's, which hover, focus, selection
+    /// and press each give one). Its current shape then is its rest, pressed and checked corners alike, and
+    /// [`DrawnShape::press`] and [`DrawnShape::set_checked`] are never used. Nothing is sent when the corners are
+    /// already `to`, which includes the first call that gives the shape the component starts with. With reduce motion
+    /// on nothing moves and the shape stays as it is (ADR 0011, "Reduce motion").
+    pub(crate) fn morph_to(self, to: Corners) {
+        let to = SideCorners::from(to);
+        untracked(|| {
+            if self.rest.get() == to
+                && self.pressed_corners.get() == to
+                && self.checked_corners.get() == to
+            {
+                return;
+            }
+            self.rest.set(to);
+            self.pressed_corners.set(to);
+            self.checked_corners.set(to);
+            if reduce_motion() {
+                return;
+            }
+            self.spring_to(to);
+        });
+    }
+
+    /// The container's size, from its layout (the one it was expected to be until the first).
+    pub(crate) fn size(self) -> Size<Points> {
+        self.size.get()
+    }
+
     /// Becomes sided if one of `shapes` has its start and end corners apart. The end radius, which did not move
     /// until then, is set by the [`DrawnShape::jump_to`] that follows.
     fn take_sides(self, shapes: &[SideCorners]) {
@@ -432,7 +462,9 @@ mod tests {
 
     use super::*;
     use crate::animation_probe::{Recording, Replay, StartedSpring, layout_items, started_springs};
-    use crate::morph_probe::{Step, assert_traces, paths, replay, rounded_sides, set_values};
+    use crate::morph_probe::{
+        Step, assert_traces, paths, replay, rounded_sides, set_values, spring_with,
+    };
 
     /// The probe's container: as wide as a connected group's leading button might be, 40 points high
     /// (`ConnectedButtonGroupSmallTokens.ContainerHeight`), so that a full radius is 20.
@@ -662,6 +694,58 @@ mod tests {
         }
         assert!(!replay.is_animating());
         replay
+    }
+
+    /// A drawn container that rests at 12 points, presses into 16 and springs with `FastSpatial`, and the lines that
+    /// move it: `Morph` and `Again` send it to 12 with [`DrawnShape::morph_to`], `Press` presses it.
+    #[component]
+    fn Morphing() -> impl IntoElement {
+        let drawn = DrawnShape::toggle(
+            [
+                Corners::Radius(Points(12.0)),
+                Corners::Radius(Points(16.0)),
+                Corners::Radius(Points(12.0)),
+            ],
+            false,
+            Size::new(Points(40.0), Points(40.0)),
+            SpringToken::FastSpatial,
+        );
+        let to_rest = move |(): &()| drawn.morph_to(Corners::Radius(Points(12.0)));
+        view()
+            .child(drawn.container(|| None))
+            .child(text("Morph").on_press(to_rest))
+            .child(text("Again").on_press(to_rest))
+            .child(text("Press").on_press(move |(): &()| drawn.press(true)))
+    }
+
+    #[test]
+    fn morphing_to_a_shape_makes_it_the_rest_the_pressed_and_the_checked_corners() {
+        let mut app = Headless::start(EngineConfig {
+            clock: Clock::manual(SystemTime::UNIX_EPOCH),
+            ..EngineConfig::new(Root::of::<Morphing>())
+        })
+        .unwrap();
+        let recording = Recording::attach(&mut app);
+        app.wait_for("Morph").unwrap();
+        // The rest corners are already 12 points, but the pressed ones are 16: the shape still moves, with the
+        // spring the shape was given.
+        app.press("Morph").unwrap();
+        let moved = recording.in_step("press(Morph)");
+        let _ = spring_with(&moved, "press(Morph)", 12.0, SpringToken::FastSpatial);
+        // All three are 12 now, so the same shape again sends nothing.
+        app.press("Again").unwrap();
+        assert_eq!(
+            started_springs(&recording.in_step("press(Again)")),
+            Vec::new()
+        );
+        // A press then goes to the pressed corners, which are 12 and no longer 16.
+        app.press("Press").unwrap();
+        let _ = spring_with(
+            &recording.in_step("press(Press)"),
+            "press(Press)",
+            12.0,
+            SpringToken::FastSpatial,
+        );
     }
 
     #[test]

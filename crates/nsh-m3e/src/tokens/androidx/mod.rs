@@ -35,6 +35,7 @@ pub mod filled_tonal_button_tokens;
 pub mod filled_tonal_icon_button_tokens;
 pub mod large_icon_button_tokens;
 pub mod linear_progress_indicator_tokens;
+pub mod list_tokens;
 pub mod medium_icon_button_tokens;
 pub mod motion_tokens;
 pub mod outlined_button_tokens;

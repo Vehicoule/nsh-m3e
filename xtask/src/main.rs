@@ -264,6 +264,17 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
+        file: "ListTokens.kt",
+        object: None,
+        doc: &[
+            "The list item's container (its shapes in each state, its colors and its elevation), its text and icon \
+             colors and opacities in each state, its heights by line count, its spaces, its icon's and image's sizes \
+             and its text styles, and the divider's spaces and the gap between segmented items. Colors are roles of \
+             the scheme ([`crate::color::ColorRole`]), resolved against the light or dark \
+             [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
         file: "MediumIconButtonTokens.kt",
         object: None,
         doc: &[

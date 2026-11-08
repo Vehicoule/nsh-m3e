@@ -1,12 +1,13 @@
 //! Checks the known pixels of the catalog's screenshots (ADR 0013): `cargo run -p visual-checks -- <directory>`.
 //!
 //! `nsh test examples/catalog --target <host>` opens the catalog on one of NSH's hosts and saves its screenshots in
-//! `target/visual` (`examples/catalog/button.test.tsx`, `switch.test.tsx`, `checkbox.test.tsx` and `fab.test.tsx`).
+//! `target/visual` (`examples/catalog/button.test.tsx`, `switch.test.tsx`, `checkbox.test.tsx`, `fab.test.tsx` and
+//! `list_item.test.tsx`).
 //! This reads each of them and checks, for every button and icon button of the catalog, the pixels whose color the
 //! tokens give: the container's color inside it, the outline's on its edge, the surface outside its top left corner,
 //! where a rounded corner leaves the background, and an icon button's icon color in its middle; the switches' are
-//! in [`switch`], every checkbox's at the places [`checkbox`] gives and every FAB's, with its shadow, in [`fab`]; and
-//! for every divider, the line's color from end to end and across its whole thickness, and the surface one point
+//! in [`switch`], every checkbox's at the places [`checkbox`] gives, every FAB's, with its shadow, in [`fab`] and
+//! every list item's in [`list_item`]; and for every divider, the line's color from end to end and across its whole thickness, and the surface one point
 //! past each of its ends and sides. Where the antialiasing of an edge, of the label or of the icon's edge makes a
 //! color unknown, nothing is checked.
 //!
@@ -15,6 +16,7 @@
 
 mod checkbox;
 mod fab;
+mod list_item;
 
 use std::fmt;
 use std::fs;
@@ -25,6 +27,7 @@ use std::process::ExitCode;
 use catalog::checkbox::CheckboxCell;
 use catalog::fab::FabCell;
 use catalog::grid::{self, Availability, Cell, DividerCell, IconCell};
+use catalog::list_item::ListCell;
 use catalog::switch::SwitchCell;
 use nsh_core::geometry::Points;
 use nsh_m3e::button::{ButtonShape, ButtonSize, ButtonStyle};
@@ -84,7 +87,7 @@ impl Appearance {
     }
 }
 
-/// A component of the catalog: a button, an icon button, a switch, a checkbox, a FAB or a divider.
+/// A component of the catalog: a button, an icon button, a switch, a checkbox, a FAB, a list item or a divider.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Target {
     Button(Cell),
@@ -92,6 +95,7 @@ enum Target {
     Switch(SwitchCell),
     Checkbox(CheckboxCell),
     Fab(FabCell),
+    ListItem(ListCell),
     Divider(DividerCell),
 }
 
@@ -104,6 +108,7 @@ impl Target {
             Self::Switch(cell) => cell.test_id(),
             Self::Checkbox(cell) => cell.test_id(),
             Self::Fab(cell) => cell.test_id(),
+            Self::ListItem(cell) => cell.test_id(),
             Self::Divider(cell) => cell.test_id(),
         }
     }
@@ -178,6 +183,8 @@ impl Shot {
             Some(Target::Checkbox(cell)) => format!("{appearance}-hover-{}.png", cell.test_id()),
             // Nor a FAB: the FAB's own shots are `fab::Shot`.
             Some(Target::Fab(cell)) => format!("{appearance}-hover-{}.png", cell.test_id()),
+            // Nor a list item: the list items' own shots are `list_item::Shot`.
+            Some(Target::ListItem(cell)) => format!("{appearance}-hover-{}.png", cell.test_id()),
             // No screenshot has the mouse over a divider: it has no hover state, and the shots do not hover it.
             Some(Target::Divider(cell)) => {
                 format!("{appearance}-hover-{}.png", cell.test_id())
@@ -842,6 +849,14 @@ fn run(directory: &Path, out: &mut impl io::Write) -> Result<(), Error> {
             directory,
             &shot.file_name(),
             |image| fab::check(image, shot),
+            out,
+        )?;
+    }
+    for shot in list_item::Shot::all() {
+        mismatches += check_file(
+            directory,
+            &shot.file_name(),
+            |image| list_item::check(image, shot),
             out,
         )?;
     }
@@ -1555,6 +1570,14 @@ mod tests {
             "icon-tonal-small-uniform-round-enabled"
         );
         assert_eq!(
+            Target::ListItem(ListCell::new(
+                catalog::list_item::Lines::Three,
+                catalog::list_item::Kind::Selected
+            ))
+            .test_id(),
+            "list-three-selected"
+        );
+        assert_eq!(
             Target::Divider(DividerCell::default()).test_id(),
             "divider-horizontal-1"
         );
@@ -1830,7 +1853,8 @@ mod tests {
         for shot in Shot::all() {
             save(&directory, &shot.file_name(), &painted(shot, 1));
         }
-        // Without the checkbox's screenshots, the run reads the first one it lacks; then without the FAB's.
+        // Without the checkbox's screenshots, the run reads the first one it lacks; then without the FAB's, then the
+        // list items'.
         assert!(matches!(run_in(&directory).1, Err(Error::Read { .. })));
         for shot in checkbox::Shot::all() {
             save(&directory, &shot.file_name(), &checkbox::painted(shot, 1));
@@ -1838,6 +1862,10 @@ mod tests {
         assert!(matches!(run_in(&directory).1, Err(Error::Read { .. })));
         for shot in fab::Shot::all() {
             save(&directory, &shot.file_name(), &fab::painted(shot, 1));
+        }
+        assert!(matches!(run_in(&directory).1, Err(Error::Read { .. })));
+        for shot in list_item::Shot::all() {
+            save(&directory, &shot.file_name(), &list_item::painted(shot, 1));
         }
         let (out, result) = run_in(&directory);
         assert!(result.is_ok());
@@ -1902,6 +1930,52 @@ mod tests {
             out.contains(&format!("{}: ok", dark_checkbox.file_name())),
             "{out}"
         );
+        fs::remove_dir_all(&directory).unwrap();
+    }
+
+    /// Writes every screenshot of the catalog, of the checkboxes, of the FABs and of the list items as it should be,
+    /// in `directory`.
+    fn write_right_screenshots(directory: &Path) {
+        for shot in Shot::all() {
+            save(directory, &shot.file_name(), &painted(shot, 1));
+        }
+        for shot in checkbox::Shot::all() {
+            save(directory, &shot.file_name(), &checkbox::painted(shot, 1));
+        }
+        for shot in fab::Shot::all() {
+            save(directory, &shot.file_name(), &fab::painted(shot, 1));
+        }
+        for shot in list_item::Shot::all() {
+            save(directory, &shot.file_name(), &list_item::painted(shot, 1));
+        }
+    }
+
+    #[test]
+    fn run_names_a_wrong_list_item_screenshot_alone() {
+        let directory =
+            std::env::temp_dir().join(format!("visual-checks-list-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        write_right_screenshots(&directory);
+        // A list item's screenshot is wrong: the light one saved as the dark one.
+        let rests: Vec<list_item::Shot> = list_item::Shot::all()
+            .into_iter()
+            .filter(|shot| shot.hovered.is_none())
+            .collect();
+        let [light, dark_list] = rests[..] else {
+            panic!("one list item shot at rest in each appearance: {rests:?}");
+        };
+        fs::copy(
+            directory.join(light.file_name()),
+            directory.join(dark_list.file_name()),
+        )
+        .unwrap();
+        let (_, out) = counted_in(&directory);
+        assert!(
+            out.contains(&format!("{}: FAILED", dark_list.file_name())),
+            "{out}"
+        );
+        assert!(out.contains(&format!("{}: ok", light.file_name())), "{out}");
+        assert!(out.contains("dark-rest.png: ok"), "{out}");
         fs::remove_dir_all(&directory).unwrap();
     }
 }

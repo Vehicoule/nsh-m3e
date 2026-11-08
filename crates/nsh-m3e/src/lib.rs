@@ -18,6 +18,7 @@ pub mod fab;
 pub mod icon;
 pub mod icon_button;
 pub mod icon_toggle_button;
+pub mod list_item;
 pub mod material_symbols;
 mod morph;
 #[cfg(test)]

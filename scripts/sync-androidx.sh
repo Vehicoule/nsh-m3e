@@ -29,6 +29,8 @@ components=(
     Checkbox.kt
     ComposeMaterial3Flags.kt
     Switch.kt
+    ListItem.kt
+    ListItemDefaults.kt
     ProgressIndicator.kt
     WavyProgressIndicator.kt
     internal/LinearWavyProgressModifiers.kt
