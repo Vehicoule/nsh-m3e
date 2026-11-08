@@ -139,11 +139,22 @@ pub(crate) fn replay(recording: &Recording) -> Replay {
 /// `shapeByInteraction`, converted as ADR 0004 says), to `to`, from where they are and as fast as they move, at
 /// the screen's rate; and nothing else in the step starts or sets a value.
 pub(crate) fn spring_in(items: &[MountItem], step: &str, to: f32) -> StartedSpring {
+    spring_in_with(items, step, to, SpringToken::DefaultEffects)
+}
+
+/// [`spring_in`] for a component whose corners move with another spring: the chips' `FastSpatial`, androidx
+/// `Chip.kt`'s `SelectableChip`.
+pub(crate) fn spring_in_with(
+    items: &[MountItem],
+    step: &str,
+    to: f32,
+    token: SpringToken,
+) -> StartedSpring {
     let springs = started_springs(items);
     let [spring] = springs[..] else {
         panic!("{step}: one spring, not {springs:?}");
     };
-    let spec = SpringToken::DefaultEffects.spec();
+    let spec = token.spec();
     assert_eq!(spring.to.to_bits(), to.to_bits(), "{step}: {spring:?}");
     assert_eq!(spring.stiffness.to_bits(), spec.stiffness.to_bits());
     assert_eq!(

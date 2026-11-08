@@ -67,12 +67,12 @@ fn half_shorter_side(size: Size<Points>) -> f32 {
     size.width.0.min(size.height.0) / 2.0
 }
 
-/// The spring of the morph: androidx `Button.kt` animates the button's shape with
-/// `MotionSchemeKeyTokens.DefaultEffects`, "intentional here to prevent any bounce in this component" (ADR 0011),
-/// converted as ADR 0004 says. Every field is written out, none taken from NSH's defaults: it starts from the speed
-/// the corners already have, at the screen's own rate (ADR 0010).
-fn morph_spring() -> Spring {
-    let spec = SpringToken::DefaultEffects.spec();
+/// The spring of the morph, from `token`, converted as ADR 0004 says: androidx `Button.kt` animates the button's shape
+/// with `MotionSchemeKeyTokens.DefaultEffects`, "intentional here to prevent any bounce in this component" (ADR
+/// 0011), and `Chip.kt` its chips' with `FastSpatial`. Every field is written out, none taken from NSH's defaults: it
+/// starts from the speed the corners already have, at the screen's own rate (ADR 0010).
+fn morph_spring(token: SpringToken) -> Spring {
+    let spec = token.spec();
     Spring {
         stiffness: spec.stiffness,
         damping: spec.damping_coefficient(),
@@ -96,6 +96,8 @@ pub(crate) struct DrawnShape {
     pressed_corners: Signal<Corners>,
     /// Whether a press is down.
     pressed: Signal<bool>,
+    /// The spring that moves the corners.
+    spring: SpringToken,
 }
 
 impl DrawnShape {
@@ -108,7 +110,19 @@ impl DrawnShape {
             rest: signal(rest),
             pressed_corners: signal(pressed),
             pressed: signal(false),
+            spring: SpringToken::DefaultEffects,
         }
+    }
+
+    /// The same container, its corners moved by `spring` (the button's is `DefaultEffects`).
+    pub(crate) fn with_spring(mut self, spring: SpringToken) -> Self {
+        self.spring = spring;
+        self
+    }
+
+    /// The container's size: what its layout last said, or what it was expected to be before that.
+    pub(crate) fn size(self) -> Size<Points> {
+        self.size.get()
     }
 
     /// The corners it is at, or going to.
@@ -133,6 +147,29 @@ impl DrawnShape {
             self.rest.set(rest);
             self.pressed_corners.set(pressed);
             self.radius.set(self.target().radius(self.size.get()));
+        });
+    }
+
+    /// The corners at rest change because the component's state does (a chip selected or not), not its shape: the
+    /// radius springs to them from where it is and as fast as it moves, as androidx's `shapeByInteraction` animates
+    /// the shape it is given (`Chip.kt`). While a press is down the pressed corners show and nothing moves: the release
+    /// goes to the new ones. With reduce motion on the radius goes there at once, since a shape that stays as it was
+    /// would show the wrong state. Nothing is sent when the corners stay the same.
+    pub(crate) fn rest_to(self, rest: Corners) {
+        untracked(|| {
+            if self.rest.get() == rest {
+                return;
+            }
+            self.rest.set(rest);
+            if self.pressed.get() {
+                return;
+            }
+            let target = rest.radius(self.size.get());
+            if reduce_motion() {
+                self.radius.set(target);
+            } else {
+                let _ = self.radius.spring(target, morph_spring(self.spring));
+            }
         });
     }
 
@@ -162,9 +199,10 @@ impl DrawnShape {
             if reduce_motion() {
                 return;
             }
-            let _ = self
-                .radius
-                .spring(self.target().radius(self.size.get()), morph_spring());
+            let _ = self.radius.spring(
+                self.target().radius(self.size.get()),
+                morph_spring(self.spring),
+            );
         });
     }
 

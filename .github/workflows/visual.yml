@@ -140,6 +140,20 @@ jobs:
           fi
         env:
           RUSTFLAGS: ""
+      # The chips' screenshots (`examples/catalog/chips.test.tsx`), in the same directory as the others: the catalog's
+      # window is 2608 x 3272 points (`catalog::chips::viewport`) and its decorations, which a screen of 2800 x 2900 does
+      # not hold, so this step has a screen of its own.
+      - name: Take the chips' screenshots
+        if: steps.changes.outputs.visual == 'true'
+        run: |
+          mkdir -p target/visual
+          if [ "${{ matrix.host }}" = linux ]; then
+            dbus-run-session -- xvfb-run -a -s "-screen 0 2800x4000x24" nsh test examples/catalog/chips.test.tsx --target linux
+          else
+            nsh test examples/catalog/chips.test.tsx --target web
+          fi
+        env:
+          RUSTFLAGS: ""
       - name: Check the screenshots' known pixels
         if: steps.changes.outputs.visual == 'true'
         run: cargo run -p visual-checks --locked -- target/visual
