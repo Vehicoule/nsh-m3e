@@ -20,7 +20,7 @@ site may describe a newer version than the one this repository builds against.
 |---|---|---|
 | Official token values | [`reference/androidx-material3-tokens/`](../reference/androidx-material3-tokens/) (from `androidx/androidx`, `compose/material3/material3/src/commonMain/kotlin/androidx/compose/material3/tokens/`) | `a8b393d51f9bdcfcac8f0a4a0992ecad1b27ba55`, moved by `scripts/sync-androidx.sh` when the tokens change |
 | Official implementation (behavior, layout, how tokens are used) | https://github.com/androidx/androidx/tree/androidx-main/compose/material3/material3 | read at the same revision |
-| Official implementation, where it overrides a token (ADR 0012) | [`reference/androidx-material3-components/`](../reference/androidx-material3-components/) (`Button.kt`, `ColorScheme.kt`, `Divider.kt`, `IconButton.kt`, `IconButtonDefaults.kt`, `Checkbox.kt`, `ComposeMaterial3Flags.kt`, `Switch.kt`, `NavigationItem.kt`, `ProgressIndicator.kt`, `Ripple.kt`, `ShortNavigationBar.kt`, `Tab.kt`, `TabRow.kt`, `WavyProgressIndicator.kt`, and `LinearWavyProgressModifiers.kt` and `CircularWavyProgressModifiers.kt` from its `internal/` folder) | the same commit, moved with the tokens by `scripts/sync-androidx.sh` |
+| Official implementation, where it overrides a token (ADR 0012) | [`reference/androidx-material3-components/`](../reference/androidx-material3-components/) (`Button.kt`, `ColorScheme.kt`, `Divider.kt`, `IconButton.kt`, `IconButtonDefaults.kt`, `FloatingActionButton.kt`, `Checkbox.kt`, `ComposeMaterial3Flags.kt`, `Switch.kt`, `NavigationItem.kt`, `ProgressIndicator.kt`, `Ripple.kt`, `ShortNavigationBar.kt`, `Tab.kt`, `TabRow.kt`, `WavyProgressIndicator.kt`, and `LinearWavyProgressModifiers.kt` and `CircularWavyProgressModifiers.kt` from its `internal/` folder) | the same commit, moved with the tokens by `scripts/sync-androidx.sh` |
 | Icons (ADR 0017) | [`reference/material-symbols/`](../reference/material-symbols/) (from `google/material-design-icons`, `symbols/web/`) | `10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7`, moved by `scripts/sync-material-symbols.sh` |
 | Elevation shadows (ADR 0018) | [`reference/material-web/`](../reference/material-web/) (from `material-components/material-web`, `elevation/internal/_elevation.scss`) | `d872455c4be56022da2095349b30ef46e0b55bc3`, moved by `scripts/sync-material-web.sh` |
 | Guidelines (anatomy, states, usage, motion) | https://m3.material.io, sections Foundations, Styles, Components | not pinned (web) |
@@ -48,3 +48,7 @@ plugin by whoever wants it; only its `coding-guidelines` skill is vendored here.
 |---|---|---|
 | Property tests | https://docs.rs/proptest | `1.12.0` in the root `Cargo.toml`, exact version in `Cargo.lock` |
 | Mutation testing | https://mutants.rs | `27.1.0`, installed by CI (`.github/workflows/ci.yml`) |
+| Spell check | https://github.com/crate-ci/typos | `typos-cli` `1.52.0`, installed by CI |
+| Unused dependencies | https://github.com/bnjbvr/cargo-machete | `0.9.2`, installed by CI |
+| Workflow audit | https://docs.zizmor.sh | `zizmor` `1.32.0`, installed by CI |
+| Licensing of every file | https://reuse.software | `reuse` `6.3.0`, run by `.github/workflows/ci.yml` |

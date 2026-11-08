@@ -1,12 +1,14 @@
 //! The catalog: every component of `nsh-m3e` in each of its states, for the visual checks of ADR 0013: the buttons,
-//! the icon buttons, the switches, the checkboxes, the navigation bars, the tab rows and the dividers.
+//! the icon buttons, the switches, the checkboxes, the navigation bars, the tab rows, the dividers and the floating
+//! action buttons.
 //!
-//! `nsh test` opens it on NSH's hosts (`button.test.tsx`, `switch.test.tsx` and `checkbox.test.tsx`, beside its
-//! `nsh.json`) and saves screenshots of it; `visual-checks` reads the pixels it knows in them, at the places
-//! [`grid`], [`switch`] and [`checkbox`] give.
+//! `nsh test` opens it on NSH's hosts (`button.test.tsx`, `switch.test.tsx`, `checkbox.test.tsx` and `fab.test.tsx`,
+//! beside its `nsh.json`) and saves screenshots of it; `visual-checks` reads the pixels it knows in them, at the places
+//! [`grid`], [`switch`], [`checkbox`] and [`fab`] give.
 //! The catalog is a Rust app (`nsh.json` names its root, [`Catalog`]); nothing in it runs JavaScript.
 
 pub mod checkbox;
+pub mod fab;
 pub mod grid;
 pub mod navigation;
 pub mod switch;
@@ -28,9 +30,9 @@ use crate::navigation::{ITEMS, ItemState, NavCell};
 use crate::switch::SwitchCell;
 use crate::tabs::{RowKind, TABS, TabCell, TabState};
 
-/// The icon every icon button, navigation bar item and tab of the catalog shows: Material Symbols' `favorite`, filled, whose
-/// middle is filled, so that the visual checks read the icon's color there. Material shows the outlined icon in an item
-/// that is not selected; the catalog shows the filled one in all, to have a color to read.
+/// The icon every icon button, navigation bar item, tab and FAB of the catalog shows: Material Symbols' `favorite`,
+/// filled, whose middle is filled, so that the visual checks read the icon's color there. Material shows the outlined
+/// icon in an item that is not selected; the catalog shows the filled one in all, to have a color to read.
 pub const ICON: Icon = outlined::filled::FAVORITE;
 
 #[native_module("catalog/native")]
@@ -38,9 +40,9 @@ fn native(registry: &mut Registry) {
     registry.register::<Catalog>();
 }
 
-/// Every button, icon button, switch, navigation bar, row of tabs, checkbox and divider of the catalog at its place on
-/// the [`grid`], the [`switch`], [`navigation`] and [`tabs`] grids and the [`checkbox`] grid, on the scheme's surface
-/// color.
+/// Every button, icon button, switch, navigation bar, row of tabs, checkbox, divider and FAB of the catalog at its place
+/// on the [`grid`], the [`switch`], [`navigation`] and [`tabs`] grids, the [`checkbox`] grid and the [`fab`] row, on the
+/// scheme's surface color.
 #[component]
 pub fn Catalog() -> impl IntoElement {
     let surface = AdaptiveColor::rgb(
@@ -159,7 +161,7 @@ pub fn Catalog() -> impl IntoElement {
                 .child(row),
         )
     });
-    checkbox::place(page)
+    fab::place(checkbox::place(page))
 }
 
 #[cfg(test)]
@@ -220,9 +222,10 @@ mod tests {
                 _ => {}
             }
         }
+        // The FABs are buttons for screen readers too.
         assert_eq!(
             disabled.len(),
-            Cell::all().count() + IconCell::all().count()
+            Cell::all().count() + IconCell::all().count() + fab::FabCell::all().count()
         );
         let child_of = |id: NodeId| {
             parents

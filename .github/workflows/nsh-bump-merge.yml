@@ -7,7 +7,10 @@ name: NSH bump merge
 # A check still running means another of those workflows has yet to complete, and this runs again then; a red check
 # leaves the pull request open for its fix.
 on:
-  workflow_run:
+  # zizmor warns that workflow_run often runs a pull request's code with this repository's secrets. This one checks
+  # nothing out and runs no code from the pull request: it reads check runs and merges only the bot's `nsh-bump`
+  # branch of this repository (the job's `if` below).
+  workflow_run: # zizmor: ignore[dangerous-triggers]
     workflows: [CI, Visual checks, Visual checks on phones]
     types: [completed]
     # Only the bump's branch starts a run: without this, every push and pull request added a skipped run per workflow.
