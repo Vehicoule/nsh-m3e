@@ -28,6 +28,7 @@ components=(
     FloatingActionButton.kt
     Checkbox.kt
     ComposeMaterial3Flags.kt
+    RadioButton.kt
     Switch.kt
     ProgressIndicator.kt
     WavyProgressIndicator.kt

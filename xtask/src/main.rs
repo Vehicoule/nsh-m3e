@@ -302,6 +302,16 @@ const SOURCES: &[Source] = &[
         ],
     },
     Source {
+        file: "RadioButtonTokens.kt",
+        object: None,
+        doc: &[
+            "The radio button's icon colors, selected and unselected, in each state (enabled, hovered, focused, \
+             pressed and disabled with its opacity), its icon's size (the ring's outer diameter) and its state layer's \
+             size. Colors are roles of the scheme ([`crate::color::ColorRole`]), resolved against the light or dark \
+             [`crate::color::ColorScheme`].",
+        ],
+    },
+    Source {
         file: "ShapeTokens.kt",
         object: None,
         doc: &[

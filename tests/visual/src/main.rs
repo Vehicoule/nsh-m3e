@@ -40,6 +40,7 @@ use nsh_m3e::tokens::androidx::{
     xsmall_icon_button_tokens,
 };
 
+mod radio;
 mod switch;
 
 const USAGE: &str = "usage: cargo run -p visual-checks -- <directory of screenshots>";
@@ -855,7 +856,7 @@ fn run(directory: &Path, out: &mut impl io::Write) -> Result<(), Error> {
 /// Runs the checks on the one directory `args` names, writing what they find to `out`.
 fn run_with(args: &[String], out: &mut impl io::Write) -> Result<(), Error> {
     match args {
-        [directory] => run(Path::new(directory), out),
+        [directory] => radio::also(run(Path::new(directory), out), Path::new(directory), out),
         _ => Err(Error::Usage),
     }
 }
