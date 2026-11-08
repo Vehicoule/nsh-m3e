@@ -11,6 +11,10 @@
 //! button with a pressed state (androidx says `Role.Checkbox`), whose label is the toggle button's text. The toggle
 //! button reports the value a press asks for and shows the one the app passes back.
 //!
+//! In a connected button group, each toggle button takes the shapes of its place in the row ([`ToggleButtonShapes`]):
+//! androidx's `ButtonGroupDefaults.connectedLeadingButtonShapes`, `connectedMiddleButtonShapes` and
+//! `connectedTrailingButtonShapes` in `ButtonGroup.kt`, whose start and end corners differ.
+//!
 //! Left out, each for its own pull request: the leading icon (`icon`, which [`crate::button`] has not either);
 //! `ElevatedToggleButton`; the shadow that `ToggleButtonDefaults.elevation()` and its tonal sibling give a toggle button
 //! under the pointer (`HoveredContainerElevation`, level 1, which [`crate::button`] leaves out too); and the change of
@@ -26,13 +30,13 @@ use nsh_core::geometry::{Points, Size};
 use nsh_core::prelude::*;
 
 use crate::button::ButtonSize;
-use crate::morph::{DrawnShape, corners};
+use crate::morph::{Corners, DrawnShape, SideCorners, corners};
 use crate::motion::SpringToken;
 use crate::tint::{MIN_TOUCH_TARGET, Tint, tint_color};
 use crate::tokens::androidx::{
     button_large_tokens, button_medium_tokens, button_small_tokens, button_xlarge_tokens,
-    button_xsmall_tokens, filled_button_tokens, outlined_button_tokens, state_tokens,
-    tonal_button_tokens, typography_tokens,
+    button_xsmall_tokens, connected_button_group_small_tokens, filled_button_tokens,
+    outlined_button_tokens, shape_tokens, state_tokens, tonal_button_tokens, typography_tokens,
 };
 use crate::tokens::{Shape, TypeStyle};
 
@@ -47,6 +51,53 @@ pub enum ToggleButtonStyle {
     Tonal,
     /// An outline and no container, inverse surface when checked: androidx `OutlinedToggleButton`.
     Outlined,
+}
+
+/// Which shapes a [`ToggleButton`] morphs between: its size's, or those of its place in a connected button group.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PropEnum)]
+pub enum ToggleButtonShapes {
+    /// Its size's shapes: androidx `ToggleButtonDefaults.shapesFor(buttonHeight)`.
+    #[default]
+    Standard,
+    /// The first of a connected button group: fully rounded at the start, its inner corners at the end (androidx
+    /// `ButtonGroupDefaults.connectedLeadingButtonShapes`).
+    ConnectedLeading,
+    /// Between the first and the last of a connected button group: its inner corners on both sides (androidx
+    /// `ButtonGroupDefaults.connectedMiddleButtonShapes`).
+    ConnectedMiddle,
+    /// The last of a connected button group: its inner corners at the start, fully rounded at the end (androidx
+    /// `ButtonGroupDefaults.connectedTrailingButtonShapes`).
+    ConnectedTrailing,
+}
+
+/// A connected button group's shapes, at rest, pressed and checked, for `place` (`ButtonGroup.kt` lines 198-279), or
+/// `None` for [`ToggleButtonShapes::Standard`], which takes its size's.
+fn connected_shapes(place: ToggleButtonShapes) -> Option<[SideCorners; 3]> {
+    // `ShapeDefaults.CornerFull`, `CornerSize(100)`: half the shorter side (`Shapes.kt` line 332).
+    let full = Corners::Full;
+    let inner = Corners::Radius(connected_button_group_small_tokens::INNER_CORNER_CORNER_SIZE);
+    let pressed_inner =
+        Corners::Radius(connected_button_group_small_tokens::PRESSED_INNER_CORNER_CORNER_SIZE);
+    // `connectedButtonCheckedShape`: `ShapeTokens.CornerFull`, for every place.
+    let checked = SideCorners::from(corners(shape_tokens::CORNER_FULL));
+    let sides = |start, end| SideCorners { start, end };
+    match place {
+        ToggleButtonShapes::Standard => None,
+        ToggleButtonShapes::ConnectedLeading => {
+            Some([sides(full, inner), sides(full, pressed_inner), checked])
+        }
+        // `ShapeDefaults.Small` (`ShapeTokens.CornerSmall`, `Shapes.kt` line 283) at rest, and
+        // `connectedMiddleButtonPressShape` pressed.
+        ToggleButtonShapes::ConnectedMiddle => Some([
+            corners(shape_tokens::CORNER_SMALL).into(),
+            pressed_inner.into(),
+            checked,
+        ]),
+        ToggleButtonShapes::ConnectedTrailing => {
+            Some([sides(inner, full), sides(pressed_inner, full), checked])
+        }
+    }
 }
 
 /// What a size gives the toggle button.
@@ -279,6 +330,9 @@ pub struct ToggleButtonProps {
     /// Its color style.
     #[prop(default)]
     pub style: Prop<ToggleButtonStyle>,
+    /// Its shapes: its size's, or those of its place in a connected button group.
+    #[prop(default)]
+    pub shapes: Prop<ToggleButtonShapes>,
     /// No presses: the disabled colors, and screen readers say it is dimmed.
     #[prop(default)]
     pub disabled: Prop<bool>,
@@ -316,8 +370,10 @@ pub fn ToggleButton(props: ToggleButtonProps, cx: Scope<ToggleButtonEvent>) -> i
     let size = move || size_spec(props.size.get());
     let colors = move || color_spec(props.style.get());
     let shapes = move || {
-        let size = size();
-        [corners(REST), corners(size.pressed), corners(size.checked)]
+        connected_shapes(props.shapes.get()).unwrap_or_else(|| {
+            let size = size();
+            [corners(REST), corners(size.pressed), corners(size.checked)].map(SideCorners::from)
+        })
     };
     let content = move || {
         tint_color(Some(
@@ -411,13 +467,14 @@ mod tests {
     use nsh_testing::Headless;
 
     use super::*;
+    use crate::animation_probe::Replay;
     use crate::animation_probe::{
         Recording, StartedSpring, layout_items, started_springs, worst_gap,
     };
     use crate::color::{ColorRole, ColorScheme};
     use crate::morph::Corners;
     use crate::morph_probe::{
-        Step, assert_traces, paths, replay, rounded_rectangle, set_values, tolerance,
+        Step, assert_traces, paths, replay, rounded_rectangle, rounded_sides, set_values, tolerance,
     };
     use crate::motion::SPRING_MASS;
 
@@ -432,6 +489,8 @@ mod tests {
         size: Prop<ButtonSize>,
         #[prop(default)]
         style: Prop<ToggleButtonStyle>,
+        #[prop(default)]
+        shapes: Prop<ToggleButtonShapes>,
         #[prop(default)]
         disabled: Prop<bool>,
         /// The app does not pass back the value a press asks for.
@@ -455,6 +514,7 @@ mod tests {
                         .checked(move || checked.get())
                         .size(move || size.get())
                         .style(props.style)
+                        .shapes(props.shapes)
                         .disabled(move || disabled.get())
                         .on_change(move |next: &bool| {
                             changes.update(|n| *n += 1);
@@ -477,10 +537,20 @@ mod tests {
         checked: bool,
         size: ButtonSize,
         style: ToggleButtonStyle,
+        shapes: ToggleButtonShapes,
         disabled: bool,
         answer: Answer,
         appearance: Appearance,
         reduce_motion: bool,
+        direction: Direction,
+    }
+
+    /// Which way the layout runs.
+    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+    enum Direction {
+        #[default]
+        LeftToRight,
+        RightToLeft,
     }
 
     /// What the app does with the value a press asks for.
@@ -499,6 +569,7 @@ mod tests {
             checked: Prop::new(config.checked),
             size: Prop::new(config.size),
             style: Prop::new(config.style),
+            shapes: Prop::new(config.shapes),
             disabled: Prop::new(config.disabled),
             ignore: Prop::new(config.answer == Answer::Ignores),
         });
@@ -507,6 +578,7 @@ mod tests {
             os: Os::Web,
             color_scheme: config.appearance,
             reduce_motion: config.reduce_motion,
+            rtl: config.direction == Direction::RightToLeft,
             ..Environment::default()
         };
         let mut app = Headless::start(EngineConfig {
@@ -973,6 +1045,135 @@ mod tests {
                 assert_traces(&layer[0], &expected, &what);
             }
         }
+    }
+
+    #[test]
+    fn each_place_in_a_connected_group_has_androidx_shapes() {
+        // `ButtonGroup.kt` lines 198-279: inner corners of `InnerCornerCornerSize` (small, 8 points) that a press
+        // sharpens to `PressedInnerCornerCornerSize` (extra small, 4 points), outer corners and checked corners fully
+        // rounded, and a middle item rounded by `ShapeDefaults.Small` (8 points) all round.
+        let (full, inner, pressed) = (
+            Corners::Full,
+            Corners::Radius(Points(8.0)),
+            Corners::Radius(Points(4.0)),
+        );
+        let sides = |start, end| SideCorners { start, end };
+        let checked = sides(full, full);
+        assert_eq!(connected_shapes(ToggleButtonShapes::Standard), None);
+        assert_eq!(
+            connected_shapes(ToggleButtonShapes::ConnectedLeading),
+            Some([sides(full, inner), sides(full, pressed), checked])
+        );
+        assert_eq!(
+            connected_shapes(ToggleButtonShapes::ConnectedMiddle),
+            Some([sides(inner, inner), sides(pressed, pressed), checked])
+        );
+        assert_eq!(
+            connected_shapes(ToggleButtonShapes::ConnectedTrailing),
+            Some([sides(inner, full), sides(pressed, full), checked])
+        );
+    }
+
+    /// The radii, `[left, right]`, a connected place is drawn with at rest, pressed and checked, on a container of
+    /// height `height`.
+    fn connected_radii(place: ToggleButtonShapes, height: f32) -> [[f32; 2]; 3] {
+        let full = height / 2.0;
+        match place {
+            ToggleButtonShapes::ConnectedLeading => [[full, 8.0], [full, 4.0], [full, full]],
+            ToggleButtonShapes::ConnectedMiddle => [[8.0, 8.0], [4.0, 4.0], [full, full]],
+            _ => [[8.0, full], [4.0, full], [full, full]],
+        }
+    }
+
+    /// The container's path is a rectangle of `frame` with these `[left, right]` radii, and so is the state layer's.
+    fn assert_drawn_sides(recording: &Recording, replay: &Replay, radii: [f32; 2], what: &str) {
+        let mounted = Mounted::of(&recording.items());
+        let expected = rounded_sides(mounted.size(), 0.0, radii);
+        assert_traces(
+            &paths(mounted.drawing(mounted.container), replay)[0],
+            &expected,
+            what,
+        );
+        assert_traces(
+            &paths(mounted.drawing(mounted.layer), replay)[0],
+            &expected,
+            what,
+        );
+    }
+
+    #[test]
+    fn a_connected_toggle_button_morphs_its_sides_apart_and_lays_nothing_out() {
+        for place in [
+            ToggleButtonShapes::ConnectedLeading,
+            ToggleButtonShapes::ConnectedMiddle,
+            ToggleButtonShapes::ConnectedTrailing,
+        ] {
+            let what = format!("{place:?}");
+            let (mut app, recording) = start(Config {
+                shapes: place,
+                ..Config::default()
+            });
+            let items = recording.items();
+            assert_eq!(started_springs(&items), Vec::new(), "{what}");
+            let height = Mounted::of(&items).size().height.0;
+            let [rest, pressed, checked] = connected_radii(place, height);
+            let mut replay = replay(&recording);
+            assert_drawn_sides(&recording, &replay, rest, &what);
+            // A middle item has its four corners alike and moves one radius; the first and the last move both.
+            let moved = if place == ToggleButtonShapes::ConnectedMiddle {
+                1
+            } else {
+                2
+            };
+            let spec = SpringToken::FastSpatial.spec();
+            let sent = press_down(&mut app, &recording);
+            let springs = started_springs(&sent);
+            assert_eq!(springs.len(), moved, "{what}: {springs:?}");
+            for spring in &springs {
+                assert_eq!(spring.stiffness.to_bits(), spec.stiffness.to_bits());
+                assert_eq!(
+                    spring.damping.to_bits(),
+                    spec.damping_coefficient().to_bits()
+                );
+            }
+            assert_eq!(set_values(&sent), 0, "{what}: {sent:?}");
+            assert_eq!(layout_items(&sent), 0, "{what}: {sent:?}");
+            replay.apply(&sent);
+            replay.run(springs[0].node, 600);
+            assert!(!replay.is_animating(), "{what}");
+            assert_drawn_sides(&recording, &replay, pressed, &what);
+            // The press ends and the app checks it: fully rounded on both sides.
+            let sent = release(&mut app, &recording);
+            assert!(app.shows("checked: true"), "{what}");
+            // The probe's lines and the label's new color are sent again; no frame is.
+            assert!(
+                !sent
+                    .iter()
+                    .any(|item| matches!(item, MountItem::Frame { .. })),
+                "{what}: {sent:?}"
+            );
+            replay.apply(&sent);
+            replay.run(springs[0].node, 600);
+            assert!(!replay.is_animating(), "{what}");
+            assert_drawn_sides(&recording, &replay, checked, &what);
+        }
+    }
+
+    #[test]
+    fn a_connected_toggle_button_mirrors_its_sides_right_to_left() {
+        let (_app, recording) = start(Config {
+            shapes: ToggleButtonShapes::ConnectedLeading,
+            direction: Direction::RightToLeft,
+            ..Config::default()
+        });
+        let height = Mounted::of(&recording.items()).size().height.0;
+        // The start is on the right.
+        assert_drawn_sides(
+            &recording,
+            &replay(&recording),
+            [8.0, height / 2.0],
+            "right to left",
+        );
     }
 
     /// A press that goes down on the toggle button and stays down: what it sent.

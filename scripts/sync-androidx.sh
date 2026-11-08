@@ -36,6 +36,7 @@ components=(
     Snackbar.kt
     ToggleButton.kt
     ButtonGroup.kt
+    Shapes.kt
 )
 
 root="$(git rev-parse --show-toplevel)"
