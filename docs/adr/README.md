@@ -28,3 +28,4 @@ Only the user moves an ADR from Proposed to Accepted.
 | [0018](0018-draw-elevation-as-two-box-shadows-per-level.md) | Elevation is drawn as the two box shadows Material Web gives each level | Accepted |
 | [0020](0020-draw-the-loading-indicator-with-animated-cubics.md) | The loading indicator's morphing shapes are one canvas of cubics whose points are animated values | Accepted |
 | [0021](0021-expand-a-pressed-button-group-item.md) | How a button group widens the item a finger presses | Accepted |
+| [0022](0022-test-only-the-changed-lines-mutants-on-pull-requests.md) | Pull requests test only the mutants in the lines they change; `main` tests them all | Accepted |
