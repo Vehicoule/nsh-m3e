@@ -135,7 +135,7 @@ impl SpringSpec {
     /// ```
     #[must_use]
     pub fn layout_transition(self) -> LayoutTransition {
-        let natural = (self.stiffness / SPRING_MASS).sqrt();
+        let natural = natural_frequency(self.stiffness, SPRING_MASS);
         let (damping, rate) = if self.damping_ratio > NSH_CRITICAL_ABOVE {
             (1.0, NSH_CRITICAL_RATE)
         } else {
@@ -161,6 +161,13 @@ const NSH_CRITICAL_ABOVE: f32 = 0.999;
 
 /// The lowest damping ratio NSH's curve takes (`damping.clamp(0.05, 1.0)`, line 659 at the pinned revision).
 const NSH_MIN_DAMPING: f32 = 0.05;
+
+/// `ω₀ = √(k / m)`, the radians per second a spring of stiffness `k` and mass `m` swings at without damping. Apart from
+/// [`SpringSpec::layout_transition`] so that a test can give it a mass that is not [`SPRING_MASS`], where `k / m` and
+/// `k * m` differ.
+fn natural_frequency(stiffness: f32, mass: f32) -> f32 {
+    (stiffness / mass).sqrt()
+}
 
 /// `c = ζ · 2 · √(k · m)`: critical damping is `2 · √(k · m)`, and `ζ` is the fraction of it. The `2` is part of the
 /// formula, not a design value.
@@ -428,6 +435,41 @@ mod tests {
                 .abs()
                 < f32::EPSILON
         );
+    }
+
+    #[test]
+    fn the_natural_frequency_is_the_root_of_stiffness_over_mass() {
+        // 100 / 4 = 25, whose root is 5; 100 * 4 would give 20 and 100 % 4 would give 0.
+        assert!((natural_frequency(100.0, 4.0) - 5.0).abs() < 1e-6);
+        // At unit mass, the mass of every M3 spring, it is the root of the stiffness.
+        assert!((natural_frequency(800.0, SPRING_MASS) - 800.0_f32.sqrt()).abs() < 1e-4);
+        // A stiffer spring swings faster, and a heavier one slower.
+        assert!(natural_frequency(200.0, 1.0) > natural_frequency(100.0, 1.0));
+        assert!(natural_frequency(100.0, 2.0) < natural_frequency(100.0, 1.0));
+    }
+
+    #[test]
+    fn nsh_critical_curve_starts_above_its_ratio_and_not_at_it() {
+        let spec = |damping_ratio| SpringSpec {
+            damping_ratio,
+            ..SpringToken::FastSpatial.spec()
+        };
+        // At the ratio NSH's curve is still the underdamped one (`zeta > 0.999` is the critical one, line 660 at the
+        // pinned revision), with its own settling rate; just above, it is the critical one.
+        let at = spec(NSH_CRITICAL_ABOVE).layout_transition();
+        assert_eq!(
+            at.curve,
+            LayoutCurve::Spring {
+                damping: NSH_CRITICAL_ABOVE
+            }
+        );
+        let natural = natural_frequency(spec(0.0).stiffness, SPRING_MASS);
+        let settle = NSH_SETTLE / NSH_CRITICAL_ABOVE / natural * 1000.0;
+        assert!((at.duration_ms - settle).abs() < 1e-3);
+        let above = spec(NSH_CRITICAL_ABOVE + 0.000_5).layout_transition();
+        assert_eq!(above.curve, LayoutCurve::Spring { damping: 1.0 });
+        let critical = NSH_CRITICAL_RATE / natural * 1000.0;
+        assert!((above.duration_ms - critical).abs() < 1e-3);
     }
 
     #[test]
