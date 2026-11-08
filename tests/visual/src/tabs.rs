@@ -40,11 +40,20 @@ fn state_layer(kind: RowKind) -> ColorRole {
     }
 }
 
-/// The colors of a tab's icon: the selected tab's, and the other tabs'.
-fn icon_roles(kind: RowKind) -> (ColorRole, ColorRole) {
-    match kind {
-        RowKind::Secondary => (secondary::ACTIVE_ICON_COLOR, secondary::INACTIVE_ICON_COLOR),
-        _ => (primary::ACTIVE_ICON_COLOR, primary::INACTIVE_ICON_COLOR),
+/// The colors of a tab's icon: the selected tab's, and the other tabs', at rest and with the mouse over the tab. Under
+/// the mouse an unselected tab's icon goes from `OnSurfaceVariant` to `OnSurface` (ADR 0021); the secondary tokens name
+/// one color for a state, for both.
+fn icon_roles(kind: RowKind, hovered: bool) -> (ColorRole, ColorRole) {
+    match (kind, hovered) {
+        (RowKind::Secondary, false) => {
+            (secondary::ACTIVE_ICON_COLOR, secondary::INACTIVE_ICON_COLOR)
+        }
+        (RowKind::Secondary, true) => (secondary::HOVER_ICON_COLOR, secondary::HOVER_ICON_COLOR),
+        (_, false) => (primary::ACTIVE_ICON_COLOR, primary::INACTIVE_ICON_COLOR),
+        (_, true) => (
+            primary::ACTIVE_HOVER_ICON_COLOR,
+            primary::INACTIVE_HOVER_ICON_COLOR,
+        ),
     }
 }
 
@@ -105,11 +114,13 @@ fn tab_probes(cell: TabCell, state: TabState, scheme: &ColorScheme, hovered: boo
     let selected = state == TabState::Selected;
     let container = Rgb::of(scheme, container_role(kind));
     let indicator = Rgb::of(scheme, primary::ACTIVE_INDICATOR_COLOR);
-    let (active_icon, inactive_icon) = icon_roles(kind);
+    // A disabled tab shows no state, whatever the mouse does.
+    let hovered = hovered && state != TabState::Disabled;
+    let (active_icon, inactive_icon) = icon_roles(kind, hovered);
     // The state layer lies over the container and the icon of an enabled tab, and under the divider and the bar, which
-    // the row draws after its tabs; a disabled tab shows none.
+    // the row draws after its tabs.
     let over = |below: Rgb| {
-        if hovered && state != TabState::Disabled {
+        if hovered {
             faded(
                 scheme,
                 state_layer(kind),
@@ -421,7 +432,7 @@ mod tests {
             let cell = cell(kind, Content::Icon);
             for scheme in [LIGHT, DARK] {
                 let container = Rgb::of(&scheme, container_role(kind));
-                let (active, inactive) = icon_roles(kind);
+                let (active, inactive) = icon_roles(kind, false);
                 let (selected, unselected) = (Rgb::of(&scheme, active), Rgb::of(&scheme, inactive));
                 // Two colors of the scheme that differ, so that no tab can pass for another.
                 assert_ne!(selected, unselected, "{kind:?}");
@@ -455,8 +466,8 @@ mod tests {
         }
         // The primary row's selected icon is the primary color, the secondary row's the content color: the rows differ.
         assert_ne!(
-            Rgb::of(&LIGHT, icon_roles(RowKind::Primary).0),
-            Rgb::of(&LIGHT, icon_roles(RowKind::Secondary).0)
+            Rgb::of(&LIGHT, icon_roles(RowKind::Primary, false).0),
+            Rgb::of(&LIGHT, icon_roles(RowKind::Secondary, false).0)
         );
         // Rows that show no icon read none.
         for kind in KINDS {
@@ -472,9 +483,17 @@ mod tests {
         for kind in KINDS {
             let cell = cell(kind, Content::Icon);
             let container = Rgb::of(&LIGHT, container_role(kind));
-            let (active, inactive) = icon_roles(kind);
+            let (active, inactive) = icon_roles(kind, false);
+            let (active_hovered, inactive_hovered) = icon_roles(kind, true);
             let (selected_icon, unselected_icon) =
                 (Rgb::of(&LIGHT, active), Rgb::of(&LIGHT, inactive));
+            // Under the mouse the selected tab's icon keeps its color and the unselected one's goes to `OnSurface`.
+            let (selected_hovered, unselected_hovered) = (
+                Rgb::of(&LIGHT, active_hovered),
+                Rgb::of(&LIGHT, inactive_hovered),
+            );
+            assert_eq!(selected_hovered, selected_icon, "{kind:?}");
+            assert_ne!(unselected_hovered, unselected_icon, "{kind:?}");
             let color = |hovered, state, what: &str| {
                 let (_, expected, tolerance) = read(cell, &LIGHT, hovered, state, what);
                 (expected, tolerance)
@@ -487,7 +506,7 @@ mod tests {
             );
             assert_eq!(
                 color(hovered, TabState::Selected, "icon"),
-                layer(kind, selected_icon)
+                layer(kind, selected_hovered)
             );
             assert_eq!(
                 color(hovered, TabState::Unselected, "container"),
@@ -506,7 +525,8 @@ mod tests {
                 color(hovered, TabState::Selected, "bottom line"),
                 color(None, TabState::Selected, "bottom line")
             );
-            // Over the unselected one: the layer over the container, and over the row's own tint of the icon.
+            // Over the unselected one: the layer over the container, and over its icon in the color it has under the
+            // mouse. The selected tab's icon is as it was.
             let hovered = Some(TabState::Unselected);
             assert_eq!(
                 color(hovered, TabState::Unselected, "container"),
@@ -514,7 +534,11 @@ mod tests {
             );
             assert_eq!(
                 color(hovered, TabState::Unselected, "icon"),
-                layer(kind, unselected_icon)
+                layer(kind, unselected_hovered)
+            );
+            assert_eq!(
+                color(hovered, TabState::Selected, "icon"),
+                (selected_icon, 0)
             );
             // Where the bar would be, the layer over the container; the divider's line is drawn over it.
             assert_eq!(
@@ -529,7 +553,14 @@ mod tests {
             // the layer changes nothing over it and only the container shows it there; the icon of the others changes.
             assert_ne!(layer(kind, container).0, container);
             assert_eq!(layer(kind, selected_icon).0, selected_icon);
-            assert_ne!(layer(kind, unselected_icon).0, unselected_icon);
+            // The primary row's layer (`Primary`) tints an unselected tab's icon under the mouse (`OnSurface`); the
+            // secondary row's layer and that icon are both `OnSurface`, and the layer changes nothing over it.
+            if state_layer(kind) == inactive_hovered {
+                assert_eq!(layer(kind, unselected_hovered).0, unselected_hovered);
+            } else {
+                assert_ne!(layer(kind, unselected_hovered).0, unselected_hovered);
+            }
+            assert_ne!(layer(kind, unselected_hovered).0, unselected_icon);
             // Over a disabled one, no state layer: as at rest.
             let hovered = Some(TabState::Disabled);
             for what in ["container", "icon", "bar top", "bottom line"] {

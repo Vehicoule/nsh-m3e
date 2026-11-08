@@ -58,6 +58,27 @@ enum Kind {
     Secondary,
 }
 
+/// What a tab shows of the pointer and the keyboard: nothing, the pointer over it, the keyboard's focus on it, or a
+/// press on it. The tokens name each its own colors for the label and the icon (ADR 0021).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Interaction {
+    /// None of the three.
+    Rest,
+    /// The pointer is over the tab.
+    Hovered,
+    /// The keyboard's focus is on the tab.
+    Focused,
+    /// The tab is being pressed.
+    Pressed,
+}
+
+impl Interaction {
+    /// What a tab shows of `self`: nothing when it is `disabled`, which takes no press and shows no state.
+    fn shown(self, disabled: bool) -> Self {
+        if disabled { Self::Rest } else { self }
+    }
+}
+
 impl Kind {
     /// The row's color: `TabRowDefaults.primaryContainerColor` and `secondaryContainerColor` (`TabRow.kt`, lines
     /// 1000-1005).
@@ -79,28 +100,88 @@ impl Kind {
         }
     }
 
-    /// The color of a tab's icon: the active one when selected, the inactive one when not, and when disabled the
-    /// inactive one, faded.
-    fn icon(self, selected: bool, disabled: bool) -> Tint {
-        let (active, inactive) = match self {
-            Self::Primary => (primary::ACTIVE_ICON_COLOR, primary::INACTIVE_ICON_COLOR),
-            Self::Secondary => (secondary::ACTIVE_ICON_COLOR, secondary::INACTIVE_ICON_COLOR),
-        };
-        Self::tint(active, inactive, selected, disabled)
+    /// The colors of a tab's icon in `interaction`: the selected tab's, then the unselected one's. The primary tokens
+    /// name both in each state; the secondary ones name one color for a state, and the same for both tabs.
+    fn icon_roles(self, interaction: Interaction) -> (ColorRole, ColorRole) {
+        match (self, interaction) {
+            (Self::Primary, Interaction::Rest) => {
+                (primary::ACTIVE_ICON_COLOR, primary::INACTIVE_ICON_COLOR)
+            }
+            (Self::Primary, Interaction::Hovered) => (
+                primary::ACTIVE_HOVER_ICON_COLOR,
+                primary::INACTIVE_HOVER_ICON_COLOR,
+            ),
+            (Self::Primary, Interaction::Focused) => (
+                primary::ACTIVE_FOCUS_ICON_COLOR,
+                primary::INACTIVE_FOCUS_ICON_COLOR,
+            ),
+            (Self::Primary, Interaction::Pressed) => (
+                primary::ACTIVE_PRESSED_ICON_COLOR,
+                primary::INACTIVE_PRESSED_ICON_COLOR,
+            ),
+            (Self::Secondary, Interaction::Rest) => {
+                (secondary::ACTIVE_ICON_COLOR, secondary::INACTIVE_ICON_COLOR)
+            }
+            (Self::Secondary, Interaction::Hovered) => {
+                (secondary::HOVER_ICON_COLOR, secondary::HOVER_ICON_COLOR)
+            }
+            (Self::Secondary, Interaction::Focused) => {
+                (secondary::FOCUS_ICON_COLOR, secondary::FOCUS_ICON_COLOR)
+            }
+            (Self::Secondary, Interaction::Pressed) => {
+                (secondary::PRESSED_ICON_COLOR, secondary::PRESSED_ICON_COLOR)
+            }
+        }
     }
 
-    /// The color of a tab's label, by the same rule.
-    fn label(self, selected: bool, disabled: bool) -> Tint {
-        let (active, inactive) = match self {
-            Self::Primary => (
+    /// The colors of a tab's label in `interaction`, by the same rule as [`Self::icon_roles`].
+    fn label_roles(self, interaction: Interaction) -> (ColorRole, ColorRole) {
+        match (self, interaction) {
+            (Self::Primary, Interaction::Rest) => (
                 primary::ACTIVE_LABEL_TEXT_COLOR,
                 primary::INACTIVE_LABEL_TEXT_COLOR,
             ),
-            Self::Secondary => (
+            (Self::Primary, Interaction::Hovered) => (
+                primary::ACTIVE_HOVER_LABEL_TEXT_COLOR,
+                primary::INACTIVE_HOVER_LABEL_TEXT_COLOR,
+            ),
+            (Self::Primary, Interaction::Focused) => (
+                primary::ACTIVE_FOCUS_LABEL_TEXT_COLOR,
+                primary::INACTIVE_FOCUS_LABEL_TEXT_COLOR,
+            ),
+            (Self::Primary, Interaction::Pressed) => (
+                primary::ACTIVE_PRESSED_LABEL_TEXT_COLOR,
+                primary::INACTIVE_PRESSED_LABEL_TEXT_COLOR,
+            ),
+            (Self::Secondary, Interaction::Rest) => (
                 secondary::ACTIVE_LABEL_TEXT_COLOR,
                 secondary::INACTIVE_LABEL_TEXT_COLOR,
             ),
-        };
+            (Self::Secondary, Interaction::Hovered) => (
+                secondary::HOVER_LABEL_TEXT_COLOR,
+                secondary::HOVER_LABEL_TEXT_COLOR,
+            ),
+            (Self::Secondary, Interaction::Focused) => (
+                secondary::FOCUS_LABEL_TEXT_COLOR,
+                secondary::FOCUS_LABEL_TEXT_COLOR,
+            ),
+            (Self::Secondary, Interaction::Pressed) => (
+                secondary::PRESSED_LABEL_TEXT_COLOR,
+                secondary::PRESSED_LABEL_TEXT_COLOR,
+            ),
+        }
+    }
+
+    /// The color of a tab's icon in `interaction`: the selected tab's when selected, the unselected one's when not,
+    /// and when disabled the unselected one's at rest, faded: a disabled tab shows no state.
+    fn icon(self, selected: bool, disabled: bool, interaction: Interaction) -> Tint {
+        let (active, inactive) = self.icon_roles(interaction.shown(disabled));
+        Self::tint(active, inactive, selected, disabled)
+    }
+
+    /// The color of a tab's label in `interaction`, by the same rule.
+    fn label(self, selected: bool, disabled: bool, interaction: Interaction) -> Tint {
+        let (active, inactive) = self.label_roles(interaction.shown(disabled));
         Self::tint(active, inactive, selected, disabled)
     }
 
@@ -175,12 +256,22 @@ fn indicator_spring() -> Spring {
 /// down so that the two of a side fit it, as Compose does (`RoundedCornerShape` scales radii that add up to more than a
 /// side). The token is a corner of 3 on a bar of 3, so a capsule.
 fn indicator_radius(height: f32) -> f32 {
-    match primary::ACTIVE_INDICATOR_SHAPE {
+    corner_radius(primary::ACTIVE_INDICATOR_SHAPE, height)
+}
+
+/// The radius `shape` gives the corners of a bar `height` points tall, cut down to half of it.
+fn corner_radius(shape: Shape, height: f32) -> f32 {
+    match shape {
         Shape::Rounded(corners) => corners.top_start.0.min(height / 2.0),
         Shape::Circle => height / 2.0,
-        // `Shape` is non-exhaustive: a shape added later is square.
+        // A rectangle has none, and `Shape` is non-exhaustive: a shape added later is square.
         _ => 0.0,
     }
+}
+
+/// Whether a canvas of `size` has room to draw in: some width and some height.
+fn has_room(size: Size<Points>) -> bool {
+    size.width.0 > 0.0 && size.height.0 > 0.0
 }
 
 /// The indicator of a row: a bar under the selected tab, drawn by a canvas, whose left edge and width are animated
@@ -292,7 +383,7 @@ impl Indicator {
     /// they move.
     fn drawing(self, kind: Kind) -> Painter {
         let size = self.size.get();
-        if self.selected.get().is_none() || !(size.width.0 > 0.0 && size.height.0 > 0.0) {
+        if self.selected.get().is_none() || !has_room(size) {
             return Painter::new();
         }
         let height = size.height.0;
@@ -444,7 +535,8 @@ pub enum TabEvent {
 /// It has the behavior of `nsh-base`'s [`Tab`](nsh_base::Tab) (presses, focus, the disabled state, the tab role and the
 /// selected state for screen readers) and the look of androidx's `Tab` and `LeadingIconTab`. Hover, focus and press lay
 /// the row's content color over the whole tab at the state layer opacities of `StateTokens`, as androidx's ripple
-/// does, and change nothing else, so nothing is laid out again.
+/// does, and turn the label and the icon of an unselected tab from `OnSurfaceVariant` to `OnSurface`, as the tokens say
+/// ([ADR 0021]); nothing else changes, so nothing is laid out again.
 ///
 /// It is at least 48 points tall, the row's height and Material's touch target.
 #[component]
@@ -469,10 +561,26 @@ pub fn Tab(props: TabProps, cx: Scope<TabEvent>) -> impl IntoElement {
     let has_icon = move || props.icon.get().is_some();
     let label_shown =
         move || !has_icon() || props.label_visibility.get() != NavigationItemLabel::Hidden;
-    let icon_color =
-        move || tint_color(Some(kind.icon(props.selected.get(), props.disabled.get())));
-    let label_color =
-        move || tint_color(Some(kind.label(props.selected.get(), props.disabled.get())));
+    // The colors of the icon and of the label in each of the states the tab shows: the tokens name a color for each, and
+    // an unselected tab's goes from gray to `OnSurface` under the pointer, at focus and on a press (ADR 0021).
+    let icon_color = move |interaction| {
+        move || {
+            tint_color(Some(kind.icon(
+                props.selected.get(),
+                props.disabled.get(),
+                interaction,
+            )))
+        }
+    };
+    let label_color = move |interaction| {
+        move || {
+            tint_color(Some(kind.label(
+                props.selected.get(),
+                props.disabled.get(),
+                interaction,
+            )))
+        }
+    };
 
     let icon = move || {
         canvas(move || {
@@ -483,11 +591,17 @@ pub fn Tab(props: TabProps, cx: Scope<TabEvent>) -> impl IntoElement {
         })
         .w(primary::ICON_SIZE)
         .h(primary::ICON_SIZE)
-        .fill_color(icon_color)
+        .fill_color(icon_color(Interaction::Rest))
+        .group_hover(|s| s.fill_color(icon_color(Interaction::Hovered)))
+        .group_focus_within(|s| s.fill_color(icon_color(Interaction::Focused)))
+        .group_active(|s| s.fill_color(icon_color(Interaction::Pressed)))
     };
     let label = move || {
         text(move || props.label.get())
-            .text_color(label_color)
+            .text_color(label_color(Interaction::Rest))
+            .group_hover(|s| s.text_color(label_color(Interaction::Hovered)))
+            .group_focus_within(|s| s.text_color(label_color(Interaction::Focused)))
+            .group_active(|s| s.text_color(label_color(Interaction::Pressed)))
             .text_size(LABEL.size)
             .line_height(LineHeight::Points(LABEL.line_height))
             .letter_spacing(LABEL.tracking)
@@ -607,6 +721,8 @@ mod tests {
         selected: Prop<usize>,
         disabled: Prop<bool>,
         icon: Prop<bool>,
+        /// Whether the app selects a tab when it is pressed, as an app does; when not, a press only counts.
+        selecting: Prop<bool>,
         #[prop(default)]
         label_visibility: Prop<NavigationItemLabel>,
     }
@@ -618,6 +734,7 @@ mod tests {
         disabled: Signal<bool>,
         presses: Signal<u32>,
         icon: bool,
+        selecting: bool,
         visibility: Prop<NavigationItemLabel>,
     ) -> impl IntoElement {
         tab()
@@ -629,7 +746,9 @@ mod tests {
             .label_visibility(visibility)
             .on_press(move || {
                 presses.update(|n| *n += 1);
-                selected.set(index);
+                if selecting {
+                    selected.set(index);
+                }
             })
     }
 
@@ -641,6 +760,7 @@ mod tests {
         let last_shown = signal(true);
         let count = props.count.get_untracked();
         let icon = props.icon.get_untracked();
+        let selecting = props.selecting.get_untracked();
         let visibility = props.label_visibility;
         let tabs: Vec<AnyElement> = (0..count)
             .map(|index| {
@@ -648,11 +768,18 @@ mod tests {
                     // The last tab can go away, as an app's destinations can.
                     when(
                         move || last_shown.get(),
-                        move || one_tab(index, selected, disabled, presses, icon, visibility),
+                        move || {
+                            one_tab(
+                                index, selected, disabled, presses, icon, selecting, visibility,
+                            )
+                        },
                     )
                     .into_element()
                 } else {
-                    one_tab(index, selected, disabled, presses, icon, visibility).into_element()
+                    one_tab(
+                        index, selected, disabled, presses, icon, selecting, visibility,
+                    )
+                    .into_element()
                 }
             })
             .collect();
@@ -676,6 +803,15 @@ mod tests {
         Reduced,
     }
 
+    /// What the probe's app does when a tab is pressed.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum OnPress {
+        /// It selects the tab, as an app does.
+        Select,
+        /// It only counts the press, so that the tab the keyboard reaches stays an unselected one.
+        Count,
+    }
+
     #[derive(Debug, Clone, Copy)]
     struct Config {
         kind: Kind,
@@ -683,6 +819,7 @@ mod tests {
         selected: usize,
         disabled: bool,
         icon: bool,
+        on_press: OnPress,
         label_visibility: NavigationItemLabel,
         dark: bool,
         motion: Motion,
@@ -696,6 +833,7 @@ mod tests {
                 selected: 0,
                 disabled: false,
                 icon: false,
+                on_press: OnPress::Select,
                 label_visibility: NavigationItemLabel::default(),
                 dark: false,
                 motion: Motion::Full,
@@ -710,6 +848,7 @@ mod tests {
             selected: Prop::new(config.selected),
             disabled: Prop::new(config.disabled),
             icon: Prop::new(config.icon),
+            selecting: Prop::new(config.on_press == OnPress::Select),
             label_visibility: Prop::new(config.label_visibility),
         });
         // The web has a mouse to hover with, whatever its idiom.
@@ -1198,6 +1337,48 @@ mod tests {
     }
 
     #[test]
+    fn a_tab_is_nowhere_until_it_and_its_content_have_a_width() {
+        let at = |width: f32, content: f32| Placement {
+            left: Points(10.0),
+            width: Points(width),
+            content: Points(content),
+        };
+        assert!(at(100.0, 40.0).is_laid_out());
+        assert!(at(0.5, 0.5).is_laid_out());
+        assert!(!at(0.0, 40.0).is_laid_out());
+        assert!(!at(100.0, 0.0).is_laid_out());
+        assert!(!at(0.0, 0.0).is_laid_out());
+        assert!(!Placement::default().is_laid_out());
+    }
+
+    #[test]
+    fn a_bar_has_room_to_draw_only_with_some_width_and_some_height() {
+        let size = |width: f32, height: f32| Size::new(px(width), px(height));
+        assert!(has_room(size(24.0, 3.0)));
+        assert!(has_room(size(0.5, 0.5)));
+        assert!(!has_room(size(0.0, 3.0)));
+        assert!(!has_room(size(24.0, 0.0)));
+        assert!(!has_room(size(0.0, 0.0)));
+        assert!(!has_room(Size::default()));
+    }
+
+    #[test]
+    fn a_corner_is_cut_down_to_half_the_bar_whatever_the_shape() {
+        let rounded = |radius: f32| Shape::rounded_all(Points(radius));
+        // A radius that fits is the radius; one that does not is half the height (a capsule).
+        assert_eq!(corner_radius(rounded(1.0), 3.0), 1.0);
+        assert_eq!(corner_radius(rounded(3.0), 3.0), 1.5);
+        assert_eq!(corner_radius(rounded(9.0), 8.0), 4.0);
+        // `CircleShape` is half the height, a rectangle has no corner.
+        assert_eq!(corner_radius(Shape::Circle, 3.0), 1.5);
+        assert_eq!(corner_radius(Shape::Circle, 8.0), 4.0);
+        assert_eq!(corner_radius(Shape::Rectangle, 3.0), 0.0);
+        // The token is a corner of 3 on a bar of 3: a capsule, at the height the token gives.
+        assert_eq!(indicator_radius(3.0), 1.5);
+        assert_eq!(primary::ACTIVE_INDICATOR_HEIGHT, px(3.0));
+    }
+
+    #[test]
     fn the_icon_is_its_path_at_the_token_size() {
         for secondary in KINDS {
             let mounted = mount(Config {
@@ -1360,24 +1541,32 @@ mod tests {
     }
 
     #[test]
-    fn hover_shows_the_state_layer_and_changes_nothing_else() -> Result<(), String> {
-        let (mut app, recording) = start(Config::default());
+    fn hover_shows_the_state_layer_and_the_hover_colors_and_lays_nothing_out() -> Result<(), String>
+    {
+        let (mut app, recording) = start(Config {
+            icon: true,
+            ..Config::default()
+        });
         let mounted = Mounted::of(&recording.items());
         for index in 0..3 {
             assert_eq!(layer_opacity(&recording, index), 0.0, "{index}");
         }
         app.hover("label:Albums")?;
         let hover = recording.in_step("hover(label:Albums)");
-        // `StateTokens.HoverStateLayerOpacity`, over the whole tab, and nothing else is sent: no frame, no drawing, and
-        // no other view's style.
+        // `StateTokens.HoverStateLayerOpacity`, over the whole tab.
         assert_eq!(layer_opacity(&recording, 1), 0.08);
         assert_eq!(layer_opacity(&recording, 0), 0.0);
         assert_eq!(layer_opacity(&recording, 2), 0.0);
+        // The tab's state layer, its icon (drawn again in its new color) and its label (in its new color) are what is
+        // sent, and nothing else: no frame, so nothing is laid out again, and nothing of any other tab.
+        let tab = mounted.tabs[1];
         assert!(
-            hover.iter().all(|item| matches!(
-                item,
-                MountItem::ViewStyle { id, .. } if *id == mounted.tabs[1].layer
-            )),
+            hover.iter().all(|item| match item {
+                MountItem::ViewStyle { id, .. } => *id == tab.layer,
+                MountItem::Canvas { id, .. } => Some(*id) == tab.icon,
+                MountItem::Text { id, .. } => Some(*id) == tab.label,
+                _ => false,
+            }),
             "{hover:?}"
         );
         assert_eq!(mounted.frames_in(&hover), 0);
@@ -1413,6 +1602,151 @@ mod tests {
         assert_eq!(layer_opacity(&recording, 2), 0.0);
         assert_eq!(layer_opacity(&recording, 0), 0.0);
         assert_eq!(layer_opacity(&recording, 1), 0.0);
+    }
+
+    /// The colors of tab `index`'s icon and label, as last sent.
+    fn tab_colors(recording: &Recording, index: usize) -> (Color, Color) {
+        let mounted = Mounted::of(&recording.items());
+        let tab = mounted.tabs[index];
+        (mounted.icon_color(&tab), mounted.label_color(&tab))
+    }
+
+    #[test]
+    fn an_unselected_tab_goes_on_surface_when_hovered_or_pressed_and_comes_back() {
+        use nsh_core::tailwind::state::{HOVERED, PRESSED};
+        for secondary in KINDS {
+            for dark in [false, true] {
+                let (mut app, recording) = start(Config {
+                    kind: kind(secondary),
+                    icon: true,
+                    dark,
+                    ..Config::default()
+                });
+                let mounted = Mounted::of(&recording.items());
+                // The third tab is neither selected (the first) nor disabled.
+                let id = mounted.tabs[2].tab;
+                let rest = solid(ColorRole::OnSurfaceVariant, dark);
+                let on_surface = solid(ColorRole::OnSurface, dark);
+                for (states, what) in [(HOVERED, "hovered"), (HOVERED | PRESSED, "pressed")] {
+                    let what = format!("secondary: {secondary} dark: {dark} {what}");
+                    assert_eq!(tab_colors(&recording, 2), (rest, rest), "{what}: at rest");
+                    report(&mut app, id, states);
+                    // The tokens' `Inactive{Hover,Pressed}{Icon,LabelText}Color`, and the secondary row's
+                    // `{Hover,Pressed}{Icon,LabelText}Color`: `OnSurface` in each.
+                    assert_eq!(
+                        tab_colors(&recording, 2),
+                        (on_surface, on_surface),
+                        "{what}"
+                    );
+                    // The other tabs show nothing of it.
+                    assert_eq!(
+                        tab_colors(&recording, 1),
+                        (rest, rest),
+                        "{what}: the second tab"
+                    );
+                    report(&mut app, id, 0);
+                    assert_eq!(tab_colors(&recording, 2), (rest, rest), "{what}: after");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn an_unselected_tab_the_keyboard_reaches_goes_on_surface_until_the_focus_leaves() {
+        for secondary in KINDS {
+            for dark in [false, true] {
+                // The app leaves the selection where it is when a tab is pressed, so the tab that the arrow key reaches is
+                // an unselected one with the focus.
+                let (mut app, recording) = start(Config {
+                    kind: kind(secondary),
+                    icon: true,
+                    on_press: OnPress::Count,
+                    dark,
+                    ..Config::default()
+                });
+                let what = format!("secondary: {secondary} dark: {dark}");
+                let rest = solid(ColorRole::OnSurfaceVariant, dark);
+                let on_surface = solid(ColorRole::OnSurface, dark);
+                app.press_key("tab").unwrap();
+                app.press_key("right").unwrap();
+                assert!(app.shows("selected: 0"), "{what}");
+                // `Inactive{Focus}{Icon,LabelText}Color`, and the secondary row's `Focus...Color`.
+                assert_eq!(layer_opacity(&recording, 1), 0.1, "{what}");
+                assert_eq!(
+                    tab_colors(&recording, 1),
+                    (on_surface, on_surface),
+                    "{what}"
+                );
+                assert_eq!(tab_colors(&recording, 2), (rest, rest), "{what}: the third");
+                app.press_key("right").unwrap();
+                assert_eq!(layer_opacity(&recording, 1), 0.0, "{what}");
+                assert_eq!(tab_colors(&recording, 1), (rest, rest), "{what}: after");
+                assert_eq!(
+                    tab_colors(&recording, 2),
+                    (on_surface, on_surface),
+                    "{what}: the third, focused"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_selected_tab_keeps_its_color_when_hovered_focused_or_pressed() {
+        use nsh_core::tailwind::state::{HOVERED, PRESSED};
+        for secondary in KINDS {
+            for dark in [false, true] {
+                let (mut app, recording) = start(Config {
+                    kind: kind(secondary),
+                    icon: true,
+                    dark,
+                    ..Config::default()
+                });
+                let mounted = Mounted::of(&recording.items());
+                let id = mounted.tabs[0].tab;
+                // `Active{Hover,Focus,Pressed}...Color` of the primary row are `Primary` like the rest ones, and the
+                // secondary row's `{Hover,Focus,Pressed}...Color` are `OnSurface` like its active ones.
+                let (icon, label) = expected_colors(kind(secondary), true, false, dark);
+                let what = format!("secondary: {secondary} dark: {dark}");
+                for states in [HOVERED, HOVERED | PRESSED] {
+                    report(&mut app, id, states);
+                    assert_eq!(
+                        tab_colors(&recording, 0),
+                        (icon, label),
+                        "{what} states: {states}"
+                    );
+                }
+                report(&mut app, id, 0);
+                app.press_key("tab").unwrap();
+                assert_eq!(layer_opacity(&recording, 0), 0.1, "{what}: focused");
+                assert_eq!(tab_colors(&recording, 0), (icon, label), "{what}: focused");
+            }
+        }
+    }
+
+    #[test]
+    fn a_disabled_tab_keeps_its_faded_color_whatever_the_pointer_does() {
+        use nsh_core::tailwind::state::{HOVERED, PRESSED};
+        for secondary in KINDS {
+            let (mut app, recording) = start(Config {
+                kind: kind(secondary),
+                icon: true,
+                disabled: true,
+                ..Config::default()
+            });
+            let mounted = Mounted::of(&recording.items());
+            let id = mounted.tabs[1].tab;
+            let rest = tab_colors(&recording, 1);
+            let faded = color(scheme_color(ColorRole::OnSurfaceVariant, false), ALPHA_38);
+            assert_eq!(rest, (faded, faded), "secondary: {secondary}");
+            for states in [HOVERED, HOVERED | PRESSED] {
+                report(&mut app, id, states);
+                assert_eq!(
+                    tab_colors(&recording, 1),
+                    rest,
+                    "secondary: {secondary} states: {states}"
+                );
+            }
+        }
     }
 
     #[test]

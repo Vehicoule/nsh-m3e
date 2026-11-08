@@ -1,6 +1,6 @@
 # 0021. Tabs: the tokens for unselected tabs, and three things left out of the first pull request
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-07
 - Deciders: the user
 
@@ -37,7 +37,7 @@ The three things this library cannot do yet:
 
 For the unselected color, which is the one that changes how every row looks:
 
-1. **The tokens: selected in the active color, unselected in `OnSurfaceVariant`** (recommended).
+1. **The tokens: selected in the active color, unselected in `OnSurfaceVariant`.**
    - A primary row shows its selected tab in `Primary` and the others in the secondary gray, as Material's specification
      and its Figma kit show.
    - The state layer stays in the row's content color, as androidx's ripple is (`ripple(color = selectedContentColor)`).
@@ -46,15 +46,20 @@ For the unselected color, which is the one that changes how every row looks:
      tokens are wrong, which is why ADR 0012 does not decide it.
 2. **As androidx.** Every tab in the row's content color. A primary row has every label in `Primary`, and only the
    indicator says which tab is selected. It is what an androidx app that passes no colors shows.
-3. **The tokens in every state.** Option 1, and the hover, focus and press label and icon colors of the tokens
+3. **The tokens in every state** (chosen). Option 1, and the hover, focus and press label and icon colors of the tokens
    (`OnSurface` for an unselected tab) as well. It is the most Material, and adds a color change under the pointer,
-   which no component of this library has yet (the state layers only change an opacity), and so needs pixel checks of a
+   which no component of this library had yet (the state layers only change an opacity), and so needs pixel checks of a
    second kind.
 
 ## Decision
 
-Pending the user. The pull request that adds the tabs is written for option 1; the other two change `Kind::icon`,
-`Kind::label` and their tests only.
+Option 3, chosen by the user on 2026-11-08 on a decision card ("Tokens, tous les états"). An unselected tab's label and
+icon are `OnSurfaceVariant` at rest and `OnSurface` while the pointer is over the tab, the keyboard's focus is on it and
+it is pressed; a selected tab keeps its color in each of those states (the primary row's `Active*` tokens are `Primary`
+in all four, the secondary row's one color per state is `OnSurface`); a disabled tab shows no state. The colors go
+through the same state variants as the state layer (`group_hover`, `group_focus_within`, `group_active`), so they change
+at once with the pointer and nothing is laid out again: the hovered tab sends its state layer's style, its label's text
+and its icon's drawing, and no frame.
 
 The other four rows of the table are taken in the pull request, and the user can reverse each in review:
 
@@ -70,9 +75,11 @@ The other four rows of the table are taken in the pull request, and the user can
 
 ## Consequences
 
-- **Option 1 or 3:** `PrimaryNavigationTabTokens.Inactive*` and `SecondaryNavigationTabTokens.Inactive*` are read, and the
-  test that pins the claim "androidx never reads them" is the record of why this is a decision and not a citation.
-- **Option 2:** the tokens' inactive colors are not read, and the tests expect the row's content color for every tab.
+- `PrimaryNavigationTabTokens.Inactive*` and `SecondaryNavigationTabTokens.Inactive*` are read, with the hover, focus and
+  pressed ones, and the test that pins the claim "androidx never reads them" is the record of why this is a decision and
+  not a citation.
+- A color changes under the pointer: the first such change in this library. Its pixel checks read the label's and the
+  icon's color on the hovered tab, over the state layer, and the others' at rest.
 - **The stacked tab**, **the scrollable rows** and **the fade** each come back as their own pull request, when NSH can
   place a view by a text's baseline, when the navigation family is done, and when a canvas's fill can be animated.
 - **The catalog and the visual checks** show both rows with a label, an icon and both, each with a selected, an
