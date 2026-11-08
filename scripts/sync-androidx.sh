@@ -34,6 +34,8 @@ components=(
     ProgressIndicator.kt
     Ripple.kt
     ShortNavigationBar.kt
+    Tab.kt
+    TabRow.kt
     WavyProgressIndicator.kt
     internal/LinearWavyProgressModifiers.kt
     internal/CircularWavyProgressModifiers.kt

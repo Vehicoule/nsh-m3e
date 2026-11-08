@@ -1,5 +1,6 @@
 //! The catalog: every component of `nsh-m3e` in each of its states, for the visual checks of ADR 0013: the buttons,
-//! the icon buttons, the switches, the checkboxes, the navigation bars, the dividers and the floating action buttons.
+//! the icon buttons, the switches, the checkboxes, the navigation bars, the tab rows, the dividers and the floating
+//! action buttons.
 //!
 //! `nsh test` opens it on NSH's hosts (`button.test.tsx`, `switch.test.tsx`, `checkbox.test.tsx` and `fab.test.tsx`,
 //! beside its `nsh.json`) and saves screenshots of it; `visual-checks` reads the pixels it knows in them, at the places
@@ -11,6 +12,7 @@ pub mod fab;
 pub mod grid;
 pub mod navigation;
 pub mod switch;
+pub mod tabs;
 
 use nsh_core::element::AdaptiveColor;
 use nsh_core::prelude::*;
@@ -21,14 +23,16 @@ use nsh_m3e::icon::Icon;
 use nsh_m3e::icon_button::icon_button;
 use nsh_m3e::material_symbols::outlined;
 use nsh_m3e::navigation_bar::{navigation_bar, navigation_bar_item};
+use nsh_m3e::tabs::{primary_tab_row, secondary_tab_row, tab};
 
 use crate::grid::{Availability, Cell, DIVIDER_SPACE, DividerCell, IconCell};
 use crate::navigation::{ITEMS, ItemState, NavCell};
 use crate::switch::SwitchCell;
+use crate::tabs::{RowKind, TABS, TabCell, TabState};
 
-/// The icon every icon button, navigation bar item and FAB of the catalog shows: Material Symbols' `favorite`, filled,
-/// whose middle is filled, so that the visual checks read the icon's color there. Material shows the outlined icon in an
-/// item that is not selected; the catalog shows the filled one in all, to have a color to read.
+/// The icon every icon button, navigation bar item, tab and FAB of the catalog shows: Material Symbols' `favorite`,
+/// filled, whose middle is filled, so that the visual checks read the icon's color there. Material shows the outlined
+/// icon in an item that is not selected; the catalog shows the filled one in all, to have a color to read.
 pub const ICON: Icon = outlined::filled::FAVORITE;
 
 #[native_module("catalog/native")]
@@ -36,9 +40,9 @@ fn native(registry: &mut Registry) {
     registry.register::<Catalog>();
 }
 
-/// Every button, icon button, switch, navigation bar, checkbox, divider and FAB of the catalog at its place on the
-/// [`grid`], the [`switch`] grid, the [`navigation`] grid, the [`checkbox`] grid and the [`fab`] row, on the scheme's
-/// surface color.
+/// Every button, icon button, switch, navigation bar, row of tabs, checkbox, divider and FAB of the catalog at its place
+/// on the [`grid`], the [`switch`], [`navigation`] and [`tabs`] grids, the [`checkbox`] grid and the [`fab`] row, on the
+/// scheme's surface color.
 #[component]
 pub fn Catalog() -> impl IntoElement {
     let surface = AdaptiveColor::rgb(
@@ -127,6 +131,34 @@ pub fn Catalog() -> impl IntoElement {
                 .w(cell.width())
                 .test_id(&cell.test_id())
                 .child(bar),
+        )
+    });
+    let page = TabCell::all().fold(page, |page, cell| {
+        let (x, y) = cell.origin();
+        let tabs: Vec<AnyElement> = TABS
+            .into_iter()
+            .map(|state| {
+                tab()
+                    .label(state.label())
+                    .icon(cell.content.has_icon().then_some(ICON))
+                    .label_visibility(cell.content.label_visibility())
+                    .selected(state == TabState::Selected)
+                    .disabled(state == TabState::Disabled)
+                    .into_element()
+            })
+            .collect();
+        let row = match cell.kind {
+            RowKind::Secondary => secondary_tab_row().children(tabs).into_element(),
+            _ => primary_tab_row().children(tabs).into_element(),
+        };
+        page.child(
+            view()
+                .absolute()
+                .left(x)
+                .top(y)
+                .w(cell.width())
+                .test_id(&cell.test_id())
+                .child(row),
         )
     });
     fab::place(checkbox::place(page))
@@ -343,6 +375,7 @@ mod tests {
                 .extend(batch.items.iter().cloned());
         });
         app.wait_for("Home").unwrap();
+        app.wait_for("Songs").unwrap();
         let items = items.lock().unwrap_or_else(PoisonError::into_inner).clone();
         Mounted::of(&items)
     }
@@ -352,7 +385,11 @@ mod tests {
     #[test]
     fn every_navigation_bar_is_where_the_grid_says() {
         let mounted = mounted_in_the_viewport();
-        assert_eq!(mounted.tabs.len(), NavCell::all().count() * ITEMS.len());
+        // The tab role is the navigation bars' items' and the tab rows' tabs': this test reads the bars' ones.
+        assert_eq!(
+            mounted.tabs.len(),
+            (NavCell::all().count() + TabCell::all().count()) * ITEMS.len()
+        );
         for cell in NavCell::all() {
             let bar = mounted.ids[&cell.test_id()];
             let (x, y) = cell.origin();
@@ -371,6 +408,33 @@ mod tests {
                 let (_, accessibility) = &mounted.tabs[&item];
                 assert_eq!(accessibility.selected, state == ItemState::Selected);
                 assert_eq!(accessibility.disabled, state == ItemState::Disabled);
+            }
+        }
+    }
+
+    /// Every row of tabs is at its place on the grid, as wide and as tall as the grid says, with its three tabs a third
+    /// of it each, the first selected and the last disabled.
+    #[test]
+    fn every_row_of_tabs_is_where_the_grid_says() {
+        let mounted = mounted_in_the_viewport();
+        for cell in TabCell::all() {
+            let row = mounted.ids[&cell.test_id()];
+            let (x, y) = cell.origin();
+            assert_eq!(mounted.place(row), (x.0, y.0), "{cell:?}");
+            let size = mounted.frames[&row].size;
+            assert_eq!((size.width, size.height), (cell.width(), cell.height()));
+            for state in TABS {
+                let tab = mounted.item(row, state.label());
+                let (center_x, center_y) = cell.tab_center(state);
+                let (found_x, found_y) = mounted.middle(tab);
+                // Layout rounds to whole points.
+                assert!(
+                    (found_x - center_x.0).abs() < 0.5 && (found_y - center_y.0).abs() < 0.5,
+                    "{cell:?} {state:?}: at ({found_x}, {found_y}), not ({center_x:?}, {center_y:?})"
+                );
+                let (_, accessibility) = &mounted.tabs[&tab];
+                assert_eq!(accessibility.selected, state == TabState::Selected);
+                assert_eq!(accessibility.disabled, state == TabState::Disabled);
             }
         }
     }

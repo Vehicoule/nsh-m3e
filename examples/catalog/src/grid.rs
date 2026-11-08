@@ -10,8 +10,8 @@
 //! The dividers sit in one column in the strip the icon buttons' grid leaves free on its right: one cell per direction
 //! and thickness, each a square space that its divider fills along its length.
 //!
-//! The switches sit on a third grid below the second ([`crate::switch`]).
-//! The navigation bars sit on a fourth grid below the third ([`crate::navigation`]).
+//! The switches sit on a third grid below the second ([`crate::switch`]), the navigation bars on a fourth below the
+//! third ([`crate::navigation`]), and the tab rows on a fifth below the fourth ([`crate::tabs`]).
 
 use nsh_core::geometry::Points;
 use nsh_m3e::button::{ButtonShape, ButtonSize, ButtonStyle};
@@ -23,7 +23,7 @@ use nsh_m3e::tokens::androidx::{
     small_icon_button_tokens, xlarge_icon_button_tokens, xsmall_icon_button_tokens,
 };
 
-use crate::navigation;
+use crate::tabs;
 
 /// Every style, in the order of the columns.
 pub const STYLES: [ButtonStyle; 4] = [
@@ -117,17 +117,17 @@ pub const DIVIDER_SPACE: Points = Points(96.0);
 /// Material.
 pub const DIVIDER_GUTTER: Points = Points(16.0);
 
-/// The size of the viewport the catalog is opened in, width and height: the three grids and their margins. The
-/// buttons' grid is the widest: 8 columns of 320 points, where the icon buttons' grid has 12 of 200, the switches' 4 of 96
-/// and the navigation bars' 4 of 640. The icon buttons' grid leaves a strip on its right, below the buttons' rows,
-/// where the dividers' column is.
+/// The size of the viewport the catalog is opened in, width and height: the five grids and their margins. The
+/// buttons' grid is the widest: 8 columns of 320 points, where the icon buttons' grid has 12 of 200, the switches' 4 of 96,
+/// the navigation bars' 4 of 640 and the tab rows' 3 of 640. The icon buttons' grid leaves a strip on its right, below
+/// the buttons' rows, where the dividers' column is.
 #[must_use]
 pub fn viewport() -> (Points, Points) {
     let mut width = MARGIN.0 * 2.0;
     for _ in 0..STYLES.len() * SHAPES.len() {
         width += COLUMN_WIDTH.0;
     }
-    (Points(width), Points(navigation::bottom().0 + MARGIN.0))
+    (Points(width), Points(tabs::bottom().0 + MARGIN.0))
 }
 
 /// The top of the icon buttons' grid: below the buttons' rows, each followed by its gap.
@@ -585,6 +585,7 @@ mod tests {
     use std::collections::HashSet;
 
     use super::*;
+    use crate::navigation;
 
     #[test]
     fn every_button_is_once_in_the_catalog() {
@@ -656,10 +657,10 @@ mod tests {
     #[test]
     fn the_viewport_holds_the_grids_and_their_margins() {
         let (width, height) = viewport();
-        // The buttons' 8 columns of 320 points are wider than the icon buttons' 12 of 200, the switches' 4 of 96 and the
-        // navigation bars' 4 of 640; below the buttons' 880 points of rows, the icon buttons' 1,760, the switches' 96 and the
-        // navigation bars' 160.
-        assert_eq!((width, height), (Points(2608.0), Points(2944.0)));
+        // The buttons' 8 columns of 320 points are wider than the icon buttons' 12 of 200, the switches' 4 of 96, the
+        // navigation bars' 4 of 640 and the tab rows' 3 of 640; below the buttons' 880 points of rows, the icon buttons'
+        // 1,760, the switches' 96, the navigation bars' 160 and the tab rows' 128.
+        assert_eq!((width, height), (Points(2608.0), Points(3072.0)));
         for cell in Cell::all() {
             let (x, y) = cell.origin();
             assert!(x.0 + COLUMN_WIDTH.0 <= width.0 - MARGIN.0);

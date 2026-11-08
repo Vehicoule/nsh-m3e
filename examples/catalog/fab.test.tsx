@@ -10,7 +10,7 @@ import { expect, open, test } from "nsh/test";
 
 // The catalog's viewport with the FABs' row (`catalog::fab::viewport`); the row is below the grids the other test
 // files open, so this viewport is taller. `visual-checks` refuses a screenshot of another size.
-const VIEWPORT = { width: 2608, height: 3168 };
+const VIEWPORT = { width: 2608, height: 3296 };
 
 const STYLES = ["primary-container", "secondary-container"];
 

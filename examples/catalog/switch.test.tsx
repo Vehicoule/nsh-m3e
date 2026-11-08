@@ -11,7 +11,7 @@
 import { expect, open, test } from "nsh/test";
 
 // The catalog's viewport (`catalog::grid::viewport`); `visual-checks` refuses a screenshot of another size.
-const VIEWPORT = { width: 2608, height: 2944 };
+const VIEWPORT = { width: 2608, height: 3072 };
 
 const HOVERED = ["switch-off-plain-enabled", "switch-on-icon-enabled"];
 
