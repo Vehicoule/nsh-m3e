@@ -26,6 +26,7 @@ components=(
     IconButton.kt
     IconButtonDefaults.kt
     FloatingActionButton.kt
+    Badge.kt
     Checkbox.kt
     ComposeMaterial3Flags.kt
     Switch.kt

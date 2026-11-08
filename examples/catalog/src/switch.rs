@@ -244,10 +244,9 @@ mod tests {
     }
 
     #[test]
-    fn the_grid_ends_at_the_viewports_margin_and_leaves_room_for_the_state_layer() {
+    fn the_grid_ends_where_the_badges_start_and_leaves_room_for_the_state_layer() {
         let (width, height) = grid::viewport();
         assert_eq!(block_height(), Points(96.0));
-        assert_eq!(top().0 + block_height().0 + MARGIN.0, height.0);
         // The state layer reaches this far past the track, above and below (and on each side when the handle is at an
         // end): it must stay inside the switch's column and between two rows without touching theirs.
         let reach = (switch_tokens::STATE_LAYER_SIZE.0 - HEIGHT.0) / 2.0;
@@ -261,8 +260,12 @@ mod tests {
             assert!(x.0 + COLUMN_WIDTH.0 <= width.0 - MARGIN.0, "{cell:?}");
             bottom = Points(bottom.0.max(y.0 + HEIGHT.0));
         }
-        // The last row and its gap end at the margin.
-        assert_eq!(bottom.0 + ROW_GAP.0, height.0 - MARGIN.0);
+        // The last row and its gap end where the badges' row starts, which ends at the viewport's margin.
+        assert_eq!(bottom.0 + ROW_GAP.0, grid::badge_top().0);
+        assert_eq!(
+            grid::badge_top().0 + crate::badge::anchor().1.0 + MARGIN.0,
+            height.0
+        );
     }
 
     #[test]

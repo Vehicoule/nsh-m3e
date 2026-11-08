@@ -226,7 +226,7 @@ mod tests {
     fn the_fabs_are_in_one_row_below_the_checkboxes() {
         // The checkboxes' grid ends at the margin before the checkboxes' viewport does: the FABs start there.
         assert_eq!(top(), Points(checkbox::viewport().1.0 - 24.0));
-        assert_eq!(top(), Points(2872.0));
+        assert_eq!(top(), Points(2912.0));
         let first = FabCell::new(FabStyle::PrimaryContainer, FabSize::Small);
         assert_eq!(first.origin(), (Points(24.0), top()));
         // The sizes are the columns of a style, 144 points apart; the second style starts after the fourth size.
@@ -249,7 +249,7 @@ mod tests {
         let (width, height) = viewport();
         // The page is as wide as the buttons' grid; the FABs' row (the largest FAB's 96 points and a gap) and the
         // margin below it make it 136 points taller than the checkboxes' viewport, whose margin it replaces.
-        assert_eq!((width, height), (Points(2608.0), Points(3008.0)));
+        assert_eq!((width, height), (Points(2608.0), Points(3048.0)));
         assert_eq!(width, grid::viewport().0);
         assert_eq!(block_height(), Points(112.0));
         assert_eq!(height.0, checkbox::viewport().1.0 + block_height().0);

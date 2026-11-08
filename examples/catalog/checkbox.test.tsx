@@ -10,7 +10,7 @@ import { expect, open, test } from "nsh/test";
 
 // The catalog's viewport with the checkboxes' grid (`catalog::checkbox::viewport`); the checkboxes' grid is below
 // the one `button.test.tsx` opens, so this viewport is taller. `visual-checks` refuses a screenshot of another size.
-const VIEWPORT = { width: 2608, height: 2896 };
+const VIEWPORT = { width: 2608, height: 2936 };
 
 const STATES = ["unchecked", "checked", "indeterminate"];
 

@@ -1,19 +1,20 @@
-// The button's, icon button's and divider's screenshots on NSH's desktop and web hosts (ADR 0013): `nsh test
+// The button's, icon button's, divider's and badge's screenshots on NSH's desktop and web hosts (ADR 0013): `nsh test
 // examples/catalog/button.test.tsx --target <linux|web>`, run from the root of the repository, saves them in
 // `target/visual`; `cargo run -p visual-checks -- target/visual` checks their known pixels. `nsh test` takes a test only
 // inside its app, so this file is beside the catalog's `nsh.json`.
 //
 // The catalog shows every size, style, shape and availability of the button on a grid, every size, width,
 // style, shape and availability of the icon button on a second grid below it (and the switches on a third, which
-// `switch.test.tsx` hovers; they are in these screenshots at rest), and every direction and thickness of the
-// divider in a column beside the second grid. A divider has no hover state: no screenshot has the mouse over one.
+// `switch.test.tsx` hovers; they are in these screenshots at rest), a row of badges below all of them (a dot and
+// four labels, each on a small icon button), and every direction and thickness of the divider in a column beside the
+// second grid. A divider has no hover state: no screenshot has the mouse over one.
 // Each appearance gets one screenshot at rest, one with the mouse over the small round enabled button of each style,
 // and one with the mouse over the small uniform round enabled icon button of each style. The file names are those
 // `visual-checks` reads (`Shot::file_name`).
 import { expect, open, test } from "nsh/test";
 
 // The catalog's viewport (`catalog::grid::viewport`); `visual-checks` refuses a screenshot of another size.
-const VIEWPORT = { width: 2608, height: 2784 };
+const VIEWPORT = { width: 2608, height: 2824 };
 
 const STYLES = ["filled", "tonal", "outlined", "text"];
 
@@ -23,6 +24,10 @@ for (const scheme of ["light", "dark"] as const) {
   test(`the buttons in ${scheme} appearance`, async () => {
     const app = await open(".", { ...VIEWPORT, colorScheme: scheme });
     for (const label of ["Filled", "Tonal", "Outlined", "Text"]) {
+      expect(app.texts()).toContain(label);
+    }
+    // The badges' labels; the dot has none.
+    for (const label of ["1", "9", "99+", "Sale 50%"]) {
       expect(app.texts()).toContain(label);
     }
     await app.screenshot(`target/visual/${scheme}-rest.png`);

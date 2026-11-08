@@ -543,7 +543,7 @@ mod tests {
         assert_eq!(
             found[0].to_string(),
             format!(
-                "checkbox-checked-enabled mark at (109, 2779) points: expected {} (± 2), found #6750a4",
+                "checkbox-checked-enabled mark at (109, 2819) points: expected {} (± 2), found #6750a4",
                 wanted.expected
             )
         );

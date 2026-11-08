@@ -5,14 +5,16 @@
 //! This reads each of them and checks, for every button and icon button of the catalog, the pixels whose color the
 //! tokens give: the container's color inside it, the outline's on its edge, the surface outside its top left corner,
 //! where a rounded corner leaves the background, and an icon button's icon color in its middle; the switches' are
-//! in [`switch`], every checkbox's at the places [`checkbox`] gives and every FAB's, with its shadow, in [`fab`]; and
-//! for every divider, the line's color from end to end and across its whole thickness, and the surface one point
-//! past each of its ends and sides. Where the antialiasing of an edge, of the label or of the icon's edge makes a
-//! color unknown, nothing is checked.
+//! in [`switch`], every checkbox's at the places [`checkbox`] gives and every FAB's, with its shadow, in [`fab`]; for
+//! every divider, the line's color from end to end and across its whole thickness, and the surface one point past
+//! each of its ends and sides; and the badges' are in [`badge`]: the error color inside each badge and the surface
+//! just outside it. Where the antialiasing of an edge, of the label or of the icon's edge makes a color unknown,
+//! nothing is checked.
 //!
 //! It is not a `cargo xtask` task: `xtask` must build when the library does not (it regenerates the library's
 //! tokens), so it cannot depend on it, and these checks take every expected color from the library's tokens.
 
+mod badge;
 mod checkbox;
 mod fab;
 
@@ -825,7 +827,19 @@ fn run(directory: &Path, out: &mut impl io::Write) -> Result<(), Error> {
         mismatches += check_file(
             directory,
             &shot.file_name(),
-            |image| check(image, shot),
+            |image| {
+                let mut found: Vec<String> = check(image, shot)?
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect();
+                // The badges do not move with the mouse: every screenshot shows them as its appearance does.
+                found.extend(
+                    badge::check(image, shot.appearance)?
+                        .iter()
+                        .map(ToString::to_string),
+                );
+                Ok(found)
+            },
             out,
         )?;
     }
@@ -873,7 +887,40 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
+    use std::ops::Deref;
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
     use super::*;
+
+    /// A directory of the system's temporary one, created empty, that goes away when this is dropped, a failed
+    /// assertion included: the screenshots a test writes in it weigh about 870 MB, and `cargo mutants` runs a test that
+    /// fails once for each mutant it catches.
+    struct ScratchDir(PathBuf);
+
+    impl ScratchDir {
+        /// An empty directory named for `name` and for this process, so that two tests do not share one.
+        fn new(name: &str) -> Self {
+            let path = std::env::temp_dir().join(format!("{name}-{}", std::process::id()));
+            // One a run that was killed left behind is not this test's.
+            let _ = fs::remove_dir_all(&path);
+            fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Deref for ScratchDir {
+        type Target = Path;
+
+        fn deref(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for ScratchDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
 
     const LIGHT: ColorScheme = ColorScheme::BASELINE_LIGHT;
 
@@ -899,6 +946,11 @@ mod tests {
         let mut rgba = [1, 2, 3, 255].repeat((width * height) as usize);
         for probe in shot_probes(shot) {
             let (x, y) = pixel_of(&probe, scale);
+            let start = ((y * width + x) * 4) as usize;
+            rgba[start..start + 3].copy_from_slice(&probe.expected.0);
+        }
+        for probe in badge::probes(shot.appearance) {
+            let (x, y) = probe.pixel(scale);
             let start = ((y * width + x) * 4) as usize;
             rgba[start..start + 3].copy_from_slice(&probe.expected.0);
         }
@@ -1824,8 +1876,7 @@ mod tests {
 
     #[test]
     fn run_reports_missing_and_wrong_screenshots() {
-        let directory = std::env::temp_dir().join(format!("visual-checks-{}", std::process::id()));
-        fs::create_dir_all(&directory).unwrap();
+        let directory = ScratchDir::new("visual-checks");
         assert!(matches!(run_in(&directory).1, Err(Error::Read { .. })));
         for shot in Shot::all() {
             save(&directory, &shot.file_name(), &painted(shot, 1));
@@ -1902,6 +1953,68 @@ mod tests {
             out.contains(&format!("{}: ok", dark_checkbox.file_name())),
             "{out}"
         );
-        fs::remove_dir_all(&directory).unwrap();
+    }
+
+    /// Writes every screenshot of the catalog, of the checkboxes and of the FABs as it should be, in `directory`.
+    fn write_right_screenshots(directory: &Path) {
+        for shot in Shot::all() {
+            save(directory, &shot.file_name(), &painted(shot, 1));
+        }
+        for shot in checkbox::Shot::all() {
+            save(directory, &shot.file_name(), &checkbox::painted(shot, 1));
+        }
+        for shot in fab::Shot::all() {
+            save(directory, &shot.file_name(), &fab::painted(shot, 1));
+        }
+    }
+
+    #[test]
+    fn run_names_a_wrong_badge_pixel_alone() {
+        let directory = ScratchDir::new("visual-checks-badge");
+        write_right_screenshots(&directory);
+        // A wrong badge pixel alone, in a screenshot whose buttons are right: counted, named and the file failed.
+        let shot = Shot::all()
+            .into_iter()
+            .find(|shot| shot.file_name() == "dark-rest.png")
+            .unwrap();
+        let mut image = painted(shot, 1);
+        let probe = badge::probes(shot.appearance)[0];
+        let (x, y) = probe.pixel(1);
+        let start = ((y * image.width + x) * 4) as usize;
+        image.rgba[start..start + 3]
+            .copy_from_slice(&Rgb::of(&shot.appearance.scheme(), ColorRole::Surface).0);
+        save(&directory, &shot.file_name(), &image);
+        let (count, out) = counted_in(&directory);
+        assert_eq!(count, 1, "{out}");
+        assert!(out.contains("dark-rest.png: FAILED"), "{out}");
+        assert!(
+            out.contains("  badge-dot dot at (61, 2763) points: expected #f2b8b5, found #141218"),
+            "{out}"
+        );
+        assert!(out.contains("light-rest.png: ok"), "{out}");
+    }
+
+    // https://github.com/Vehicoule/nsh-m3e/issues/79
+    #[test]
+    fn regression_79_a_failed_test_leaves_nothing_in_the_temporary_directory() {
+        let path =
+            std::env::temp_dir().join(format!("visual-checks-scratch-{}", std::process::id()));
+        // While the test is running the directory is there, and what is written in it with it.
+        let failed = catch_unwind(AssertUnwindSafe(|| {
+            let directory = ScratchDir::new("visual-checks-scratch");
+            fs::write(directory.join("light-rest.png"), b"a screenshot").unwrap();
+            assert!(path.join("light-rest.png").exists());
+            panic!("an assertion that fails");
+        }));
+        assert!(failed.is_err());
+        assert!(!path.exists(), "the directory was left behind");
+        // A test that ends well leaves nothing either, and a directory a killed run left is not kept.
+        fs::create_dir_all(&path).unwrap();
+        fs::write(path.join("old.png"), b"left by a run that was killed").unwrap();
+        {
+            let directory = ScratchDir::new("visual-checks-scratch");
+            assert!(!directory.join("old.png").exists());
+        }
+        assert!(!path.exists(), "the directory was left behind");
     }
 }

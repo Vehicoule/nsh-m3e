@@ -11,6 +11,8 @@
 //! and thickness, each a square space that its divider fills along its length.
 //!
 //! The switches sit on a third grid below the second ([`crate::switch`]).
+//!
+//! The badges sit in one row below the third ([`crate::badge`]).
 
 use nsh_core::geometry::Points;
 use nsh_m3e::button::{ButtonShape, ButtonSize, ButtonStyle};
@@ -114,25 +116,26 @@ pub const DIVIDER_SPACE: Points = Points(96.0);
 /// Material.
 pub const DIVIDER_GUTTER: Points = Points(16.0);
 
-/// The size of the viewport the catalog is opened in, width and height: the three grids and their margins. The
-/// buttons' grid is the widest: 8 columns of 320 points, where the icon buttons' grid has 12 of 200 and the switches'
-/// 4 of 96. The icon buttons' grid leaves a strip on its right, below the buttons' rows, where the dividers' column
-/// is.
+/// The size of the viewport the catalog is opened in, width and height: the three grids, the badges' row and their
+/// margins. The buttons' grid is the widest: 8 columns of 320 points, where the icon buttons' grid has 12 of 200, the
+/// switches' 4 of 96 and the badges' row 5 of 200. The icon buttons' grid leaves a strip on its right, below the
+/// buttons' rows, where the dividers' column is.
 #[must_use]
 pub fn viewport() -> (Points, Points) {
     let mut width = MARGIN.0 * 2.0;
     for _ in 0..STYLES.len() * SHAPES.len() {
         width += COLUMN_WIDTH.0;
     }
-    let mut height = icon_top().0 + MARGIN.0 + crate::switch::block_height().0;
-    for _ in AVAILABILITIES {
-        for _ in ICON_SHAPES {
-            for size in ICON_SIZES {
-                height += icon_height(size).0 + ROW_GAP.0;
-            }
-        }
-    }
+    // The badges' row and its anchors' height, then the margin. The row is the last, so no gap follows it: the
+    // viewport, and the screen the hosts need for it, are no taller than the margin asks.
+    let height = badge_top().0 + crate::badge::anchor().1.0 + MARGIN.0;
     (Points(width), Points(height))
+}
+
+/// The top of the badges' row: below the switches' grid, which ends with the gap of its last row.
+#[must_use]
+pub fn badge_top() -> Points {
+    Points(crate::switch::top().0 + crate::switch::block_height().0)
 }
 
 /// The top of the icon buttons' grid: below the buttons' rows, each followed by its gap.
@@ -647,8 +650,8 @@ mod tests {
     fn the_viewport_holds_the_grids_and_their_margins() {
         let (width, height) = viewport();
         // The buttons' 8 columns of 320 points are wider than the icon buttons' 12 of 200; below the buttons' 880
-        // points of rows, the icon buttons' 1,760, then the switches' 96.
-        assert_eq!((width, height), (Points(2608.0), Points(2784.0)));
+        // points of rows, the icon buttons' 1,760, then the switches' 96 and the badges' row: 40 points.
+        assert_eq!((width, height), (Points(2608.0), Points(2824.0)));
         for cell in Cell::all() {
             let (x, y) = cell.origin();
             assert!(x.0 + COLUMN_WIDTH.0 <= width.0 - MARGIN.0);
@@ -664,11 +667,22 @@ mod tests {
             assert!(y.0 + cell_height.0 <= height.0 - MARGIN.0);
             bottom = Points(bottom.0.max(y.0 + cell_height.0));
         }
-        // The last icon button row and its gap end where the switches' grid starts, which ends at the margin.
+        // The last row of icon buttons and its gap end where the switches' grid starts, which ends where the badges' row
+        // starts, and that row ends at the margin.
+        assert_eq!(bottom.0 + ROW_GAP.0, crate::switch::top().0);
         assert_eq!(
-            bottom.0 + ROW_GAP.0 + crate::switch::block_height().0,
-            height.0 - MARGIN.0
+            crate::switch::top().0 + crate::switch::block_height().0,
+            badge_top().0
         );
+        let (anchor_width, anchor_height) = crate::badge::anchor();
+        let mut badges_bottom = Points(0.0);
+        for cell in crate::badge::BadgeCell::all() {
+            let (x, y) = cell.origin();
+            assert!(x.0 + anchor_width.0 <= width.0 - MARGIN.0, "{cell:?}");
+            assert!(y.0 >= badge_top().0, "{cell:?}");
+            badges_bottom = Points(badges_bottom.0.max(y.0 + anchor_height.0));
+        }
+        assert_eq!(badges_bottom.0, height.0 - MARGIN.0);
     }
 
     #[test]
