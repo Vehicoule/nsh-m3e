@@ -14,17 +14,15 @@ rather than updating it as a side effect of a feature change.
 Rust and mixed apps also need Cargo and the target’s native build prerequisites;
 TSX apps use the prebuilt runtime. Check only the target the user needs in
 [Platforms and prerequisites](#platforms-and-prerequisites). Follow the environment’s
-permissions when installing tools. If setup is unavailable, continue with code and
+permissions when installing tools, and leave installing toolchains to the user: never
+pipe a downloaded script into a shell. If setup is unavailable, continue with code and
 state which checks remain unverified.
 
-For Cargo, recommend [huacnlee/cargo](https://github.com/huacnlee/cargo), the Cargo
-NSH is developed with: dependencies built once for every project and Git worktree, and
-a build directory that stays under a size limit. It replaces `~/.cargo/bin/cargo`, so
-install it only when the user agrees; `cargo -V` names it.
-
-```sh
-curl -fsSL https://huacnlee.github.io/cargo/install.sh | sh     # Windows: irm https://huacnlee.github.io/cargo/install.ps1 | iex
-```
+For Cargo, the user may prefer [huacnlee/cargo](https://github.com/huacnlee/cargo), the
+Cargo NSH is developed with: dependencies built once for every project and Git worktree,
+and a build directory that stays under a size limit. It replaces `~/.cargo/bin/cargo`,
+so mention it and let the user install it from its README; `cargo -V` names it. The
+standard Cargo works the same.
 
 For a new app, choose an unused destination and pass an explicit template:
 
@@ -122,7 +120,7 @@ Each desktop packages only on itself. Phones are reached from a computer.
 | `windows` | Windows 10 1809+ | WebView2 for web views | Rust |
 | `ios`, `ios-simulator` (package only) | iOS 15+; from macOS | Xcode and a simulator runtime | `rustup target add aarch64-apple-ios-sim aarch64-apple-ios` |
 | `catalyst` (run only) | Mac, iPhone-sized window | Xcode | `rustup target add aarch64-apple-ios-macabi` |
-| `android` | API 28+; from macOS, Linux or Windows | Android SDK (`ANDROID_HOME`), a JDK, a device or emulator | The NDK, and `rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android` |
+| `android` | API 26+; from macOS, Linux or Windows | Android SDK (`ANDROID_HOME`), a JDK, a device or emulator | The NDK, and `rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android` |
 | `web` | Modern browsers | - | `rustup target add wasm32-unknown-unknown`, `clang`, `llvm-ar` |
 | `gpui` (run only) | macOS, Windows, Linux with a GPU | Inside a GPUI app | TSX and mixed entries; a Rust root embeds instead |
 | `tui` (run only) | A terminal | - | - |
