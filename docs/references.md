@@ -18,7 +18,7 @@ site may describe a newer version than the one this repository builds against.
 
 | What | Where | Pinned |
 |---|---|---|
-| Official token values | [`reference/androidx-material3-tokens/`](../reference/androidx-material3-tokens/) (from `androidx/androidx`, `compose/material3/material3/src/commonMain/kotlin/androidx/compose/material3/tokens/`) | `a8b393d51f9bdcfcac8f0a4a0992ecad1b27ba55`, moved by `scripts/sync-androidx.sh` when the tokens change |
+| Official token values | [`reference/androidx-material3-tokens/`](../reference/androidx-material3-tokens/) (from `androidx/androidx`, `compose/material3/material3/src/commonMain/kotlin/androidx/compose/material3/tokens/`) | `d78151f9f309290814d2fe75d9a9f89ff7ef014c`, moved by `scripts/sync-androidx.sh` when the tokens change |
 | Official implementation (behavior, layout, how tokens are used) | https://github.com/androidx/androidx/tree/androidx-main/compose/material3/material3 | read at the same revision |
 | Official implementation, where it overrides a token (ADR 0012) | [`reference/androidx-material3-components/`](../reference/androidx-material3-components/) (`Button.kt`, `Divider.kt`, `IconButton.kt`, `IconButtonDefaults.kt`, `FloatingActionButton.kt`, `Checkbox.kt`, `ComposeMaterial3Flags.kt`, `Switch.kt`, `ProgressIndicator.kt`, `WavyProgressIndicator.kt`, and `LinearWavyProgressModifiers.kt` and `CircularWavyProgressModifiers.kt` from its `internal/` folder) | the same commit, moved with the tokens by `scripts/sync-androidx.sh` |
 | Icons (ADR 0017) | [`reference/material-symbols/`](../reference/material-symbols/) (from `google/material-design-icons`, `symbols/web/`) | `10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7`, moved by `scripts/sync-material-symbols.sh` |
