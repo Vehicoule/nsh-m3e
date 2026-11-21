@@ -27,13 +27,15 @@ Use this development order:
 1. Identify the app's Desktop, Mobile, Web and TUI targets and their input, navigation and density requirements.
 2. Define the app's semantic color roles and light/dark values in its theme file (`nsh.json` `"theme"`), together
    with the typography, spacing, radius and size scales the components use.
-3. Wrap and compose `nsh/base` into the app's styled controls, including visible parts, variants and interaction
+3. Create the app's `ui` module (`src/ui/`) and wrap and compose `nsh/base` into its core set of styled controls
+   ([The app's `ui` layer](./design-guides.md#the-apps-ui-layer)): each takes `variant`, `size`, states and slots,
+   never colors or radii. Build them including visible parts, variants and interaction
    states. Verify a representative composition on the supported targets before replicating it across pages.
 4. Compose pages from that layer. Add a missing token or shared variant in its owning layer first, then use it in
    pages; changes to a shared control should update all its consumers consistently.
 
-NSH provides the unstyled `nsh-base` crate (`nsh/base` in TSX), analogous to [`gpui-base`](https://gpui-kit.com/base). The app or a community
-library owns the styled layer analogous to [`gpui-component`](https://gpui-kit.com/component); `nsh-core` is the underlying GPUI counterpart. App code
+NSH provides the primitives (`nsh-core`, `nsh` in TSX) and the unstyled `nsh-base` crate (`nsh/base` in TSX). The app
+or a community library owns the styled layer above them. App code
 should import its own styled controls for ordinary UI, keeping base-component assembly and styling in the shared
 layer. Preserve base behavior, focus and accessibility while adapting presentation for each supported platform.
 
@@ -168,34 +170,43 @@ coordination.
 
 ## Bootstrap and root ownership
 
-Mount the app once, and give the root the whole surface: a TSX entry calls `mount(App)`, a Rust app names its root
-component in `nsh.json` (`"root": "App"`). The root fills the surface with `flex: 1` and a background from the theme:
+Mount the app once; its root declares the app's top-level windows, and each window fills with a `flex: 1` view and a
+background from the theme. A TSX entry calls `mount(App)`, a Rust app names its root component in `nsh.json`
+(`"root": "App"`):
 
 ```rust tabs
+use nsh_core::{element::desktop::window, prelude::*};
+
 #[component]
 pub fn App() -> impl IntoElement {
     provide_context(Workspace::new());
-    view()
-        .flex_1()
-        .bg(move || theme().background)
-        .child(inbox())
+    window().id("main").content(
+        view()
+            .flex_1()
+            .bg(move || theme().background)
+            .child(inbox()),
+    )
 }
 ```
 
 ```tsx tabs
 import { mount, View } from "nsh";
+import { Window } from "nsh/desktop";
 
 mount(() => (
-  <View class="flex-1 bg-background">
-    <App />
-  </View>
+  <Window id="main">
+    <View class="flex-1 bg-background">
+      <App />
+    </View>
+  </Window>
 ));
 ```
 
-The root coordinates what belongs to the whole surface: the navigation stack, the dialogs, popovers, menus, sheets and
-tooltips shown over everything in it, and the safe area. Do not mount a second root for each page inside one surface.
-One surface is one engine: each `NshAppView`, `NshView` or `AppView` a native app embeds runs its own VM, its own module
-state and its own reactive graph, so several surfaces in one host app never share state by accident.
+The app root coordinates what belongs to the whole app: the shared state, settings and the window registry. Each
+window's content coordinates what belongs to that window: its navigation stack, dialogs, popovers, menus, sheets and
+tooltips, and its safe area. Do not mount a second root for each page. One app is one engine: each `NshAppView`,
+`NshView` or `AppView` a native app embeds runs its own VM, its own module state and its own reactive graph, so several
+surfaces in one host app never share state by accident.
 
 ## Understand what runs once and what runs again
 
@@ -663,8 +674,19 @@ Rules:
   `unknown class` warning is a finding to fix;
 - use semantic tokens for meaning, not palette position;
 - keep state-independent geometry in the ordinary builder chain or class string;
-- use `active:`, `hover:` and `focus:` (`.active(..)`, `.hover(..)`, `.focus(..)`) for runtime interaction states;
-  they apply natively, with no round trip to app code;
+- use `active:`, `hover:` and `focus-visible:` (`.active(..)`, `.hover(..)`, `.focus_visible(..)`) for runtime
+  interaction states; they apply natively, with no round trip to app code. `focus-visible:` is the keyboard's ring:
+  it shows when the keyboard moved the focus, not after a click or a tap; keep `focus:` for any focus (an input's
+  edge, a list's highlighted row);
+- leave `cursor` unset on buttons, rows, tabs, menu items and other controls: the platforms already give the
+  default arrow there, the I-beam over inputs and selectable text, and the pointing hand over `Link` and text links.
+  Set `cursor-pointer` only on content that behaves as a link (opens a URL or leaves the app), and resize, grab or
+  `not-allowed` only while they describe the actual manipulation;
+- make text selectable only where people copy it (message bodies, code, logs, values): put `selectable` on that
+  `Text`/`TextView` or on the content view that holds it, never on a whole screen, sidebar or list. Every text in a
+  selectable view shows the I-beam, so labels, headings, timestamps and badges there read as editable; give such
+  chrome `selectable={false}` (Rust `.selectable(false)`) or move it out. Text inside a control (button, tab, menu
+  item, link) keeps the default arrow;
 - use a component's semantic state styles (`selected:`, `checked:`, `disabled:`) for checked, selected, pressed, or
   disabled appearance;
 - keep popup ownership in explicit state (`open` with `onOpenChange`) so its trigger can render the open or pressed
@@ -770,7 +792,7 @@ Make focus ownership explicit:
   than on bare views;
 - move focus with a ref's `focus()` from an event or an effect that follows a state change, and move the screen
   reader's with `set_accessibility_focus()` (Rust) or `setAccessibilityFocus` from `nsh` (TSX);
-- render a visible `focus:` state;
+- render a visible `focus-visible:` state;
 - do not request focus unconditionally while rendering.
 
 Composite widgets should implement the complete navigation model (arrow movement, Home / End or page movement where
@@ -985,7 +1007,7 @@ clipboard, haptics, scroll physics, fonts and timing can differ. One bundle runs
 the fallback behavior:
 
 - what an element means on every platform is a top-level prop; a platform's own system feature goes in
-  `ios={{…}}`, `android={{…}}`, `macos={{…}}`, `desktop={{…}}` or `web={{…}}` (a builder method in Rust), in each of the platforms
+  `ios={{…}}`, `android={{…}}`, `macos={{…}}`, `windows={{…}}`, `desktop={{…}}` or `web={{…}}` (a builder method in Rust), in each of the platforms
   that have it, and only the current platform's object is applied;
 - APIs of mobile platforms come from `nsh/mobile`, those of the desktops from `nsh/desktop`;
 - styles per platform are `ios:`, `android:` and `web:` classes.
@@ -1016,7 +1038,7 @@ its `permission` naming the capability and its `resource` what was asked for.
 ### Vocabulary is part of the API
 
 Use the same word for the same concept across components. Before naming a prop or an event, look for the term in
-NSH's own API, then in GPUI Kit's [`gpui-base`](https://gpui-kit.com/base), GPUI and [`gpui-component`](https://gpui-kit.com/component), then in the platforms' controls. What a
+NSH's own API, then in the platforms' controls. What a
 primitive shows and the global APIs take their names from HTML, the DOM and CSS (`src`, `html`, `placeholder`). Rust
 names are `snake_case` and translate to `camelCase` in TSX (`on_open_change` is `onOpenChange`); one word stays one
 word (`readonly`, `multiline`).
@@ -1041,6 +1063,7 @@ word (`readonly`, `multiline`).
 | Any other event | `on<Event>`, present tense, one object | `onPress()`, `onSubmit({ text })` |
 | A phase | `<act>Start`, `<act>End` | `onPanStart`, `onLoadStart` |
 | The mouse over a view | `Enter` / `Move` / `Leave`, the DOM's | `onMouseEnter`, `onMouseMove`, `onMouseLeave` |
+| A mouse button's release | `Up`, the DOM's | `onMouseUp` |
 | Starting to listen | `on(event, listener)`, returns `() => void` | `host.on(name, l)`, `BackHandler.on("press", l)` |
 | A value of the environment | An accessor, `set<Value>` beside it | `colorScheme()`, `setColorScheme` |
 | A read-only boolean | `is<Adjective>`, `has<Noun>` | `isAvailable` |
@@ -1204,7 +1227,7 @@ Avoid these patterns:
 
 Before editing, an agent must read the nearest implementation, its tests, the module's public exports, and the
 relevant reference page. It must search the current source and `.nsh/types` for signatures instead of translating a
-React, React Native, CSS or GPUI example by analogy: NSH components run once, and bindings follow the signals they
+React, React Native or CSS example by analogy: NSH components run once, and bindings follow the signals they
 read.
 
 For each change, the agent should be able to name:
